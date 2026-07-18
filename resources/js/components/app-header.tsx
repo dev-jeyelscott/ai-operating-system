@@ -1,5 +1,12 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Menu, Search } from 'lucide-react';
+import {
+    BookOpen,
+    Folder,
+    FolderKanban,
+    LayoutGrid,
+    Menu,
+    Search,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -32,9 +39,10 @@ import { UserMenuContent } from '@/components/user-menu-content';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { useInitials } from '@/hooks/use-initials';
 import { cn, toUrl } from '@/lib/utils';
+import type { BreadcrumbItem, NavItem } from '@/types';
 import { dashboard } from '@/routes';
 import { dashboard as organizationDashboard } from '@/routes/organizations';
-import type { BreadcrumbItem, NavItem } from '@/types';
+import { index as projectsIndex } from '@/routes/organizations/projects';
 
 type Props = {
     breadcrumbs?: BreadcrumbItem[];
@@ -48,17 +56,23 @@ type HeaderPageProps = {
     };
 };
 
-const rightNavItems: NavItem[] = [
+const mainNavItems: NavItem[] = [
     {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: Folder,
+        title: 'Dashboard',
+        href: dashboardHref,
+        icon: LayoutGrid,
     },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
-    },
+    ...(currentOrganization
+        ? [
+              {
+                  title: 'Projects',
+                  href: projectsIndex({
+                      organization: currentOrganization.slug,
+                  }),
+                  icon: FolderKanban,
+              },
+          ]
+        : []),
 ];
 
 const activeItemStyles =

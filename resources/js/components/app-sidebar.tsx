@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
+import { BookOpen, FolderGit2, FolderKanban, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -14,9 +14,10 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { OrganizationSwitcher } from '@/features/organizations/components/organization-switcher';
+import type { NavItem } from '@/types';
 import { dashboard } from '@/routes';
 import { dashboard as organizationDashboard } from '@/routes/organizations';
-import type { NavItem } from '@/types';
+import { index as projectsIndex } from '@/routes/organizations/projects';
 
 const footerNavItems: NavItem[] = [
     {
@@ -50,6 +51,17 @@ export function AppSidebar() {
             href: dashboardHref,
             icon: LayoutGrid,
         },
+        ...(organizationContext.current
+            ? [
+                  {
+                      title: 'Projects',
+                      href: projectsIndex({
+                          organization: organizationContext.current.slug,
+                      }),
+                      icon: FolderKanban,
+                  },
+              ]
+            : []),
     ];
 
     return (

@@ -6,6 +6,9 @@ use App\Http\Controllers\Health\ReadinessController;
 use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
+use App\Http\Controllers\Projects\ArchiveProjectController;
+use App\Http\Controllers\Projects\ProjectController;
+use App\Http\Controllers\Projects\RestoreProjectController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -19,6 +22,7 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
 
     Route::prefix('/organizations/{organization}')
         ->name('organizations.')
+        ->scopeBindings()
         ->group(function (): void {
             Route::get('/dashboard', OrganizationDashboardController::class)
                 ->can('view', 'organization')
@@ -27,6 +31,53 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
             Route::put('/current', SwitchCurrentOrganizationController::class)
                 ->can('view', 'organization')
                 ->name('current.update');
+
+            Route::controller(ProjectController::class)
+                ->prefix('/projects')
+                ->name('projects.')
+                ->group(function (): void {
+                    Route::get('/', 'index')
+                        ->can('view', 'organization')
+                        ->name('index');
+
+                    /*
+                     * Define /create before /{project} so "create" is not
+                     * interpreted as a project slug.
+                     */
+                    Route::get('/create', 'create')
+                        ->can('createProject', 'organization')
+                        ->name('create');
+
+                    Route::post('/', 'store')
+                        ->can('createProject', 'organization')
+                        ->name('store');
+
+                    Route::get('/{project}', 'show')
+                        ->can('view', 'project')
+                        ->name('show');
+
+                    Route::get('/{project}/edit', 'edit')
+                        ->can('update', 'project')
+                        ->name('edit');
+
+                    Route::put('/{project}', 'update')
+                        ->can('update', 'project')
+                        ->name('update');
+                });
+
+            Route::put(
+                '/projects/{project}/archive',
+                ArchiveProjectController::class,
+            )
+                ->can('archive', 'project')
+                ->name('projects.archive');
+
+            Route::put(
+                '/projects/{project}/restore',
+                RestoreProjectController::class,
+            )
+                ->can('restore', 'project')
+                ->name('projects.restore');
         });
 });
 
