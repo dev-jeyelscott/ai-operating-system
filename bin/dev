@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# Resolve the project directory regardless of the caller's location.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
+echo "Starting Docker services..."
+./vendor/bin/sail up -d
+
+echo "Stopping stale development processes..."
+
+# Reverb provides a graceful restart/termination signal.
+./vendor/bin/sail artisan reverb:restart >/dev/null 2>&1 || true
+
+# Horizon provides a graceful termination command.
+./vendor/bin/sail artisan horizon:terminate >/dev/null 2>&1 || true
+
+# Stop stale Vite, scheduler, Reverb, or Horizon processes left by an
+# interrupted previous launcher.
+docker compose exec -T -u root laravel.test bash -lc '
+    pkill -TERM -f "[v]ite --host" || true
+    pkill -TERM -f "[p]hp artisan schedule:work" || true
+    pkill -TERM -f "[p]hp artisan reverb:start" || true
+    pkill -TERM -f "[p]hp artisan horizon" || true
+'
+
+sleep 1
+
+echo "Starting development processes..."
+
+# Run every development process under one shell inside the container.
+# Using the sail user prevents root-owned pnpm and Vite files.
+exec docker compose exec \
+    -u sail \
+    laravel.test \
+    bash /var/www/html/bin/dev-processes

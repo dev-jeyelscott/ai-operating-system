@@ -1,0 +1,64 @@
+# Operating system and logs
+*.log
+.DS_Store
+Thumbs.db
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+/auth.json
+
+# PHP and Laravel dependencies
+/vendor
+
+# PHPUnit and PHP development tools
+/.phpunit.cache
+.phpunit.result.cache
+.phpactor.json
+
+# Laravel runtime and generated files
+/bootstrap/ssr
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+
+# JavaScript dependencies and package-manager cache
+/node_modules
+/.pnpm-store
+
+# TypeScript and tooling caches
+*.tsbuildinfo
+.eslintcache
+
+# Laravel Wayfinder generated files
+/resources/js/actions
+/resources/js/routes
+/resources/js/wayfinder
+
+# Vitest coverage output
+/coverage
+
+# Playwright artifacts and reports
+/playwright-report
+/test-results
+/blob-report
+
+# IDE and editor configuration
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+
+# Legacy local development files
+Homestead.json
+Homestead.yaml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

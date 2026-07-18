@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+cd /var/www/html
+
+# Store the real process IDs running inside the container.
+PIDS=()
+
+cleanup() {
+    # Prevent the EXIT trap from recursively calling itself.
+    trap - EXIT INT TERM
+
+    echo
+    echo "Stopping Vite, Reverb, Horizon, and the scheduler..."
+
+    # Ask every child process to terminate gracefully.
+    for pid in "${PIDS[@]}"; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+
+    # Allow up to three seconds for graceful shutdown.
+    for _ in {1..30}; do
+        alive=0
+
+        for pid in "${PIDS[@]}"; do
+            if kill -0 "$pid" 2>/dev/null; then
+                alive=1
+            fi
+        done
+
+        if [[ "$alive" -eq 0 ]]; then
+            break
+        fi
+
+        sleep 0.1
+    done
+
+    # Force-stop any process that ignored SIGTERM.
+    for pid in "${PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+    done
+
+    wait 2>/dev/null || true
+
+    echo "Development processes stopped."
+}
+
+trap cleanup EXIT INT TERM
+
+echo "Starting Vite..."
+pnpm dev --host 0.0.0.0 &
+PIDS+=("$!")
+
+echo "Starting Reverb..."
+php artisan reverb:start \
+    --host=0.0.0.0 \
+    --port=8080 &
+PIDS+=("$!")
+
+echo "Starting Horizon..."
+php artisan horizon &
+PIDS+=("$!")
+
+echo "Starting Laravel scheduler..."
+php artisan schedule:work &
+PIDS+=("$!")
+
+echo
+echo "AI Operating System development environment is running."
+echo
+echo "Application: http://localhost"
+echo "Vite:       http://localhost:5173"
+echo "Reverb:     ws://localhost:8080"
+echo "Mailpit:    http://localhost:8025"
+echo "MinIO:      http://localhost:8900"
+echo
+echo "Press Ctrl+C to stop the development processes."
+echo
+
+# Exit and invoke cleanup when any critical process stops.
+set +e
+wait -n "${PIDS[@]}"
+STATUS=$?
+set -e
+
+echo
+echo "A development process exited with status ${STATUS}."
+
+exit "$STATUS"
