@@ -75,31 +75,39 @@ test('verified users can access verified application routes', function () {
 });
 
 test('login errors do not disclose whether an account exists', function () {
-    $existingUser = User::factory()->create();
+    // Create an account that will be tested using an invalid password.
+    $user = User::factory()->create([
+        'email' => 'existing@example.test',
+    ]);
 
+    // Fortify must return this same generic message for every invalid login.
+    $genericFailureMessage = trans('auth.failed');
+
+    // Verify an existing account with an invalid password receives
+    // only the generic authentication failure message.
     $existingAccountResponse = $this->post(route('login.store'), [
-        'email' => $existingUser->email,
+        'email' => $user->email,
         'password' => 'incorrect-password',
     ]);
 
+    $existingAccountResponse->assertSessionHasErrors([
+        'email' => $genericFailureMessage,
+    ]);
+
+    $this->assertGuest();
+
+    // Verify a nonexistent account receives the exact same generic message,
+    // preventing account enumeration through differing login responses.
     $missingAccountResponse = $this->post(route('login.store'), [
-        'email' => 'missing-account@example.com',
+        'email' => 'missing@example.test',
         'password' => 'incorrect-password',
     ]);
 
-    $existingAccountMessage = $existingAccountResponse
-        ->getSession()
-        ->get('errors')
-        ->first('email');
+    $missingAccountResponse->assertSessionHasErrors([
+        'email' => $genericFailureMessage,
+    ]);
 
-    $missingAccountMessage = $missingAccountResponse
-        ->getSession()
-        ->get('errors')
-        ->first('email');
-
-    expect($existingAccountMessage)
-        ->toBeString()
-        ->toBe($missingAccountMessage);
+    $this->assertGuest();
 });
 
 test('login throttling normalizes email case and includes the client address', function () {
