@@ -167,3 +167,46 @@ test('session configuration uses the required security defaults', function () {
         ->and(config('session.serialization'))
         ->toBe('json');
 });
+
+test('login throttling returns the stable retry response for json clients', function () {
+    User::factory()->create([
+        'email' => 'json-rate-limit@example.com',
+    ]);
+
+    for ($attempt = 1; $attempt <= 5; $attempt++) {
+        $this
+            ->withHeader('Accept', 'application/json')
+            ->postJson(route('login.store'), [
+                'email' => 'JSON-RATE-LIMIT@EXAMPLE.COM',
+                'password' => 'incorrect-password',
+            ])
+            ->assertUnprocessable();
+    }
+
+    $response = $this
+        ->withHeader('X-Request-ID', 'login-rate-limit-request')
+        ->postJson(route('login.store'), [
+            'email' => 'json-rate-limit@example.com',
+            'password' => 'incorrect-password',
+        ]);
+
+    $response
+        ->assertTooManyRequests()
+        ->assertHeader('Retry-After')
+        ->assertJsonPath(
+            'error.code',
+            'rate_limit_exceeded',
+        )
+        ->assertJsonPath(
+            'error.retryable',
+            true,
+        )
+        ->assertJsonPath(
+            'error.request_id',
+            'login-rate-limit-request',
+        );
+
+    expect(
+        $response->json('error.details.retry_after_seconds'),
+    )->toBeInt()->toBeGreaterThan(0);
+});

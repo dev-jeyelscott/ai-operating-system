@@ -49,6 +49,7 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
                         ->name('create');
 
                     Route::post('/', 'store')
+                        ->middleware('throttle:project-commands')
                         ->can('createProject', 'organization')
                         ->name('store');
 
@@ -61,6 +62,7 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
                         ->name('edit');
 
                     Route::put('/{project}', 'update')
+                        ->middleware('throttle:project-commands')
                         ->can('update', 'project')
                         ->name('update');
                 });
@@ -69,6 +71,7 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
                 '/projects/{project}/archive',
                 ArchiveProjectController::class,
             )
+                ->middleware('throttle:project-commands')
                 ->can('archive', 'project')
                 ->name('projects.archive');
 
@@ -76,6 +79,7 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
                 '/projects/{project}/restore',
                 RestoreProjectController::class,
             )
+                ->middleware('throttle:project-commands')
                 ->can('restore', 'project')
                 ->name('projects.restore');
         });

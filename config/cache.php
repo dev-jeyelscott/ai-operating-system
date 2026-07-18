@@ -19,6 +19,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Rate Limiter Store
+    |--------------------------------------------------------------------------
+    |
+    | Redis provides atomic, shared counters across horizontally scaled web
+    | instances. Tests may continue using the array cache through environment
+    | configuration.
+    |
+    */
+
+    'limiter' => env('CACHE_LIMITER_STORE', env('CACHE_STORE', 'database')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache Stores
     |--------------------------------------------------------------------------
     |
