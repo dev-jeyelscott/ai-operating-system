@@ -128,19 +128,10 @@ Do not use `sudo chmod 666 /var/run/docker.sock`.
 Run these commands in Ubuntu:
 
 ```bash
-cd ~/projects/ai-operating-system
-
-cp .env.example .env
-
-./vendor/bin/sail up -d --build
-
-./vendor/bin/sail composer install
-./vendor/bin/sail pnpm install
-
-./vendor/bin/sail artisan key:generate
-./vendor/bin/sail artisan migrate
-./vendor/bin/sail artisan storage:link
-./vendor/bin/sail artisan optimize:clear
+git clone <repository>
+cd ai-operating-system
+./bin/bootstrap
+./bin/dev
 ```
 
 Do not regenerate `APP_KEY` after the application has started storing encrypted data.

@@ -17,6 +17,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Artifact Filesystem Disk
+    |--------------------------------------------------------------------------
+    |
+    | Large execution artifacts use a separately configurable disk so local
+    | MinIO and production Amazon S3 can use the same application contract.
+    |
+    */
+
+    'artifact' => env('ARTIFACT_FILESYSTEM_DISK', 's3'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -56,8 +68,8 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
-            'report' => false,
+            'throw' => true,
+            'report' => true,
         ],
 
     ],

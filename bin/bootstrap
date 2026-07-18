@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
+# Print a failure message and stop the bootstrap process.
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+# Add or replace one configuration value in the local environment file.
+set_env_value() {
+    local key="$1"
+    local value="$2"
+
+    if grep -q "^${key}=" .env; then
+        sed -i "s|^${key}=.*|${key}=${value}|" .env
+    else
+        printf '%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
+# Wait until PostgreSQL is ready to accept application connections.
+wait_for_postgres() {
+    local attempts=0
+    local maximum_attempts=60
+
+    until docker compose exec -T pgsql \
+        pg_isready \
+        -U "${DB_USERNAME:-sail}" \
+        -d "${DB_DATABASE:-ai_operating_system}" \
+        >/dev/null 2>&1; do
+        attempts=$((attempts + 1))
+
+        if [[ "$attempts" -ge "$maximum_attempts" ]]; then
+            fail "PostgreSQL did not become ready."
+        fi
+
+        sleep 1
+    done
+}
+
+command -v docker >/dev/null 2>&1 \
+    || fail "Docker is not installed."
+
+docker info >/dev/null 2>&1 \
+    || fail "Docker Desktop is not running or WSL integration is disabled."
+
+if [[ ! -f .env ]]; then
+    cp .env.example .env
+fi
+
+set_env_value "WWWUSER" "$(id -u)"
+set_env_value "WWWGROUP" "$(id -g)"
+
+# Install Composer dependencies before Sail exists on a clean clone.
+if [[ ! -x vendor/bin/sail ]]; then
+    docker run --rm \
+        --user "$(id -u):$(id -g)" \
+        --volume "$PROJECT_ROOT:/var/www/html" \
+        --workdir /var/www/html \
+        laravelsail/php85-composer:latest \
+        composer install \
+            --ignore-platform-reqs \
+            --no-interaction \
+            --prefer-dist
+fi
+
+./vendor/bin/sail up -d --build
+
+wait_for_postgres
+
+./vendor/bin/sail composer install \
+    --no-interaction \
+    --prefer-dist
+
+./vendor/bin/sail pnpm install --frozen-lockfile
+
+# Generate APP_KEY only when the environment does not already contain one.
+if grep -q '^APP_KEY=$' .env; then
+    ./vendor/bin/sail artisan key:generate
+fi
+
+./vendor/bin/sail artisan migrate --force
+./vendor/bin/sail artisan storage:link
+
+# Create the local artifact bucket without failing when it already exists.
+docker compose exec -T minio sh -lc '
+    mc alias set \
+        local \
+        http://localhost:9000 \
+        "$MINIO_ROOT_USER" \
+        "$MINIO_ROOT_PASSWORD" \
+        >/dev/null
+
+    mc mb \
+        --ignore-existing \
+        "local/aios-local" \
+        >/dev/null
+'
+
+./vendor/bin/sail artisan optimize:clear
+./vendor/bin/sail pnpm build
+./vendor/bin/sail artisan app:check
+
+echo
+echo "Bootstrap completed successfully."
+echo "Run ./bin/dev and open http://localhost."
