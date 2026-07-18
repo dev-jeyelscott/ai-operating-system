@@ -94,7 +94,18 @@ final class EloquentProjectRepository implements ProjectRepository
                  */
                 $organization->projects()->save($project);
 
-                return $project->refresh();
+                /*
+                 * Every application-created project starts with a safe,
+                 * intentionally incomplete schema-v1 configuration.
+                 *
+                 * This runs inside the existing project transaction, so project
+                 * creation cannot succeed without configuration initialization.
+                 */
+                $project->configuration()->create();
+
+                return $project
+                    ->refresh()
+                    ->load('configuration');
             },
             attempts: 3,
         );

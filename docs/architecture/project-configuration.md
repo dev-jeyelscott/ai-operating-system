@@ -1,0 +1,112 @@
+# Project Configuration Architecture
+
+## Ownership
+
+The Projects module owns the current project configuration aggregate.
+
+Integration credentials and provider secrets are excluded. They belong to
+encrypted integration storage implemented by AIOS-027.
+
+## Persistence
+
+Each project has exactly one current `project_configurations` row.
+
+- `schema_version` identifies the serialized contract shape.
+- `revision` identifies material changes to the project's values.
+- Queryable and constraint-heavy values use typed columns.
+- Extensible lists and policy maps use PostgreSQL `jsonb`.
+- `project_id` is unique.
+- Configuration is deleted when its owning project is deleted.
+
+## Schema version 1
+
+The serialized contract contains:
+
+```text
+schema_version
+revision
+technology_stack
+repository
+validation_commands
+required_documents
+policy
+notifications
+```
+
+## Technology stack
+
+- Languages
+- Frameworks
+- Databases
+- Infrastructure
+- Package managers
+- Runtimes
+
+## Repository
+
+- Provider
+- Repository URL
+- Default branch
+- Integration branch
+
+Repository configuration is metadata only. It does not authorize repository
+reads or writes.
+
+## Validation commands
+
+- Build
+- Test
+- Lint
+- Static analysis
+- Security
+
+Commands are persisted by this schema but are not executed by AIOS-021.
+
+## Project policy
+
+- Default reasoning
+- Provider allow list
+- Provider fallback order
+- Budget limit in minor units
+- Budget currency
+- Automatic retry limit
+- Autonomy level
+- Approval policy
+
+## Notifications
+
+- Channel identifiers
+- Event identifiers
+
+## Versioning rules
+
+1. Increment schema_version only when the serialized structure or field semantics change.
+2. Add readers or upcasters before writing a newer schema version.
+3. Never silently interpret an unsupported schema version.
+4. Increment revision only for material configuration changes.
+5. AIOS-031 will persist immutable history keyed by project and revision.
+6. Context snapshots must use toVersionedArray() instead of raw model serialization.
+
+## Security rules
+
+- Never store access tokens, passwords, private keys, cookies, or provider
+- credentials in project configuration.
+- Never log complete project configuration request bodies.
+- Future HTTP requests must validate both scalar fields and JSON structures.
+- Preserve conservative approval defaults.
+- Access configuration through an organization-scoped project.
+- Do not create direct, unscoped configuration routes.
+- Repository metadata does not authorize repository writes.
+
+## Deferred tickets
+
+- AIOS-022: setup wizard and persisted wizard progress
+- AIOS-023: repository metadata validation
+- AIOS-024: reject main as an automated integration target
+- AIOS-025: validation-command rules
+- AIOS-026: policy mutation and validation
+- AIOS-027: encrypted integration credentials
+- AIOS-028: Notion connection verification
+- AIOS-029: project completeness evaluator
+- AIOS-030: settings and integration screens
+- AIOS-031: immutable configuration history and audit events

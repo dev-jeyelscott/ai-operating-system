@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -29,6 +30,7 @@ use LogicException;
  * @property string|null $description
  * @property ProjectType $project_type
  * @property ProjectStatus $status
+ * @property-read ProjectConfiguration|null $configuration
  * @property CarbonImmutable $status_changed_at
  * @property CarbonImmutable|null $archived_at
  * @property CarbonImmutable|null $created_at
@@ -251,5 +253,15 @@ final class Project extends Model
             'status_changed_at' => 'immutable_datetime',
             'archived_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * Return the current versioned configuration for this project.
+     *
+     * @return HasOne<ProjectConfiguration, $this>
+     */
+    public function configuration(): HasOne
+    {
+        return $this->hasOne(ProjectConfiguration::class);
     }
 }
