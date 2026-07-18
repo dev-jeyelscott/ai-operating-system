@@ -22,7 +22,10 @@ final class ArchiveProjectController
         Project $project,
         ArchiveProject $archiveProject,
     ): RedirectResponse {
-        $project = $archiveProject->handle($project);
+        $project = $archiveProject->handle(
+            organizationId: $organization->id,
+            projectId: $project->id,
+        );
 
         return to_route('organizations.projects.show', [
             'organization' => $organization,

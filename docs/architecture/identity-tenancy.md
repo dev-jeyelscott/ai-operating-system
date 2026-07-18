@@ -46,7 +46,6 @@ The following behavior is implemented in later tickets:
 
 - AIOS-013: organization and project authorization policies;
 - AIOS-014: current organization selection and scoped navigation;
-- AIOS-017: tenant-safe repository and query scoping;
 - AIOS-018: append-only audit events;
 - AIOS-020: complete cross-organization IDOR security tests.
 
@@ -73,3 +72,25 @@ Users without organizations remain on the unscoped dashboard onboarding state.
 
 AIOS-017 remains responsible for enforcing mandatory organization filtering in
 project repositories and database queries.
+
+## Tenant-safe project persistence
+
+Project persistence uses explicit organization qualification rather than ambient
+session state.
+
+Every project repository operation requires an `organizationId`. Reads,
+updates, archive operations, restore operations, and lifecycle transitions begin
+with the `Project::forOrganization()` query scope.
+
+A project identifier from another organization therefore produces a not-found
+result rather than returning or modifying the foreign project.
+
+Organization-scoped HTTP routes continue to use Laravel scoped bindings, and
+project policies continue to authorize the authenticated user's role. Route
+binding, policies, and repository scoping are independent defense-in-depth
+controls.
+
+A global Eloquent tenant scope is intentionally not used. Console commands,
+queue workers, Horizon workers, tests, and future workflow execution may not
+have an HTTP session. These callers must pass the organization identifier
+explicitly.

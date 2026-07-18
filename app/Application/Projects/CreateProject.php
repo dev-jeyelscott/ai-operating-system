@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Projects;
 
+use App\Application\Projects\Contracts\ProjectRepository;
 use App\Domain\Projects\ProjectType;
-use App\Models\Organization;
 use App\Models\Project;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -16,31 +15,27 @@ use InvalidArgumentException;
 final readonly class CreateProject
 {
     /**
+     * Inject the tenant-safe project persistence contract.
+     */
+    public function __construct(
+        private ProjectRepository $projects,
+    ) {}
+
+    /**
      * Create the project while preserving organization ownership.
      */
     public function handle(
-        Organization $organization,
+        int $organizationId,
         string $name,
         ?string $description,
         ProjectType $projectType,
     ): Project {
-        $normalizedName = $this->normalizeName($name);
-        $normalizedDescription = $this->normalizeDescription($description);
-
-        $project = new Project([
-            'name' => $normalizedName,
-            'slug' => $this->generateSlug($normalizedName),
-            'description' => $normalizedDescription,
-            'project_type' => $projectType,
-        ]);
-
-        /*
-         * Saving through the relationship assigns organization_id without
-         * making ownership mass assignable.
-         */
-        $organization->projects()->save($project);
-
-        return $project->refresh();
+        return $this->projects->create(
+            organizationId: $organizationId,
+            name: $this->normalizeName($name),
+            description: $this->normalizeDescription($description),
+            projectType: $projectType,
+        );
     }
 
     /**
@@ -87,23 +82,5 @@ final readonly class CreateProject
         }
 
         return $normalizedDescription;
-    }
-
-    /**
-     * Generate a stable globally unique route slug.
-     */
-    private function generateSlug(string $name): string
-    {
-        $prefix = Str::slug($name);
-
-        if ($prefix === '') {
-            $prefix = 'project';
-        }
-
-        return sprintf(
-            '%s-%s',
-            Str::limit($prefix, 150, ''),
-            strtolower((string) Str::ulid()),
-        );
     }
 }

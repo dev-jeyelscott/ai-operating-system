@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Projects;
 
 use App\Application\Projects\CreateProject;
+use App\Application\Projects\ListProjects;
 use App\Application\Projects\UpdateProject;
 use App\Domain\Projects\ProjectType;
 use App\Http\Controllers\Controller;
@@ -13,6 +14,7 @@ use App\Http\Requests\Projects\UpdateProjectRequest;
 use App\Models\Organization;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -30,6 +32,7 @@ final class ProjectController extends Controller
     public function index(
         Request $request,
         Organization $organization,
+        ListProjects $listProjects,
     ): Response {
         $user = $request->user();
 
@@ -39,28 +42,17 @@ final class ProjectController extends Controller
 
         $showArchived = $request->boolean('archived');
 
-        $query = $organization
-            ->projects()
-            ->orderByDesc('updated_at');
+        $projects = $listProjects->handle(
+            organizationId: $organization->id,
+            archived: $showArchived,
+            perPage: 12,
+        );
 
-        if ($showArchived) {
-            $query->archived();
-        } else {
-            $query->unarchived();
-        }
-
-        $projects = $query
-            ->paginate(12)
-            ->withQueryString()
-            ->through(
-                fn (Project $project): array => $this->serializeProject(
-                    $project,
-                ),
-            );
+        $projects->withQueryString();
 
         return Inertia::render('projects/index', [
             'organization' => $this->serializeOrganization($organization),
-            'projects' => $projects,
+            'projects' => $this->serializeProjectPaginator($projects),
             'filters' => [
                 'archived' => $showArchived,
             ],
@@ -104,7 +96,7 @@ final class ProjectController extends Controller
         $validated = $request->validated();
 
         $project = $createProject->handle(
-            organization: $organization,
+            organizationId: $organization->id,
             name: (string) $validated['name'],
             description: is_string($validated['description'] ?? null)
                 ? $validated['description']
@@ -171,7 +163,8 @@ final class ProjectController extends Controller
         $validated = $request->validated();
 
         $project = $updateProject->handle(
-            project: $project,
+            organizationId: $organization->id,
+            projectId: $project->id,
             name: (string) $validated['name'],
             description: is_string($validated['description'] ?? null)
                 ? $validated['description']
@@ -199,6 +192,59 @@ final class ProjectController extends Controller
             'id' => $organization->id,
             'name' => $organization->name,
             'slug' => $organization->slug,
+        ];
+    }
+
+    /**
+     * Convert a paginated project result into the payload expected by Inertia.
+     *
+     * Only methods declared by Laravel's pagination contracts are used here.
+     *
+     * @param  LengthAwarePaginator<int, Project>  $projects
+     * @return array{
+     *     current_page: int,
+     *     data: list<array{
+     *         id: int,
+     *         name: string,
+     *         slug: string,
+     *         description: string|null,
+     *         projectType: array{value: string, label: string},
+     *         status: array{value: string, label: string},
+     *         archivedAt: string|null,
+     *         createdAt: string|null,
+     *         updatedAt: string|null
+     *     }>,
+     *     from: int|null,
+     *     last_page: int,
+     *     next_page_url: string|null,
+     *     per_page: int,
+     *     prev_page_url: string|null,
+     *     to: int|null,
+     *     total: int
+     * }
+     */
+    private function serializeProjectPaginator(
+        LengthAwarePaginator $projects,
+    ): array {
+        $data = array_values(
+            array_map(
+                fn (Project $project): array => $this->serializeProject(
+                    $project,
+                ),
+                $projects->items(),
+            ),
+        );
+
+        return [
+            'current_page' => $projects->currentPage(),
+            'data' => $data,
+            'from' => $projects->firstItem(),
+            'last_page' => $projects->lastPage(),
+            'next_page_url' => $projects->nextPageUrl(),
+            'per_page' => $projects->perPage(),
+            'prev_page_url' => $projects->previousPageUrl(),
+            'to' => $projects->lastItem(),
+            'total' => $projects->total(),
         ];
     }
 

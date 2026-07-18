@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Projects;
 
+use App\Application\Projects\Contracts\ProjectRepository;
 use App\Domain\Projects\ProjectType;
 use App\Models\Project;
 use InvalidArgumentException;
@@ -15,24 +16,29 @@ use InvalidArgumentException;
 final readonly class UpdateProject
 {
     /**
-     * Apply validated metadata to the project.
+     * Inject the tenant-safe project persistence contract.
+     */
+    public function __construct(
+        private ProjectRepository $projects,
+    ) {}
+
+    /**
+     * Apply validated metadata inside the expected organization boundary.
      */
     public function handle(
-        Project $project,
+        int $organizationId,
+        int $projectId,
         string $name,
         ?string $description,
         ProjectType $projectType,
     ): Project {
-        $project->fill([
-            'name' => $this->normalizeName($name),
-            'description' => $this->normalizeDescription($description),
-            'project_type' => $projectType,
-        ])->save();
-
-        /*
-         * The slug intentionally remains stable when the display name changes.
-         */
-        return $project->refresh();
+        return $this->projects->update(
+            organizationId: $organizationId,
+            projectId: $projectId,
+            name: $this->normalizeName($name),
+            description: $this->normalizeDescription($description),
+            projectType: $projectType,
+        );
     }
 
     /**

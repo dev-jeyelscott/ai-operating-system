@@ -61,10 +61,27 @@ final class Project extends Model
     }
 
     /**
-     * Limit a query to projects that have not been archived.
+     * Limit a query to projects owned by one explicit organization.
      *
-     * This scope does not apply organization tenancy. AIOS-017 owns the
-     * mandatory organization-scoping repository implementation.
+     * Tenant context must always be supplied by the caller. This prevents
+     * persistence code from relying on session state or another ambient value
+     * that may not exist in console commands, queue workers, or tests.
+     *
+     * @param  Builder<Project>  $query
+     * @return Builder<Project>
+     */
+    public function scopeForOrganization(
+        Builder $query,
+        int $organizationId,
+    ): Builder {
+        return $query->where(
+            $query->getModel()->qualifyColumn('organization_id'),
+            $organizationId,
+        );
+    }
+
+    /**
+     * Limit a query to projects that have not been archived.
      *
      * @param  Builder<Project>  $query
      * @return Builder<Project>
@@ -107,6 +124,7 @@ final class Project extends Model
             function (): void {
                 /** @var self $project */
                 $project = self::query()
+                    ->forOrganization($this->organization_id)
                     ->whereKey($this->getKey())
                     ->lockForUpdate()
                     ->firstOrFail();
@@ -142,6 +160,7 @@ final class Project extends Model
             function (): void {
                 /** @var self $project */
                 $project = self::query()
+                    ->forOrganization($this->organization_id)
                     ->whereKey($this->getKey())
                     ->lockForUpdate()
                     ->firstOrFail();
@@ -174,6 +193,7 @@ final class Project extends Model
             function () use ($target): void {
                 /** @var self $project */
                 $project = self::query()
+                    ->forOrganization($this->organization_id)
                     ->whereKey($this->getKey())
                     ->lockForUpdate()
                     ->firstOrFail();

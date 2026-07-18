@@ -22,7 +22,10 @@ final class RestoreProjectController
         Project $project,
         RestoreProject $restoreProject,
     ): RedirectResponse {
-        $project = $restoreProject->handle($project);
+        $project = $restoreProject->handle(
+            organizationId: $organization->id,
+            projectId: $project->id,
+        );
 
         return to_route('organizations.projects.show', [
             'organization' => $organization,
