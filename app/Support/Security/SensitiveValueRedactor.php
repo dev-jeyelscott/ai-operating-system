@@ -21,7 +21,7 @@ final class SensitiveValueRedactor
     /**
      * Recursively redact values whose keys indicate credentials or secrets.
      *
-     * @param array<array-key, mixed> $values
+     * @param  array<array-key, mixed>  $values
      * @return array<array-key, mixed>
      */
     public function redact(array $values): array

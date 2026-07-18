@@ -13,7 +13,7 @@ final class ApiErrorResponse
      * Build the canonical JSON error envelope used by APIs and explicit
      * JSON requests.
      *
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      */
     public static function make(
         Request $request,

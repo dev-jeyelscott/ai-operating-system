@@ -13,8 +13,7 @@ final class ReadinessController
 {
     public function __construct(
         private readonly HealthService $health,
-    ) {
-    }
+    ) {}
 
     /**
      * Return dependency readiness with HTTP 503 when required services are

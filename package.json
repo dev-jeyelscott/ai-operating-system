@@ -13,7 +13,8 @@
         "types:check": "tsc --noEmit",
         "test:unit": "vitest run",
         "test:unit:watch": "vitest",
-        "test:e2e": "playwright test"
+        "test:e2e": "playwright test",
+        "quality": "pnpm format:check && pnpm lint:check && pnpm types:check && pnpm test:unit && pnpm build"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",

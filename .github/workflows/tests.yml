@@ -1,38 +1,160 @@
-name: tests
+name: quality
 
 on:
   push:
     branches:
+      - develop
       - main
   pull_request:
+    branches:
+      - develop
+      - main
 
 permissions:
   contents: read
 
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: testing
+  APP_DEBUG: 'false'
+  APP_URL: http://127.0.0.1:8000
+  APP_RELEASE: ci
+
+  DB_CONNECTION: pgsql
+  DB_HOST: 127.0.0.1
+  DB_PORT: 5432
+  DB_DATABASE: ai_operating_system_test
+  DB_USERNAME: postgres
+  DB_PASSWORD: postgres
+
+  REDIS_HOST: 127.0.0.1
+  REDIS_PORT: 6379
+
+  CACHE_STORE: redis
+  SESSION_DRIVER: array
+  QUEUE_CONNECTION: redis
+
+  FILESYSTEM_DISK: local
+  ARTIFACT_FILESYSTEM_DISK: local
+
+  MAIL_MAILER: array
+  BROADCAST_CONNECTION: log
+
+  PLAYWRIGHT_BASE_URL: http://127.0.0.1:8000
+
 jobs:
-  ci:
+  quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: ai_operating_system_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd
+          "pg_isready -U postgres -d ai_operating_system_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:8.8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
+          extensions: pdo_pgsql, redis, pcntl, posix
           tools: composer:v2
           coverage: none
 
-      - name: Setup Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          node-version: '22'
+          version: 11.4.0
 
-      - name: Setup Application
-        run: composer setup
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
 
-      - name: Run CI Checks
+      - name: Install PHP dependencies
+        run: >
+          composer install
+          --no-interaction
+          --prefer-dist
+          --no-progress
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan migrate:fresh --force
+
+      - name: Validate environment
+        run: php artisan app:check
+
+      - name: Validate Composer manifest
+        run: composer validate --strict
+
+      - name: Audit PHP dependencies
+        run: composer audit --no-interaction
+
+      - name: Run backend and frontend quality gates
         run: composer ci:check
+
+      - name: Audit frontend dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start application
+        run: |
+          php artisan serve \
+            --host=127.0.0.1 \
+            --port=8000 \
+            > storage/logs/e2e-server.log 2>&1 &
+
+          timeout 60 bash -c \
+            'until curl --fail --silent http://127.0.0.1:8000/up > /dev/null; do sleep 2; done'
+
+      - name: Run browser tests
+        run: pnpm test:e2e
+
+      - name: Upload browser artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-results
+          path: |
+            playwright-report/
+            test-results/
+            storage/logs/e2e-server.log
+          if-no-files-found: ignore

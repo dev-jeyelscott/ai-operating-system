@@ -66,10 +66,10 @@
         ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
-            "pnpm run lint:check",
-            "pnpm run format:check",
-            "pnpm run types:check",
-            "@test"
+            "@lint:check",
+            "@types:check",
+            "@php artisan test",
+            "pnpm run quality"
         ],
         "types:check": [
             "phpstan analyse"

@@ -1,5 +1,6 @@
 <?php
 
+use App\Logging\ConfigureStructuredLogging;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -133,7 +134,7 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'tap' => [
-                App\Logging\ConfigureStructuredLogging::class,
+                ConfigureStructuredLogging::class,
             ],
             'replace_placeholders' => true,
         ],

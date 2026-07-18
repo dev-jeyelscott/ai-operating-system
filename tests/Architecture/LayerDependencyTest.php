@@ -55,7 +55,7 @@ final class LayerDependencyTest extends TestCase
      * Assert that PHP files below a layer do not contain forbidden
      * namespace or API references.
      *
-     * @param array<int, string> $forbiddenReferences
+     * @param  array<int, string>  $forbiddenReferences
      */
     private function assertLayerDoesNotReference(
         string $relativePath,
