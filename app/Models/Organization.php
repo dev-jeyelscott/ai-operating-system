@@ -40,6 +40,16 @@ final class Organization extends Model
     }
 
     /**
+     * Return projects owned by this organization.
+     *
+     * @return HasMany<Project, $this>
+     */
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
+    }
+
+    /**
      * Bind organization routes using the stable public slug.
      */
     public function getRouteKeyName(): string
