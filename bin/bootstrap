@@ -84,6 +84,20 @@ wait_for_postgres
 
 ./vendor/bin/sail pnpm install --frozen-lockfile
 
+# Install the Chromium browser and Linux dependencies required by Playwright.
+#
+# PLAYWRIGHT_BROWSERS_PATH=0 keeps the browser binary with the installed
+# Playwright package so the installation remains version-aligned.
+docker compose exec -T -u root laravel.test bash -lc '
+    set -euo pipefail
+
+    PLAYWRIGHT_BROWSERS_PATH=0 \
+        pnpm exec playwright install --with-deps chromium
+
+    chown -R sail:sail \
+        node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/.local-browsers
+'
+
 # Generate APP_KEY only when the environment does not already contain one.
 if grep -q '^APP_KEY=$' .env; then
     ./vendor/bin/sail artisan key:generate
