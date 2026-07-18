@@ -31,4 +31,11 @@ interface OrganizationRepository
         int $userId,
         OrganizationRole $role,
     ): OrganizationMembershipData;
+
+    /**
+     * List every organization available to the user in stable display order.
+     *
+     * @return list<OrganizationData>
+     */
+    public function listForUser(int $userId): array;
 }

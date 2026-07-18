@@ -67,30 +67,48 @@ export default defineConfig({
 
     server: {
         /**
-         * Allow Docker to expose Vite to the Windows host.
+         * Listen on every container interface so Docker can publish Vite
+         * to the Windows host.
          */
         host: '0.0.0.0',
 
         /**
-         * Keep the development port deterministic.
+         * Keep the development-server port deterministic.
          */
         port: 5173,
         strictPort: true,
 
         /**
-         * Generate asset URLs that Windows Chrome can access.
+         * Generate browser-accessible Vite asset URLs.
+         *
+         * This is the Vite server address, not the Laravel application
+         * origin that is allowed by CORS.
          */
         origin: 'http://localhost:5173',
 
         /**
-         * Route HMR through Docker Desktop's published port.
+         * Allow the Laravel application to request scripts, styles,
+         * React refresh modules, and the Vite HMR client.
+         *
+         * Keep this restricted to the application origin instead of
+         * setting `cors: true`, which would expose source assets to
+         * arbitrary websites.
+         */
+        cors: {
+            origin: 'http://localhost',
+        },
+
+        /**
+         * Route hot-module replacement through Docker Desktop's
+         * published localhost port.
          */
         hmr: {
             host: 'localhost',
         },
 
         /**
-         * Improve file-change detection across Docker and WSL.
+         * Use polling because filesystem events may not propagate
+         * consistently between Windows, WSL, and Docker.
          */
         watch: {
             usePolling: true,

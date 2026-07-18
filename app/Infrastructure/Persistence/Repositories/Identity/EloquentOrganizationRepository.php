@@ -107,4 +107,30 @@ final class EloquentOrganizationRepository implements OrganizationRepository
             strtolower((string) Str::ulid()),
         );
     }
+
+    /**
+     * Return every organization accessible to the given user.
+     *
+     * @return list<OrganizationData>
+     */
+    public function listForUser(int $userId): array
+    {
+        $organizations = Organization::query()
+            ->whereHas(
+                'memberships',
+                static fn ($query) => $query->where('user_id', $userId),
+            )
+            ->orderBy('name')
+            ->get()
+            ->map(
+                static fn (Organization $organization): OrganizationData => new OrganizationData(
+                    id: $organization->id,
+                    name: $organization->name,
+                    slug: $organization->slug,
+                ),
+            )
+            ->all();
+
+        return array_values($organizations);
+    }
 }

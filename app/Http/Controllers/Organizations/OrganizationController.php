@@ -32,7 +32,14 @@ final class OrganizationController
             name: (string) $request->validated('name'),
         );
 
-        return to_route('dashboard')
+        $request->session()->put(
+            'current_organization_id',
+            $organization->id,
+        );
+
+        return to_route('organizations.dashboard', [
+            'organization' => $organization->slug,
+        ])
             ->with('status', 'organization-created')
             ->with('organization_id', $organization->id);
     }

@@ -38,4 +38,12 @@ final class Organization extends Model
     {
         return $this->hasMany(OrganizationMembership::class);
     }
+
+    /**
+     * Bind organization routes using the stable public slug.
+     */
+    public function getRouteKeyName(): string
+    {
+        return 'slug';
+    }
 }

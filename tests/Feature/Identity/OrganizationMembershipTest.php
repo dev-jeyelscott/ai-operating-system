@@ -20,11 +20,19 @@ test('a verified user can create an organization', function () {
             'name' => '  Acme Engineering  ',
         ]);
 
-    $response
-        ->assertRedirect(route('dashboard'))
-        ->assertSessionHas('status', 'organization-created');
-
     $organization = Organization::query()->sole();
+
+    $response
+        ->assertRedirect(
+            route('organizations.dashboard', [
+                'organization' => $organization,
+            ]),
+        )
+        ->assertSessionHas('status', 'organization-created')
+        ->assertSessionHas(
+            'current_organization_id',
+            $organization->id,
+        );
 
     expect($organization->name)
         ->toBe('Acme Engineering')

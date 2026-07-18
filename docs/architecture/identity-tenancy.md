@@ -53,3 +53,23 @@ The following behavior is implemented in later tickets:
 Membership invitations, role transitions, member removal, and ownership
 transfer must not be exposed until authorization and final-owner invariants are
 implemented.
+
+## Current organization context
+
+The authenticated user's selected organization is stored in the session as a
+navigation preference under `current_organization_id`.
+
+Organization-scoped routes use the organization's unique slug. The organization
+present in the route is the authoritative resource context for the request.
+
+Session state does not grant organization access. Every organization-scoped
+route must continue to execute server-side policy authorization.
+
+When a session preference is stale, deleted, or no longer accessible, the
+application falls back to the first organization returned by the authenticated
+user's membership query.
+
+Users without organizations remain on the unscoped dashboard onboarding state.
+
+AIOS-017 remains responsible for enforcing mandatory organization filtering in
+project repositories and database queries.
