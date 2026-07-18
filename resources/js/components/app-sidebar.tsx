@@ -14,10 +14,10 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { OrganizationSwitcher } from '@/features/organizations/components/organization-switcher';
-import type { NavItem } from '@/types';
 import { dashboard } from '@/routes';
 import { dashboard as organizationDashboard } from '@/routes/organizations';
 import { index as projectsIndex } from '@/routes/organizations/projects';
+import type { NavItem } from '@/types';
 
 const footerNavItems: NavItem[] = [
     {

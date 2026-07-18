@@ -1,17 +1,17 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { Archive, ArrowLeft, Pencil, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type {
-    OrganizationSummary,
-    ProjectPermissions,
-    ProjectSummary,
-} from '@/types';
 import {
     archive as archiveProject,
     edit,
     index,
     restore as restoreProject,
 } from '@/routes/organizations/projects';
+import type {
+    OrganizationSummary,
+    ProjectPermissions,
+    ProjectSummary,
+} from '@/types';
 
 type Props = {
     organization: OrganizationSummary;

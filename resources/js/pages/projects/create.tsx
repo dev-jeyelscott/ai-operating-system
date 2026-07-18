@@ -2,8 +2,8 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProjectFormFields } from '@/features/projects/components/project-form-fields';
-import type { OrganizationSummary, ProjectTypeOption } from '@/types';
 import { index, store } from '@/routes/organizations/projects';
+import type { OrganizationSummary, ProjectTypeOption } from '@/types';
 
 type Props = {
     organization: OrganizationSummary;

@@ -7,6 +7,7 @@ import {
     Menu,
     Search,
 } from 'lucide-react';
+
 import AppLogo from '@/components/app-logo';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -39,10 +40,10 @@ import { UserMenuContent } from '@/components/user-menu-content';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { useInitials } from '@/hooks/use-initials';
 import { cn, toUrl } from '@/lib/utils';
-import type { BreadcrumbItem, NavItem } from '@/types';
 import { dashboard } from '@/routes';
 import { dashboard as organizationDashboard } from '@/routes/organizations';
-import { index as projectsIndex } from '@/routes/organizations/projects';
+import { index as organizationProjectsIndex } from '@/routes/organizations/projects';
+import type { BreadcrumbItem, NavItem } from '@/types';
 
 type Props = {
     breadcrumbs?: BreadcrumbItem[];
@@ -56,23 +57,17 @@ type HeaderPageProps = {
     };
 };
 
-const mainNavItems: NavItem[] = [
+const rightNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
-        href: dashboardHref,
-        icon: LayoutGrid,
+        title: 'Repository',
+        href: 'https://github.com/dev-jeyelscott/ai-operating-system',
+        icon: Folder,
     },
-    ...(currentOrganization
-        ? [
-              {
-                  title: 'Projects',
-                  href: projectsIndex({
-                      organization: currentOrganization.slug,
-                  }),
-                  icon: FolderKanban,
-              },
-          ]
-        : []),
+    {
+        title: 'Documentation',
+        href: 'https://laravel.com/docs',
+        icon: BookOpen,
+    },
 ];
 
 const activeItemStyles =
@@ -93,6 +88,12 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
           })
         : dashboard();
 
+    /**
+     * Build the header navigation from the active organization context.
+     *
+     * Organization-scoped links are only included when the user currently
+     * has an organization selected.
+     */
     const mainNavItems: NavItem[] = [
         {
             title: 'Dashboard',
@@ -100,6 +101,16 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
             icon: LayoutGrid,
         },
     ];
+
+    if (currentOrganization) {
+        mainNavItems.push({
+            title: 'Projects',
+            href: organizationProjectsIndex({
+                organization: currentOrganization.slug,
+            }),
+            icon: FolderKanban,
+        });
+    }
 
     return (
         <>

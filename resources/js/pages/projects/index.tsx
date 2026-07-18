@@ -1,8 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { Archive, FolderKanban, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { OrganizationSummary, ProjectPaginator } from '@/types';
 import { create, show } from '@/routes/organizations/projects';
+import type { OrganizationSummary, ProjectPaginator } from '@/types';
 
 type Props = {
     organization: OrganizationSummary;
