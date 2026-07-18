@@ -6,7 +6,6 @@ use App\Http\Middleware\AssignRequestContext;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Responses\ApiErrorResponse;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -17,6 +16,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -61,8 +61,8 @@ return Application::configure(basePath: dirname(__DIR__))
             ): mixed {
                 /*
                 * Preserve responses intentionally produced by middleware or
-                * application code. Laravel's named throttle middleware wraps custom
-                * rate-limit responses in HttpResponseException.
+                * application code. Laravel's named throttle middleware wraps
+                * custom rate-limit responses in HttpResponseException.
                 */
                 if ($exception instanceof HttpResponseException) {
                     return $exception->getResponse();
@@ -74,6 +74,18 @@ return Application::configure(basePath: dirname(__DIR__))
                 if (! $wantsJson) {
                     return null;
                 }
+
+                /*
+                * Laravel prepares authorization and model-binding exceptions
+                * before registered render callbacks execute.
+                *
+                * A policy response produced by denyAsNotFound() therefore
+                * reaches this callback as HttpExceptionInterface with status
+                * 404 rather than as AuthorizationException.
+                */
+                $httpStatus = $exception instanceof HttpExceptionInterface
+                    ? $exception->getStatusCode()
+                    : null;
 
                 return match (true) {
                     $exception instanceof ValidationException => ApiErrorResponse::make(
@@ -93,15 +105,28 @@ return Application::configure(basePath: dirname(__DIR__))
                         status: Response::HTTP_UNAUTHORIZED,
                     ),
 
-                    $exception instanceof AuthorizationException => ApiErrorResponse::make(
+                    /*
+                    * This covers ordinary authorization denials and prepared
+                    * AccessDeniedHttpException instances.
+                    */
+                    $httpStatus === Response::HTTP_FORBIDDEN => ApiErrorResponse::make(
                         request: $request,
                         code: 'authorization_denied',
                         message: 'You are not authorized to perform this action.',
                         status: Response::HTTP_FORBIDDEN,
                     ),
 
+                    /*
+                    * Return the same response for:
+                    *
+                    * - missing route models;
+                    * - parent-child scoped-binding failures;
+                    * - policy responses using denyAsNotFound();
+                    * - explicit not-found HTTP exceptions.
+                    */
                     $exception instanceof ModelNotFoundException,
-                    $exception instanceof NotFoundHttpException => ApiErrorResponse::make(
+                    $exception instanceof NotFoundHttpException,
+                    $httpStatus === Response::HTTP_NOT_FOUND => ApiErrorResponse::make(
                         request: $request,
                         code: 'resource_not_found',
                         message: 'The requested resource was not found.',
@@ -122,6 +147,17 @@ return Application::configure(basePath: dirname(__DIR__))
                         status: Response::HTTP_SERVICE_UNAVAILABLE,
                         retryable: true,
                         retryAfterSeconds: $exception->retryAfterSeconds,
+                    ),
+
+                    /*
+                    * Preserve legitimate HTTP status codes rather than turning
+                    * every prepared HTTP exception into a misleading 500.
+                    */
+                    $exception instanceof HttpExceptionInterface => ApiErrorResponse::make(
+                        request: $request,
+                        code: 'http_error',
+                        message: 'The request could not be completed.',
+                        status: $exception->getStatusCode(),
                     ),
 
                     default => ApiErrorResponse::make(
