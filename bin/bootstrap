@@ -59,15 +59,19 @@ set_env_value "WWWGROUP" "$(id -g)"
 
 # Install Composer dependencies before Sail exists on a clean clone.
 if [[ ! -x vendor/bin/sail ]]; then
+    # Install Composer dependencies before Laravel Sail is available.
+    #
+    # The Composer image has `composer` as its entrypoint, so the command starts
+    # with `install` instead of `composer install`.
     docker run --rm \
         --user "$(id -u):$(id -g)" \
-        --volume "$PROJECT_ROOT:/var/www/html" \
-        --workdir /var/www/html \
-        laravelsail/php85-composer:latest \
-        composer install \
-            --ignore-platform-reqs \
+        --volume "$PWD:/app" \
+        --workdir /app \
+        composer:2 \
+        install \
             --no-interaction \
-            --prefer-dist
+            --prefer-dist \
+            --ignore-platform-reqs
 fi
 
 ./vendor/bin/sail up -d --build
