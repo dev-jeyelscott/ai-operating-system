@@ -29,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Configure default behaviors for production-ready applications.
      */
+    /**
+     * Configure secure application defaults.
+     */
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
@@ -37,14 +40,24 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
-        Password::defaults(fn (): ?Password => app()->isProduction()
-            ? Password::min(12)
-                ->mixedCase()
-                ->letters()
-                ->numbers()
-                ->symbols()
-                ->uncompromised()
-            : null,
-        );
+        $this->configurePasswordPolicy();
+    }
+
+    /**
+     * Configure the password policy used by registration, reset, and update flows.
+     *
+     * A 15-character minimum supports secure passphrases without forcing arbitrary
+     * uppercase, numeric, or symbol composition rules. Production additionally
+     * checks the password against known compromised-password datasets.
+     */
+    private function configurePasswordPolicy(): void
+    {
+        Password::defaults(function (): Password {
+            $password = Password::min(15);
+
+            return app()->isProduction()
+                ? $password->uncompromised()
+                : $password;
+        });
     }
 }

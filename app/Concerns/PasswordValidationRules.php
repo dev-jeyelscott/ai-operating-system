@@ -8,13 +8,22 @@ use Illuminate\Validation\Rules\Password;
 trait PasswordValidationRules
 {
     /**
-     * Get the validation rules used to validate passwords.
+     * Get the validation rules used for new passwords.
+     *
+     * The maximum prevents excessively large password input from consuming
+     * unnecessary hashing resources while preserving support for passphrases.
      *
      * @return array<int, Password|ValidationRule|array<mixed>|string>
      */
     protected function passwordRules(): array
     {
-        return ['required', 'string', Password::default(), 'confirmed'];
+        return [
+            'required',
+            'string',
+            'max:128',
+            Password::default(),
+            'confirmed',
+        ];
     }
 
     /**

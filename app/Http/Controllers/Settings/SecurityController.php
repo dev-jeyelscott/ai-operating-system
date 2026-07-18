@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
 use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -51,15 +52,26 @@ class SecurityController extends Controller
     }
 
     /**
-     * Update the user's password.
+     * Update the authenticated user's password.
+     *
+     * The request validates the current password and the new password policy.
+     * Existing sessions on other devices are invalidated before the new password
+     * is persisted, while the current browser remains authenticated.
      */
     public function update(PasswordUpdateRequest $request): RedirectResponse
     {
+        Auth::logoutOtherDevices(
+            $request->string('current_password')->toString(),
+        );
+
         $request->user()->update([
-            'password' => $request->password,
+            'password' => $request->string('password')->toString(),
         ]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('Password updated. Other sessions were signed out.'),
+        ]);
 
         return back();
     }
