@@ -2,42 +2,61 @@
 
 declare(strict_types=1);
 
+use App\Domain\Projects\ProjectType;
 use App\Models\Organization;
+use App\Models\OrganizationMembership;
 use App\Models\Project;
 use App\Models\User;
-use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Cache;
 
 beforeEach(function (): void {
-    RateLimiter::clear('unused');
+    /*
+     * Clear the exact cache store used by Laravel's HTTP rate limiter.
+     *
+     * PHPUnit configures this as the process-local array store, preventing
+     * counters from leaking between tests or persisting in Redis.
+     */
+    Cache::store((string) config('cache.limiter'))->flush();
 
+    /*
+     * Use low limits so each test can exercise throttling without issuing
+     * an excessive number of application requests.
+     */
     config()->set(
         'rate-limits.project_commands.store.per_minute',
         2,
     );
+
     config()->set(
         'rate-limits.project_commands.store.per_hour',
         20,
     );
+
     config()->set(
         'rate-limits.project_commands.update.per_minute',
         2,
     );
+
     config()->set(
         'rate-limits.project_commands.update.per_hour',
         20,
     );
+
     config()->set(
         'rate-limits.project_commands.archive.per_minute',
         2,
     );
+
     config()->set(
         'rate-limits.project_commands.archive.per_hour',
         20,
     );
+
     config()->set(
         'rate-limits.project_commands.restore.per_minute',
         2,
     );
+
     config()->set(
         'rate-limits.project_commands.restore.per_hour',
         20,
@@ -45,7 +64,21 @@ beforeEach(function (): void {
 });
 
 /**
- * Create an organization owner with an authenticated organization context.
+ * Create an owner membership for a specific user and organization.
+ */
+function createRateLimitOwnerMembership(
+    User $user,
+    Organization $organization,
+): void {
+    OrganizationMembership::factory()
+        ->owner()
+        ->for($organization)
+        ->for($user)
+        ->create();
+}
+
+/**
+ * Create an organization and a user who owns that organization.
  *
  * @return array{
  *     user: User,
@@ -57,13 +90,10 @@ function createRateLimitOrganizationOwner(): array
     $user = User::factory()->create();
     $organization = Organization::factory()->create();
 
-    /*
-     * Adjust the membership factory/relationship call below only if the
-     * repository uses a differently named owner-membership helper.
-     */
-    $organization->members()->attach($user, [
-        'role' => 'owner',
-    ]);
+    createRateLimitOwnerMembership(
+        user: $user,
+        organization: $organization,
+    );
 
     return [
         'user' => $user,
@@ -75,6 +105,10 @@ test('project creation is rate limited per actor and organization', function () 
     ['user' => $user, 'organization' => $organization]
         = createRateLimitOrganizationOwner();
 
+    /*
+     * Consume the two project-creation attempts allowed by the test-specific
+     * rate-limit configuration.
+     */
     for ($attempt = 1; $attempt <= 2; $attempt++) {
         $this
             ->actingAs($user)
@@ -85,12 +119,17 @@ test('project creation is rate limited per actor and organization', function () 
                 [
                     'name' => "Rate Limited Project {$attempt}",
                     'description' => null,
-                    'project_type' => 'software',
+                    'project_type' => ProjectType::WebApplication->value,
                 ],
             )
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
     }
 
+    /*
+     * The third project-creation command for the same actor and organization
+     * must be rejected before persistent state is changed.
+     */
     $response = $this
         ->actingAs($user)
         ->from(
@@ -105,16 +144,22 @@ test('project creation is rate limited per actor and organization', function () 
             [
                 'name' => 'Blocked Project',
                 'description' => null,
-                'project_type' => 'software',
+                'project_type' => ProjectType::WebApplication->value,
             ],
         );
 
     $response
-        ->assertRedirect()
+        ->assertRedirect(
+            route('organizations.projects.create', [
+                'organization' => $organization,
+            ]),
+        )
+        ->assertHeader('Retry-After')
         ->assertSessionHasErrors('rate_limit');
 
     expect(
         Project::query()
+            ->where('organization_id', $organization->id)
             ->where('name', 'Blocked Project')
             ->exists(),
     )->toBeFalse();
@@ -124,6 +169,10 @@ test('project command json responses use the retryable error contract', function
     ['user' => $user, 'organization' => $organization]
         = createRateLimitOrganizationOwner();
 
+    /*
+     * Consume the permitted project-creation attempts through regular browser
+     * requests before testing the explicit JSON response contract.
+     */
     for ($attempt = 1; $attempt <= 2; $attempt++) {
         $this
             ->actingAs($user)
@@ -134,12 +183,17 @@ test('project command json responses use the retryable error contract', function
                 [
                     'name' => "JSON Rate Limited Project {$attempt}",
                     'description' => null,
-                    'project_type' => 'software',
+                    'project_type' => ProjectType::WebApplication->value,
                 ],
             )
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
     }
 
+    /*
+     * JSON clients must receive the platform's stable retryable error envelope
+     * rather than the redirect-based browser response.
+     */
     $response = $this
         ->actingAs($user)
         ->withHeader('X-Request-ID', 'project-command-request')
@@ -150,7 +204,7 @@ test('project command json responses use the retryable error contract', function
             [
                 'name' => 'JSON Blocked Project',
                 'description' => null,
-                'project_type' => 'software',
+                'project_type' => ProjectType::WebApplication->value,
             ],
         );
 
@@ -169,6 +223,13 @@ test('project command json responses use the retryable error contract', function
     expect(
         $response->json('error.details.retry_after_seconds'),
     )->toBeInt()->toBeGreaterThan(0);
+
+    expect(
+        Project::query()
+            ->where('organization_id', $organization->id)
+            ->where('name', 'JSON Blocked Project')
+            ->exists(),
+    )->toBeFalse();
 });
 
 test('project command limits are isolated between organizations', function () {
@@ -177,10 +238,15 @@ test('project command limits are isolated between organizations', function () {
 
     $secondOrganization = Organization::factory()->create();
 
-    $secondOrganization->members()->attach($user, [
-        'role' => 'owner',
-    ]);
+    createRateLimitOwnerMembership(
+        user: $user,
+        organization: $secondOrganization,
+    );
 
+    /*
+     * Exhaust the user's project-creation limit inside only the first
+     * organization.
+     */
     for ($attempt = 1; $attempt <= 2; $attempt++) {
         $this
             ->actingAs($user)
@@ -191,12 +257,17 @@ test('project command limits are isolated between organizations', function () {
                 [
                     'name' => "First Organization {$attempt}",
                     'description' => null,
-                    'project_type' => 'software',
+                    'project_type' => ProjectType::WebApplication->value,
                 ],
             )
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
     }
 
+    /*
+     * The same actor must retain an independent limiter bucket in a different
+     * organization.
+     */
     $this
         ->actingAs($user)
         ->post(
@@ -206,13 +277,15 @@ test('project command limits are isolated between organizations', function () {
             [
                 'name' => 'Second Organization Project',
                 'description' => null,
-                'project_type' => 'software',
+                'project_type' => ProjectType::WebApplication->value,
             ],
         )
-        ->assertRedirect();
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
 
     expect(
         Project::query()
+            ->where('organization_id', $secondOrganization->id)
             ->where('name', 'Second Organization Project')
             ->exists(),
     )->toBeTrue();
@@ -224,10 +297,14 @@ test('project command limits are isolated between authenticated actors', functio
 
     $secondUser = User::factory()->create();
 
-    $organization->members()->attach($secondUser, [
-        'role' => 'owner',
-    ]);
+    createRateLimitOwnerMembership(
+        user: $secondUser,
+        organization: $organization,
+    );
 
+    /*
+     * Exhaust only the first actor's project-creation limit.
+     */
     for ($attempt = 1; $attempt <= 2; $attempt++) {
         $this
             ->actingAs($firstUser)
@@ -238,12 +315,17 @@ test('project command limits are isolated between authenticated actors', functio
                 [
                     'name' => "First User {$attempt}",
                     'description' => null,
-                    'project_type' => 'software',
+                    'project_type' => ProjectType::WebApplication->value,
                 ],
             )
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
     }
 
+    /*
+     * A different authenticated actor in the same organization must retain an
+     * independent limiter bucket.
+     */
     $this
         ->actingAs($secondUser)
         ->post(
@@ -253,13 +335,15 @@ test('project command limits are isolated between authenticated actors', functio
             [
                 'name' => 'Second User Project',
                 'description' => null,
-                'project_type' => 'software',
+                'project_type' => ProjectType::WebApplication->value,
             ],
         )
-        ->assertRedirect();
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
 
     expect(
         Project::query()
+            ->where('organization_id', $organization->id)
             ->where('name', 'Second User Project')
             ->exists(),
     )->toBeTrue();
@@ -277,6 +361,9 @@ test('privileged project mutation commands are rate limited', function (
         ->for($organization)
         ->create();
 
+    /*
+     * Allow one successful command so the next matching command is rejected.
+     */
     config()->set(
         "rate-limits.project_commands.{$command}.per_minute",
         1,
@@ -287,6 +374,10 @@ test('privileged project mutation commands are rate limited', function (
         'project' => $project,
     ];
 
+    /*
+     * Only the update command requires a request payload. Archive and restore
+     * commands operate entirely on the route-bound project.
+     */
     $payload = match ($command) {
         'update' => [
             'name' => $project->name,
@@ -298,6 +389,9 @@ test('privileged project mutation commands are rate limited', function (
         default => [],
     };
 
+    /*
+     * The first command is permitted.
+     */
     $this
         ->actingAs($user)
         ->call(
@@ -305,8 +399,13 @@ test('privileged project mutation commands are rate limited', function (
             route($routeName, $parameters),
             $payload,
         )
-        ->assertRedirect();
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
 
+    /*
+     * The second command with the same actor, organization, and command name
+     * must be rejected through the browser response contract.
+     */
     $this
         ->actingAs($user)
         ->from(route('organizations.projects.show', $parameters))
@@ -315,7 +414,10 @@ test('privileged project mutation commands are rate limited', function (
             route($routeName, $parameters),
             $payload,
         )
-        ->assertRedirect()
+        ->assertRedirect(
+            route('organizations.projects.show', $parameters),
+        )
+        ->assertHeader('Retry-After')
         ->assertSessionHasErrors('rate_limit');
 })->with([
     'update' => [

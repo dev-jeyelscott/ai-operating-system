@@ -115,17 +115,90 @@ test('login throttling normalizes email case and includes the client address', f
         'email' => 'rate-limit@example.com',
     ]);
 
+    /*
+     * Documentation-only addresses reserved for examples and tests.
+     * Using explicit addresses also verifies that the limiter is scoped
+     * by both the normalized email address and the client address.
+     */
+    $limitedClientAddress = '203.0.113.10';
+    $otherClientAddress = '203.0.113.11';
+
+    /*
+     * Consume the five allowed attempts using an uppercase email address
+     * from the client address that will eventually be rate limited.
+     */
     for ($attempt = 1; $attempt <= 5; $attempt++) {
-        $this->post(route('login.store'), [
-            'email' => 'RATE-LIMIT@EXAMPLE.COM',
-            'password' => 'incorrect-password',
-        ])->assertSessionHasErrors('email');
+        $this
+            ->withServerVariables([
+                'REMOTE_ADDR' => $limitedClientAddress,
+            ])
+            ->from(route('login'))
+            ->post(route('login.store'), [
+                'email' => 'RATE-LIMIT@EXAMPLE.COM',
+                'password' => 'incorrect-password',
+            ])
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('email');
+
+        /*
+         * Remove flashed validation errors between requests so an earlier
+         * authentication failure cannot create a false-positive assertion.
+         *
+         * This does not reset the rate limiter because limiter counters are
+         * stored in the configured cache store, not in the session.
+         */
+        $this->flushSession();
     }
 
-    $this->post(route('login.store'), [
-        'email' => $user->email,
-        'password' => 'incorrect-password',
-    ])->assertTooManyRequests();
+    /*
+     * The same normalized email from another address must still receive
+     * the normal authentication failure instead of a rate-limit response.
+     */
+    $this
+        ->withServerVariables([
+            'REMOTE_ADDR' => $otherClientAddress,
+        ])
+        ->from(route('login'))
+        ->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'incorrect-password',
+        ])
+        ->assertRedirect(route('login'))
+        ->assertSessionHasErrors('email');
+
+    $this->flushSession();
+
+    /*
+     * Lowercase and uppercase versions of the email must share the same
+     * limiter bucket when they originate from the same client address.
+     *
+     * Browser requests intentionally receive a redirect with a flashed
+     * validation-style error. JSON requests are covered separately and
+     * receive the platform's HTTP 429 API response.
+     */
+    $this
+        ->withServerVariables([
+            'REMOTE_ADDR' => $limitedClientAddress,
+        ])
+        ->from(route('login'))
+        ->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'incorrect-password',
+        ])
+        ->assertRedirect(route('login'))
+        ->assertHeader('Retry-After')
+        ->assertSessionHasErrors('rate_limit');
+});
+
+test('testing isolates rate limiter counters in memory', function () {
+    /*
+     * Automated tests must never use the persistent Redis limiter store.
+     * Persistent counters would leak across test methods and repeated runs.
+     */
+    expect(app()->environment('testing'))
+        ->toBeTrue()
+        ->and(config('cache.limiter'))
+        ->toBe('array');
 });
 
 test('changing a password invalidates other authenticated sessions', function () {

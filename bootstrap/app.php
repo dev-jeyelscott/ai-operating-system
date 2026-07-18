@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -58,6 +59,15 @@ return Application::configure(basePath: dirname(__DIR__))
                 Throwable $exception,
                 Request $request,
             ): mixed {
+                /*
+                * Preserve responses intentionally produced by middleware or
+                * application code. Laravel's named throttle middleware wraps custom
+                * rate-limit responses in HttpResponseException.
+                */
+                if ($exception instanceof HttpResponseException) {
+                    return $exception->getResponse();
+                }
+
                 $wantsJson = $request->is('api/*')
                     || $request->expectsJson();
 
