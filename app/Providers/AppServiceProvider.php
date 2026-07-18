@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Application\Shared\Contracts\TransactionManager;
+use App\Infrastructure\Persistence\EloquentTransactionManager;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -11,11 +13,14 @@ use Illuminate\Validation\Rules\Password;
 class AppServiceProvider extends ServiceProvider
 {
     /**
-     * Register any application services.
+     * Register application-wide infrastructure abstractions.
      */
     public function register(): void
     {
-        //
+        $this->app->bind(
+            TransactionManager::class,
+            EloquentTransactionManager::class,
+        );
     }
 
     /**

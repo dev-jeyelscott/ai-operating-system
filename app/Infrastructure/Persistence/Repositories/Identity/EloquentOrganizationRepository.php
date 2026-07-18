@@ -33,7 +33,7 @@ final class EloquentOrganizationRepository implements OrganizationRepository
                     'slug' => $this->generateUniqueSlug($name),
                 ]);
 
-                OrganizationMembership::query()->create([
+                $membership = OrganizationMembership::query()->create([
                     'organization_id' => $organization->id,
                     'user_id' => $ownerUserId,
                     'role' => OrganizationRole::Owner,
@@ -43,6 +43,7 @@ final class EloquentOrganizationRepository implements OrganizationRepository
                     id: $organization->id,
                     name: $organization->name,
                     slug: $organization->slug,
+                    ownerMembershipId: $membership->id,
                 );
             },
             attempts: 3,

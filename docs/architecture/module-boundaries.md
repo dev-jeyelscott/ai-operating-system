@@ -55,6 +55,7 @@ into transport responses.
 | Evidence | Assumptions, artifacts, evidence classifications |
 | Workspaces | Execution workspaces and snapshots |
 | Integrations | Integration metadata and synchronization contracts |
+| Audit | Append-only application audit events and safe audit metadata |
 
 ## Dependency rules
 

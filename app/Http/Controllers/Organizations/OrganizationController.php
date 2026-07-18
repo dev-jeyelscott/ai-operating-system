@@ -27,9 +27,14 @@ final class OrganizationController
             abort(401);
         }
 
+        $correlationId = $request->attributes->get('request_id');
+
         $organization = $createOrganization->handle(
             ownerUserId: $user->id,
             name: (string) $request->validated('name'),
+            correlationId: is_string($correlationId)
+                ? $correlationId
+                : null,
         );
 
         $request->session()->put(

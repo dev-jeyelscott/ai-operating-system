@@ -95,7 +95,16 @@ final class ProjectController extends Controller
     ): RedirectResponse {
         $validated = $request->validated();
 
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            abort(401);
+        }
+
+        $correlationId = $request->attributes->get('request_id');
+
         $project = $createProject->handle(
+            actorUserId: $user->id,
             organizationId: $organization->id,
             name: (string) $validated['name'],
             description: is_string($validated['description'] ?? null)
@@ -104,6 +113,9 @@ final class ProjectController extends Controller
             projectType: ProjectType::from(
                 (string) $validated['project_type'],
             ),
+            correlationId: is_string($correlationId)
+                ? $correlationId
+                : null,
         );
 
         return to_route('organizations.projects.show', [
@@ -162,7 +174,16 @@ final class ProjectController extends Controller
     ): RedirectResponse {
         $validated = $request->validated();
 
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            abort(401);
+        }
+
+        $correlationId = $request->attributes->get('request_id');
+
         $project = $updateProject->handle(
+            actorUserId: $user->id,
             organizationId: $organization->id,
             projectId: $project->id,
             name: (string) $validated['name'],
@@ -172,6 +193,9 @@ final class ProjectController extends Controller
             projectType: ProjectType::from(
                 (string) $validated['project_type'],
             ),
+            correlationId: is_string($correlationId)
+                ? $correlationId
+                : null,
         );
 
         return to_route('organizations.projects.show', [

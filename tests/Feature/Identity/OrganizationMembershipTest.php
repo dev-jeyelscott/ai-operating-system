@@ -129,6 +129,7 @@ test('an organization can contain users with explicit roles', function () {
     );
 
     $membership = app(AddOrganizationMember::class)->handle(
+        actorUserId: $owner->id,
         organizationId: $organization->id,
         userId: $member->id,
         role: OrganizationRole::Viewer,
@@ -158,16 +159,18 @@ test('duplicate organization memberships are rejected', function () {
     );
 
     app(AddOrganizationMember::class)->handle(
+        actorUserId: $owner->id,
         organizationId: $organization->id,
         userId: $member->id,
-        role: OrganizationRole::Member,
+        role: OrganizationRole::Viewer,
     );
 
     expect(
         fn () => app(AddOrganizationMember::class)->handle(
+            actorUserId: $owner->id,
             organizationId: $organization->id,
             userId: $member->id,
-            role: OrganizationRole::Administrator,
+            role: OrganizationRole::Viewer,
         ),
     )->toThrow(
         ConflictException::class,

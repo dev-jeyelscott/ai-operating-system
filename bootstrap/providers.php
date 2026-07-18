@@ -1,6 +1,7 @@
 <?php
 
 use App\Providers\AppServiceProvider;
+use App\Providers\AuditServiceProvider;
 use App\Providers\FortifyServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\IdentityServiceProvider;
@@ -10,6 +11,7 @@ return [
     AppServiceProvider::class,
     FortifyServiceProvider::class,
     HorizonServiceProvider::class,
+    AuditServiceProvider::class,
     IdentityServiceProvider::class,
     ProjectsServiceProvider::class,
 ];

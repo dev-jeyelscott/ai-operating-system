@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Application\Projects;
 
+use App\Application\Audit\RecordAuditEvent;
 use App\Application\Projects\Contracts\ProjectRepository;
+use App\Application\Shared\Contracts\TransactionManager;
+use App\Domain\Audit\AuditActorType;
+use App\Domain\Audit\AuditEventType;
+use App\Domain\Audit\AuditSubjectType;
 use App\Domain\Projects\ProjectType;
 use App\Models\Project;
 use InvalidArgumentException;
@@ -15,26 +20,69 @@ use InvalidArgumentException;
 final readonly class CreateProject
 {
     /**
-     * Inject the tenant-safe project persistence contract.
+     * Inject project persistence, audit recording, and transactions.
      */
     public function __construct(
         private ProjectRepository $projects,
+        private RecordAuditEvent $audit,
+        private TransactionManager $transactions,
     ) {}
 
     /**
-     * Create the project while preserving organization ownership.
+     * Create the project and audit event atomically.
      */
     public function handle(
+        int $actorUserId,
         int $organizationId,
         string $name,
         ?string $description,
         ProjectType $projectType,
+        ?string $correlationId = null,
     ): Project {
-        return $this->projects->create(
-            organizationId: $organizationId,
-            name: $this->normalizeName($name),
-            description: $this->normalizeDescription($description),
-            projectType: $projectType,
+        if ($actorUserId < 1) {
+            throw new InvalidArgumentException(
+                'The actor user identifier must be positive.',
+            );
+        }
+
+        $normalizedName = $this->normalizeName($name);
+        $normalizedDescription = $this->normalizeDescription($description);
+
+        return $this->transactions->run(
+            function () use (
+                $actorUserId,
+                $organizationId,
+                $normalizedName,
+                $normalizedDescription,
+                $projectType,
+                $correlationId,
+            ): Project {
+                $project = $this->projects->create(
+                    organizationId: $organizationId,
+                    name: $normalizedName,
+                    description: $normalizedDescription,
+                    projectType: $projectType,
+                );
+
+                $this->audit->record(
+                    organizationId: $organizationId,
+                    projectId: $project->id,
+                    actorType: AuditActorType::User,
+                    actorId: (string) $actorUserId,
+                    eventType: AuditEventType::ProjectCreated,
+                    subjectType: AuditSubjectType::Project,
+                    subjectId: (string) $project->id,
+                    correlationId: $correlationId,
+                    metadata: [
+                        'name' => $project->name,
+                        'project_type' => $project->project_type->value,
+                        'status' => $project->status->value,
+                        'description_present' => $project->description !== null,
+                    ],
+                );
+
+                return $project;
+            },
         );
     }
 
