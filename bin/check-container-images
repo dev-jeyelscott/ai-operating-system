@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
+# Keep matching and output ordering deterministic across local and CI systems.
+export LC_ALL=C
+
+readonly DIGEST_PATTERN='sha256:[0-9a-f]{64}'
+readonly FLOATING_TAG_PATTERN='^(latest|alpine|edge|stable|nightly|dev|main|master|canary|snapshot|v?[0-9]+)$'
+
+failure_count=0
+reference_count=0
+
+# Remove YAML comments, surrounding whitespace, and wrapping quotes.
+normalize_reference() {
+    printf '%s' "$1" \
+        | sed -E \
+            -e 's/[[:space:]]+#.*$//' \
+            -e 's/^[[:space:]]+//' \
+            -e 's/[[:space:]]+$//' \
+            -e "s/^['\"]//" \
+            -e "s/['\"]$//"
+}
+
+# Return success only for explicit tag-plus-SHA256 image references.
+reference_is_valid() {
+    local reference="$1"
+    local tag
+
+    [[ "$reference" =~ ^[^[:space:]@]+:[^[:space:]@/]+@${DIGEST_PATTERN}$ ]] \
+        || return 1
+
+    tag="${reference%@sha256:*}"
+    tag="${tag##*:}"
+    tag="${tag,,}"
+
+    # Reject floating aliases and major-only convenience tags.
+    [[ ! "$tag" =~ $FLOATING_TAG_PATTERN ]]
+}
+
+# Validate one discovered image reference and report its repository location.
+validate_reference() {
+    local origin="$1"
+    local reference
+
+    reference="$(normalize_reference "$2")"
+
+    [[ -n "$reference" ]] || return 0
+
+    reference_count=$((reference_count + 1))
+
+    if ! reference_is_valid "$reference"; then
+        printf \
+            'ERROR: %s uses an unapproved container image: %s\n' \
+            "$origin" \
+            "$reference" \
+            >&2
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Validate image fields in Compose files and GitHub Actions workflows.
+check_yaml_images() {
+    local match
+    local path
+    local remainder
+    local line_number
+    local value
+
+    while IFS= read -r match; do
+        [[ -n "$match" ]] || continue
+
+        path="${match%%:*}"
+        remainder="${match#*:}"
+        line_number="${remainder%%:*}"
+        value="${remainder#*:}"
+
+        value="$(
+            printf '%s' "$value" \
+                | sed -E \
+                    's/^[[:space:]]*image:[[:space:]]*//'
+        )"
+
+        validate_reference \
+            "${path}:${line_number}" \
+            "$value"
+    done < <(
+        git grep -nE \
+            '^[[:space:]]*image:[[:space:]]*' \
+            -- \
+            'compose*.yml' \
+            'compose*.yaml' \
+            '.github/workflows/*.yml' \
+            '.github/workflows/*.yaml' \
+            || true
+    )
+}
+
+# Validate image constants used by bootstrap and maintenance scripts.
+check_shell_image_constants() {
+    local match
+    local path
+    local remainder
+    local line_number
+    local value
+
+    while IFS= read -r match; do
+        [[ -n "$match" ]] || continue
+
+        path="${match%%:*}"
+        remainder="${match#*:}"
+        line_number="${remainder%%:*}"
+        value="${remainder#*:}"
+        value="${value#*=}"
+
+        validate_reference \
+            "${path}:${line_number}" \
+            "$value"
+    done < <(
+        git grep -nE \
+            '^[[:space:]]*(readonly[[:space:]]+)?[A-Z0-9_]+_IMAGE=' \
+            -- \
+            'bin/*' \
+            || true
+    )
+}
+
+# Require tracked docker run commands to use a validated *_IMAGE constant.
+check_docker_run_commands() {
+    local match
+    local path
+    local remainder
+    local line_number
+    local end_line
+
+    while IFS= read -r match; do
+        [[ -n "$match" ]] || continue
+
+        path="${match%%:*}"
+        remainder="${match#*:}"
+        line_number="${remainder%%:*}"
+        end_line=$((line_number + 20))
+
+        if ! sed -n "${line_number},${end_line}p" "$path" \
+            | grep -qE '\$\{?[A-Z0-9_]+_IMAGE\}?'; then
+            printf \
+                'ERROR: %s:%s must use a validated *_IMAGE constant.\n' \
+                "$path" \
+                "$line_number" \
+                >&2
+
+            failure_count=$((failure_count + 1))
+        fi
+    done < <(
+        git grep -nE \
+            '^[[:space:]]*docker[[:space:]]+run' \
+            -- \
+            'bin/*' \
+            || true
+    )
+}
+
+# Validate externally pulled base images declared in tracked Dockerfiles.
+#
+# Locally named stages in multi-stage Dockerfiles are excluded because they
+# refer to earlier stages rather than external registry images.
+check_dockerfile_images() {
+    local path
+    local match
+    local line_number
+    local instruction
+    local image
+    local alias
+    local -A local_stages=()
+
+    while IFS= read -r -d '' path; do
+        local_stages=()
+
+        while IFS= read -r match; do
+            line_number="${match%%:*}"
+            instruction="${match#*:}"
+
+            image="$(
+                printf '%s' "$instruction" \
+                    | sed -E \
+                        's/^[[:space:]]*FROM[[:space:]]+(--platform=[^[:space:]]+[[:space:]]+)?([^[:space:]]+).*/\2/I'
+            )"
+
+            if [[ "$image" != scratch \
+                && -z "${local_stages[$image]+defined}" ]]; then
+                validate_reference \
+                    "${path}:${line_number}" \
+                    "$image"
+            fi
+
+            alias=''
+
+            if [[ "$instruction" =~ [[:space:]][Aa][Ss][[:space:]]+([A-Za-z0-9._-]+)[[:space:]]*$ ]]; then
+                alias="${BASH_REMATCH[1]}"
+            fi
+
+            if [[ -n "$alias" ]]; then
+                local_stages["$alias"]=1
+            fi
+        done < <(
+            grep -nEi \
+                '^[[:space:]]*FROM[[:space:]]+' \
+                "$path" \
+                || true
+        )
+    done < <(
+        git ls-files -z -- \
+            'Dockerfile' \
+            'Dockerfile.*' \
+            '**/Dockerfile' \
+            '**/Dockerfile.*'
+    )
+}
+
+# Verify that the policy accepts and rejects controlled fixtures correctly.
+run_self_test() {
+    local digest
+    local reference
+
+    digest="sha256:$(printf 'a%.0s' {1..64})"
+
+    reference_is_valid \
+        "redis:8.8.0-alpine3.23@${digest}" \
+        || {
+            printf '%s\n' \
+                'ERROR: valid container-image fixture was rejected.' \
+                >&2
+            exit 2
+        }
+
+    for reference in \
+        'redis:latest' \
+        'redis:alpine' \
+        'redis:8.8.0-alpine3.23' \
+        "redis:latest@${digest}" \
+        "composer:2@${digest}" \
+        'redis:8.8.0-alpine3.23@sha256:deadbeef'; do
+
+        if reference_is_valid "$reference"; then
+            printf \
+                'ERROR: invalid container-image fixture was accepted: %s\n' \
+                "$reference" \
+                >&2
+            exit 2
+        fi
+    done
+}
+
+# Support focused fixture testing from the command line.
+if [[ "${1:-}" == '--check-reference' ]]; then
+    if [[ "$#" -ne 2 ]]; then
+        printf '%s\n' \
+            'Usage: bin/check-container-images --check-reference IMAGE' \
+            >&2
+        exit 2
+    fi
+
+    if reference_is_valid "$2"; then
+        printf \
+            'Container image reference is approved: %s\n' \
+            "$2"
+        exit 0
+    fi
+
+    printf \
+        'Container image reference is rejected: %s\n' \
+        "$2" \
+        >&2
+    exit 1
+fi
+
+if [[ "$#" -ne 0 ]]; then
+    printf '%s\n' \
+        'Usage: bin/check-container-images [--check-reference IMAGE]' \
+        >&2
+    exit 2
+fi
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    printf '%s\n' \
+        'ERROR: container-image policy must run inside a Git repository.' \
+        >&2
+    exit 2
+}
+
+run_self_test
+check_yaml_images
+check_shell_image_constants
+check_docker_run_commands
+check_dockerfile_images
+
+if (( reference_count == 0 )); then
+    printf '%s\n' \
+        'ERROR: no external container image references were discovered.' \
+        >&2
+    exit 2
+fi
+
+if (( failure_count > 0 )); then
+    printf \
+        'Container image policy failed with %d error(s).\n' \
+        "$failure_count" \
+        >&2
+    exit 1
+fi
+
+printf \
+    'Container image policy passed for %d external reference occurrence(s).\n' \
+    "$reference_count"

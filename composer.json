@@ -67,9 +67,13 @@
         "repository:check": [
             "bash bin/check-repository-hygiene"
         ],
+        "containers:check": [
+            "bash bin/check-container-images"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
+            "@containers:check",
             "@lint:check",
             "@types:check",
             "@php artisan test",
