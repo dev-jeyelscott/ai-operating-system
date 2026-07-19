@@ -13,9 +13,11 @@ use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -35,6 +37,7 @@ use LogicException;
  * @property CarbonImmutable|null $archived_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
+ * @property-read Collection<int, ProviderCredential> $providerCredentials
  */
 #[Fillable(['name', 'slug', 'description', 'project_type'])]
 #[UsePolicy(ProjectPolicy::class)]
@@ -285,5 +288,15 @@ final class Project extends Model
     public function configuration(): HasOne
     {
         return $this->hasOne(ProjectConfiguration::class);
+    }
+
+    /**
+     * Return encrypted provider credentials owned by this project.
+     *
+     * @return HasMany<ProviderCredential, $this>
+     */
+    public function providerCredentials(): HasMany
+    {
+        return $this->hasMany(ProviderCredential::class);
     }
 }

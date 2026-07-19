@@ -86,4 +86,15 @@ return [
             ),
         ],
     ],
+
+    'credentials' => [
+        'per_minute' => (int) env(
+            'RATE_LIMIT_PROJECT_CREDENTIALS_PER_MINUTE',
+            5,
+        ),
+        'per_hour' => (int) env(
+            'RATE_LIMIT_PROJECT_CREDENTIALS_PER_HOUR',
+            20,
+        ),
+    ],
 ];

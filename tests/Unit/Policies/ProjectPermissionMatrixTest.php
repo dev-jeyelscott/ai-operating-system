@@ -32,6 +32,11 @@ function projectPermissionMatrixCases(): array
             ProjectPermission::Update,
             true,
         ],
+        'owner may manage project integrations' => [
+            OrganizationRole::Owner,
+            ProjectPermission::ManageIntegrations,
+            true,
+        ],
         'owner may archive projects' => [
             OrganizationRole::Owner,
             ProjectPermission::Archive,
@@ -56,6 +61,11 @@ function projectPermissionMatrixCases(): array
         'administrator may update projects' => [
             OrganizationRole::Administrator,
             ProjectPermission::Update,
+            true,
+        ],
+        'administrator may manage project integrations' => [
+            OrganizationRole::Administrator,
+            ProjectPermission::ManageIntegrations,
             true,
         ],
         'administrator may archive projects' => [
@@ -84,6 +94,11 @@ function projectPermissionMatrixCases(): array
             ProjectPermission::Update,
             true,
         ],
+        'member may not manage project integrations' => [
+            OrganizationRole::Member,
+            ProjectPermission::ManageIntegrations,
+            false,
+        ],
         'member may not archive projects' => [
             OrganizationRole::Member,
             ProjectPermission::Archive,
@@ -108,6 +123,11 @@ function projectPermissionMatrixCases(): array
         'viewer may not update projects' => [
             OrganizationRole::Viewer,
             ProjectPermission::Update,
+            false,
+        ],
+        'viewer may not manage project integrations' => [
+            OrganizationRole::Viewer,
+            ProjectPermission::ManageIntegrations,
             false,
         ],
         'viewer may not archive projects' => [

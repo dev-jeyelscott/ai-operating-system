@@ -19,4 +19,7 @@ enum AuditEventType: string
     case ProjectArchived = 'project.archived';
     case ProjectRestored = 'project.restored';
     case ProjectSetupUpdated = 'project.setup.updated';
+
+    case IntegrationCredentialStored = 'integration.credential.stored';
+    case IntegrationCredentialRotated = 'integration.credential.rotated';
 }

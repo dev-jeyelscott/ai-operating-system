@@ -1,9 +1,11 @@
 <?php
 
+use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
+use App\Http\Controllers\Integrations\StoreProjectIntegrationCredentialController;
 use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
@@ -56,6 +58,18 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->can('createProject', 'organization')
                                 ->name('store');
                         });
+
+                    Route::put(
+                        '/{project}/integrations/{provider}/credential',
+                        StoreProjectIntegrationCredentialController::class,
+                    )
+                        ->whereIn(
+                            'provider',
+                            IntegrationProvider::values(),
+                        )
+                        ->middleware('throttle:project-commands')
+                        ->can('manageIntegrations', 'project')
+                        ->name('integrations.credentials.store');
 
                     Route::controller(ProjectSetupController::class)
                         ->prefix('/{project}/setup')

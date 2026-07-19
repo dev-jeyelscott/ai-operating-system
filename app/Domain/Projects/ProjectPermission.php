@@ -12,6 +12,7 @@ enum ProjectPermission: string
     case View = 'view';
     case Create = 'create';
     case Update = 'update';
+    case ManageIntegrations = 'manage_integrations';
     case Archive = 'archive';
     case Restore = 'restore';
 }

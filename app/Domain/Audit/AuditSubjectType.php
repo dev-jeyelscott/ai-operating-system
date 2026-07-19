@@ -12,4 +12,5 @@ enum AuditSubjectType: string
     case Organization = 'organization';
     case OrganizationMembership = 'organization_membership';
     case Project = 'project';
+    case ProviderCredential = 'provider_credential';
 }
