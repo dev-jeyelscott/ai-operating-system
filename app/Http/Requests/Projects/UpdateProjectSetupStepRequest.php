@@ -7,10 +7,12 @@ namespace App\Http\Requests\Projects;
 use App\Domain\Projects\Configuration\AutonomyLevel;
 use App\Domain\Projects\Configuration\ReasoningLevel;
 use App\Domain\Projects\Configuration\RepositoryProvider;
+use App\Domain\Projects\Configuration\ValidationCommand;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
 use App\Rules\Projects\ValidGitBranchName;
 use App\Rules\Projects\ValidGitHubRepositoryUrl;
+use App\Rules\Projects\ValidProjectValidationCommand;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,6 +21,19 @@ use Illuminate\Validation\Rule;
  */
 final class UpdateProjectSetupStepRequest extends FormRequest
 {
+    /**
+     * Project-configuration fields owned by the validation-command step.
+     *
+     * @var list<string>
+     */
+    private const VALIDATION_COMMAND_FIELDS = [
+        'build_command',
+        'test_command',
+        'lint_command',
+        'static_analysis_command',
+        'security_command',
+    ];
+
     /**
      * Authorize configuration through the existing project update policy.
      */
@@ -31,45 +46,85 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Return rules for the active server-controlled wizard step.
+     * Return the validation rules for the active project setup step.
      *
-     * @return array<string, mixed>
+     * @return array<string, list<mixed>>
      */
     public function rules(): array
     {
         return match ($this->step()) {
             ProjectSetupStep::Details => $this->detailsRules(),
             ProjectSetupStep::Repository => $this->repositoryRules(),
-            ProjectSetupStep::Commands => $this->commandRules(),
+            ProjectSetupStep::Commands => $this->validationCommandRules(),
             ProjectSetupStep::Policies => $this->policyRules(),
-            ProjectSetupStep::Review => [
-                'confirmation' => ['required', 'accepted'],
-            ],
+            ProjectSetupStep::Review => [],
         };
     }
 
     /**
-     * Normalize comma-separated UI fields into structured configuration arrays.
+     * Return human-readable validation attribute names.
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'build_command' => 'build command',
+            'test_command' => 'test command',
+            'lint_command' => 'lint command',
+            'static_analysis_command' => 'static-analysis command',
+            'security_command' => 'security command',
+        ];
+    }
+
+    /**
+     * Trim project validation commands before rule evaluation and persistence.
+     */
+    private function prepareValidationCommands(): void
+    {
+        $normalized = [];
+
+        foreach (self::VALIDATION_COMMAND_FIELDS as $field) {
+            $value = $this->input($field);
+
+            $normalized[$field] = is_string($value)
+                ? trim($value)
+                : $value;
+        }
+
+        $this->merge($normalized);
+    }
+
+    /**
+     * Normalize presentation-level input before validation and persistence.
      */
     protected function prepareForValidation(): void
     {
-        if ($this->step() === ProjectSetupStep::Details) {
+        $step = $this->step();
+
+        if ($step === ProjectSetupStep::Details) {
             $this->merge([
                 'technology_stack' => [
                     'languages' => $this->commaSeparated('languages'),
                     'frameworks' => $this->commaSeparated('frameworks'),
                     'databases' => $this->commaSeparated('databases'),
-                    'infrastructure' => $this->commaSeparated('infrastructure'),
-                    'package_managers' => $this->commaSeparated('package_managers'),
+                    'infrastructure' => $this->commaSeparated(
+                        'infrastructure',
+                    ),
+                    'package_managers' => $this->commaSeparated(
+                        'package_managers',
+                    ),
                     'runtimes' => $this->commaSeparated('runtimes'),
                 ],
             ]);
+
+            return;
         }
 
-        if ($this->step() === ProjectSetupStep::Repository) {
+        if ($step === ProjectSetupStep::Repository) {
             /*
-            * Normalize only presentation-level whitespace and provider casing.
-            * URL semantics and branch syntax remain authoritative validation concerns.
+            * Normalize presentation-level whitespace and provider casing only.
+            * URL semantics and branch syntax remain validation concerns.
             */
             $this->merge([
                 'repository_provider' => strtolower(
@@ -85,9 +140,17 @@ final class UpdateProjectSetupStepRequest extends FormRequest
                     (string) $this->input('integration_branch', ''),
                 ),
             ]);
+
+            return;
         }
 
-        if ($this->step() === ProjectSetupStep::Policies) {
+        if ($step === ProjectSetupStep::Commands) {
+            $this->prepareValidationCommands();
+
+            return;
+        }
+
+        if ($step === ProjectSetupStep::Policies) {
             $this->merge([
                 'budget_currency' => strtoupper(
                     trim((string) $this->input(
@@ -96,17 +159,29 @@ final class UpdateProjectSetupStepRequest extends FormRequest
                     )),
                 ),
                 'provider_policy' => [
-                    'allowed_provider_ids' => $this->commaSeparated('allowed_provider_ids'),
-                    'fallback_order' => $this->commaSeparated('fallback_order'),
+                    'allowed_provider_ids' => $this->commaSeparated(
+                        'allowed_provider_ids',
+                    ),
+                    'fallback_order' => $this->commaSeparated(
+                        'fallback_order',
+                    ),
                 ],
                 'approval_policy' => [
-                    'roadmap_required' => $this->boolean('roadmap_required'),
-                    'ticket_execution_required' => $this->boolean('ticket_execution_required'),
-                    'merge_required' => $this->boolean('merge_required'),
+                    'roadmap_required' => $this->boolean(
+                        'roadmap_required',
+                    ),
+                    'ticket_execution_required' => $this->boolean(
+                        'ticket_execution_required',
+                    ),
+                    'merge_required' => $this->boolean(
+                        'merge_required',
+                    ),
                 ],
                 'notification_policy' => [
                     'channels' => ['in_app'],
-                    'events' => $this->commaSeparated('notification_events'),
+                    'events' => $this->commaSeparated(
+                        'notification_events',
+                    ),
                 ],
             ]);
         }
@@ -221,28 +296,6 @@ final class UpdateProjectSetupStepRequest extends FormRequest
                 'max:255',
                 new ValidGitBranchName,
             ],
-        ];
-    }
-
-    /**
-     * Return structural validation for configured project commands.
-     *
-     * The commands are stored only; AIOS-022 does not execute them.
-     *
-     * @return array<string, mixed>
-     */
-    private function commandRules(): array
-    {
-        return [
-            'build_command' => ['required', 'string', 'max:2048'],
-            'test_command' => ['required', 'string', 'max:2048'],
-            'lint_command' => ['required', 'string', 'max:2048'],
-            'static_analysis_command' => [
-                'required',
-                'string',
-                'max:2048',
-            ],
-            'security_command' => ['required', 'string', 'max:2048'],
         ];
     }
 
@@ -382,5 +435,32 @@ final class UpdateProjectSetupStepRequest extends FormRequest
         );
 
         return array_values(array_unique($filtered));
+    }
+
+    /**
+     * Validate the complete set of project validation commands.
+     *
+     * Every command is required because project preflight must be able to report
+     * the exact build, test, lint, static-analysis, and security procedures.
+     *
+     * @return array<string, list<mixed>>
+     */
+    private function validationCommandRules(): array
+    {
+        $rules = static fn (): array => [
+            'bail',
+            'required',
+            'string',
+            'max:'.ValidationCommand::MAX_LENGTH,
+            new ValidProjectValidationCommand,
+        ];
+
+        return [
+            'build_command' => $rules(),
+            'test_command' => $rules(),
+            'lint_command' => $rules(),
+            'static_analysis_command' => $rules(),
+            'security_command' => $rules(),
+        ];
     }
 }

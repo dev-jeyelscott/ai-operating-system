@@ -9,6 +9,7 @@ use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Audit\AuditSubjectType;
+use App\Domain\Projects\Configuration\ValidationCommand;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
@@ -256,7 +257,7 @@ final readonly class SaveProjectSetupStep
     }
 
     /**
-     * Map the validated step payload to AIOS-021 configuration columns.
+     * Convert a validated setup-step payload into configuration attributes.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
@@ -277,13 +278,9 @@ final readonly class SaveProjectSetupStep
                 'integration_branch' => $payload['integration_branch'],
             ],
 
-            ProjectSetupStep::Commands => [
-                'build_command' => $payload['build_command'],
-                'test_command' => $payload['test_command'],
-                'lint_command' => $payload['lint_command'],
-                'static_analysis_command' => $payload['static_analysis_command'],
-                'security_command' => $payload['security_command'],
-            ],
+            ProjectSetupStep::Commands => $this->validationCommandAttributes(
+                $payload,
+            ),
 
             ProjectSetupStep::Policies => [
                 'default_reasoning' => $payload['default_reasoning'],
@@ -366,5 +363,45 @@ final readonly class SaveProjectSetupStep
         }
 
         return $changed;
+    }
+
+    /**
+     * Convert validated command input into normalized persistence attributes.
+     *
+     * Re-validating through the domain value object protects internal callers that
+     * bypass the HTTP Form Request, such as future jobs or console commands.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *     build_command: string,
+     *     test_command: string,
+     *     lint_command: string,
+     *     static_analysis_command: string,
+     *     security_command: string
+     * }
+     */
+    private function validationCommandAttributes(array $payload): array
+    {
+        return [
+            'build_command' => ValidationCommand::from(
+                (string) $payload['build_command'],
+            )->value(),
+
+            'test_command' => ValidationCommand::from(
+                (string) $payload['test_command'],
+            )->value(),
+
+            'lint_command' => ValidationCommand::from(
+                (string) $payload['lint_command'],
+            )->value(),
+
+            'static_analysis_command' => ValidationCommand::from(
+                (string) $payload['static_analysis_command'],
+            )->value(),
+
+            'security_command' => ValidationCommand::from(
+                (string) $payload['security_command'],
+            )->value(),
+        ];
     }
 }

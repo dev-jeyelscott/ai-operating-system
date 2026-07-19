@@ -126,3 +126,33 @@ Commands are persisted by this schema but are not executed by AIOS-021.
 - AIOS-029: project completeness evaluator
 - AIOS-030: settings and integration screens
 - AIOS-031: immutable configuration history and audit events
+
+## Validation command configuration
+
+Every project configuration stores the following required command metadata:
+
+- `build_command`
+- `test_command`
+- `lint_command`
+- `static_analysis_command`
+- `security_command`
+
+Command values are trimmed, bounded to 1,000 characters, and restricted to a
+single line without unsafe control characters.
+
+Validation commands are configuration metadata. Saving or validating a command
+does not execute it, resolve executables, access the configured repository, or
+produce verified test or CI evidence.
+
+Normal shell composition syntax remains permitted because supported project
+stacks are provider-independent. Execution safety belongs to the future
+sandboxed execution-provider and runtime-policy layers.
+
+Credentials must not be embedded in command strings. Commands should reference
+environment variables or encrypted integration credentials. The command values
+must not be written to logs unless the logging path applies appropriate
+redaction and access controls.
+
+Material command changes increment the project configuration revision.
+Submitting an identical normalized command set is a no-op and does not create a
+new revision.

@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { ProjectSetupStepper } from '@/features/projects/components/project-setup-stepper';
+import { ValidationCommandFields } from '@/features/projects/components/validation-command-fields';
+import type { ValidationCommandFormData } from '@/features/projects/components/validation-command-fields';
 import type {
     OrganizationSummary,
     ProjectSetupConfiguration,
@@ -126,9 +129,10 @@ export default function ProjectSetup({
                                 )}
 
                                 {activeStep === 'commands' && (
-                                    <CommandFields
+                                    <CommandStep
                                         configuration={configuration}
                                         errors={errors}
+                                        processing={processing}
                                     />
                                 )}
 
@@ -320,64 +324,41 @@ function RepositoryFields({
     );
 }
 
-function CommandFields({
+function CommandStep({
     configuration,
     errors,
+    processing,
 }: {
     configuration: ProjectSetupConfiguration;
     errors: FormErrors;
+    processing: boolean;
 }) {
+    const [data, setData] = useState<ValidationCommandFormData>(() => ({
+        build_command: configuration.commands.build ?? '',
+        test_command: configuration.commands.test ?? '',
+        lint_command: configuration.commands.lint ?? '',
+        static_analysis_command: configuration.commands.staticAnalysis ?? '',
+        security_command: configuration.commands.security ?? '',
+    }));
+
     return (
-        <div className="grid gap-5">
-            <CommandField
-                id="build-command"
-                label="Build command"
-                name="build_command"
-                defaultValue={configuration.commands.build ?? ''}
-                placeholder="pnpm build"
-                error={errors.build_command}
-            />
-
-            <CommandField
-                id="test-command"
-                label="Test command"
-                name="test_command"
-                defaultValue={configuration.commands.test ?? ''}
-                placeholder="composer test && pnpm test:unit"
-                error={errors.test_command}
-            />
-
-            <CommandField
-                id="lint-command"
-                label="Lint command"
-                name="lint_command"
-                defaultValue={configuration.commands.lint ?? ''}
-                placeholder="composer lint:check && pnpm lint:check"
-                error={errors.lint_command}
-            />
-
-            <CommandField
-                id="static-analysis-command"
-                label="Static-analysis command"
-                name="static_analysis_command"
-                defaultValue={configuration.commands.staticAnalysis ?? ''}
-                placeholder="composer types:check && pnpm types:check"
-                error={errors.static_analysis_command}
-            />
-
-            <CommandField
-                id="security-command"
-                label="Security command"
-                name="security_command"
-                defaultValue={configuration.commands.security ?? ''}
-                placeholder="composer audit"
-                error={errors.security_command}
-            />
-
-            <p className="text-sm text-muted-foreground">
-                AIOS-022 stores these strings but never executes them.
-            </p>
-        </div>
+        <ValidationCommandFields
+            data={data}
+            errors={{
+                build_command: errors.build_command,
+                test_command: errors.test_command,
+                lint_command: errors.lint_command,
+                static_analysis_command: errors.static_analysis_command,
+                security_command: errors.security_command,
+            }}
+            disabled={processing}
+            onChange={(field, value) => {
+                setData((current) => ({
+                    ...current,
+                    [field]: value,
+                }));
+            }}
+        />
     );
 }
 
@@ -637,43 +618,6 @@ function TextField({
             <p className="text-xs text-muted-foreground">
                 Separate multiple values with commas.
             </p>
-        </div>
-    );
-}
-
-function CommandField({
-    id,
-    label,
-    name,
-    defaultValue,
-    error,
-    placeholder,
-}: {
-    id: string;
-    label: string;
-    name: string;
-    defaultValue: string;
-    error?: string;
-    placeholder: string;
-}) {
-    return (
-        <div className="grid gap-2">
-            <Label htmlFor={id}>{label}</Label>
-
-            <textarea
-                id={id}
-                name={name}
-                rows={2}
-                maxLength={2048}
-                required
-                defaultValue={defaultValue}
-                placeholder={placeholder}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? `${id}-error` : undefined}
-                className="min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive"
-            />
-
-            <InputError id={`${id}-error`} message={error} />
         </div>
     );
 }
