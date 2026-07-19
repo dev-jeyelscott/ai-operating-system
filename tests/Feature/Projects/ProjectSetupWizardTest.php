@@ -9,8 +9,8 @@ use App\Models\Project;
 use App\Models\ProjectConfiguration;
 use App\Models\ProjectSetupProgress;
 use App\Models\User;
-use Inertia\Testing\AssertableInertia;
 use Illuminate\Support\Facades\Cache;
+use Inertia\Testing\AssertableInertia;
 
 beforeEach(function (): void {
     /*
@@ -143,8 +143,44 @@ test('repeating an identical step does not create another revision', function ()
         'step' => ProjectSetupStep::Details,
     ]);
 
-    $this->actingAs($user)->put($url, $payload);
-    $this->actingAs($user)->put($url, $payload);
+    $repositoryStepUrl = route(
+        'organizations.projects.setup.show',
+        [
+            'organization' => $organization,
+            'project' => $project,
+            'step' => ProjectSetupStep::Repository,
+        ],
+    );
+
+    /*
+    * The first submission materially changes the empty configuration and moves
+    * wizard progress to the repository step.
+    */
+    $this
+        ->actingAs($user)
+        ->put($url, $payload)
+        ->assertRedirect($repositoryStepUrl)
+        ->assertSessionHasNoErrors();
+
+    /*
+    * Repeating the same step must succeed without creating another revision.
+    *
+    * Assert the HTTP response so a future throttle or validation response cannot
+    * accidentally make this persistence assertion pass.
+    */
+    $this
+        ->actingAs($user)
+        ->put($url, $payload)
+        ->assertRedirect($repositoryStepUrl)
+        ->assertSessionHasNoErrors();
+
+    expect(
+        $project->configuration()->firstOrFail()->revision,
+    )->toBe(2);
+
+    expect(
+        $project->setupProgress()->firstOrFail()->completed_steps,
+    )->toBe(['details']);
 
     expect(
         $project->configuration()->firstOrFail()->revision,

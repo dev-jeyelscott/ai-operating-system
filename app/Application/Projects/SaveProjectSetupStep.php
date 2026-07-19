@@ -13,6 +13,7 @@ use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
 use App\Models\ProjectSetupProgress;
+use BackedEnum;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -92,22 +93,36 @@ final readonly class SaveProjectSetupStep
                 $configurationAttributes =
                     $this->configurationAttributes($step, $payload);
 
-                $configurationChanged = false;
-
-                if ($configurationAttributes !== []) {
-                    $configuration->fill($configurationAttributes);
-
-                    $configurationChanged = $configuration->isDirty(
-                        array_keys($configurationAttributes),
+                /*
+                 * Compare the current casted values directly with the submitted
+                 * candidate values before mutating the Eloquent model.
+                 *
+                 * This is required because:
+                 *
+                 * 1. PostgreSQL jsonb does not preserve object-key order.
+                 * 2. Eloquent's generic dirty detection compares serialized raw
+                 *    attributes rather than this domain's semantic values.
+                 * 3. Calling fill() before reading casted values may interact with
+                 *    Eloquent's cast cache and produce incorrect comparisons.
+                 */
+                $configurationChanged =
+                    $this->hasMaterialConfigurationChange(
+                        configuration: $configuration,
+                        candidateAttributes: $configurationAttributes,
                     );
 
-                    if ($configurationChanged) {
-                        $configuration->forceFill([
-                            'revision' => $configuration->revision + 1,
-                        ])->save();
-                    }
+                if ($configurationChanged) {
+                    $configuration->fill($configurationAttributes);
+
+                    $configuration->forceFill([
+                        'revision' => $configuration->revision + 1,
+                    ])->save();
                 }
 
+                /*
+                 * Wizard progress advances after every valid submission,
+                 * including a repeated idempotent submission.
+                 */
                 $progressChanged = $this->advanceProgress(
                     progress: $progress,
                     completedStep: $step,
@@ -140,7 +155,8 @@ final readonly class SaveProjectSetupStep
     }
 
     /**
-     * Ensure old projects created before AIOS-022 receive a progress row.
+     * Ensure projects created before the wizard implementation receive a
+     * resumable setup-progress record.
      */
     private function ensureProgressExists(Project $project): void
     {
@@ -175,6 +191,68 @@ final readonly class SaveProjectSetupStep
                 ),
             ]);
         }
+    }
+
+    /**
+     * Determine whether candidate configuration attributes materially differ
+     * from the currently persisted configuration.
+     *
+     * Values are compared using a canonical domain representation:
+     *
+     * - backed enums are compared using their scalar values;
+     * - associative JSON-object keys are sorted recursively;
+     * - JSON-list order remains significant;
+     * - scalar types are compared strictly.
+     *
+     * @param  array<string, mixed>  $candidateAttributes
+     */
+    private function hasMaterialConfigurationChange(
+        ProjectConfiguration $configuration,
+        array $candidateAttributes,
+    ): bool {
+        foreach ($candidateAttributes as $attribute => $candidateValue) {
+            $currentValue = $configuration->getAttribute($attribute);
+
+            if (
+                $this->canonicalConfigurationValue($currentValue)
+                !== $this->canonicalConfigurationValue($candidateValue)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Convert one configuration value into a stable comparable representation.
+     *
+     * Associative arrays represent JSON objects, so their keys are sorted.
+     * Lists preserve their original order because ordering can be meaningful,
+     * such as provider fallback order or command execution order.
+     */
+    private function canonicalConfigurationValue(mixed $value): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $canonical = [];
+
+        foreach ($value as $key => $item) {
+            $canonical[$key] =
+                $this->canonicalConfigurationValue($item);
+        }
+
+        if (! array_is_list($canonical)) {
+            ksort($canonical);
+        }
+
+        return $canonical;
     }
 
     /**
@@ -223,7 +301,8 @@ final readonly class SaveProjectSetupStep
     }
 
     /**
-     * Mark the current step complete and advance the resumable position.
+     * Mark the submitted step complete and advance the resumable wizard
+     * position when the project has not already reached a later step.
      */
     private function advanceProgress(
         ProjectSetupProgress $progress,
@@ -258,6 +337,10 @@ final readonly class SaveProjectSetupStep
         $nextStep = $completedStep->next()
             ?? ProjectSetupStep::Review;
 
+        /*
+         * Never move the resumable position backward when an already-completed
+         * step is edited or submitted again.
+         */
         if (
             $nextStep->position()
             > $progress->current_step->position()
