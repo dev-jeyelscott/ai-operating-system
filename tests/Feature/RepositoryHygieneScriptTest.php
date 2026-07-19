@@ -21,7 +21,7 @@ final class RepositoryHygieneScriptTest extends TestCase
     {
         parent::setUp();
 
-        $this->filesystem = new Filesystem();
+        $this->filesystem = new Filesystem;
         $this->sandbox = sys_get_temp_dir()
             .'/aios-repository-hygiene-'
             .bin2hex(random_bytes(8));
@@ -188,7 +188,7 @@ final class RepositoryHygieneScriptTest extends TestCase
     /**
      * Execute a fixture setup command and fail immediately on non-zero exit.
      *
-     * @param list<string> $command
+     * @param  list<string>  $command
      */
     private function runCommand(array $command): void
     {
