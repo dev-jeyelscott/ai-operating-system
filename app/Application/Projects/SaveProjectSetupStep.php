@@ -9,6 +9,7 @@ use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Audit\AuditSubjectType;
+use App\Domain\Projects\Configuration\ProjectPolicyConfiguration;
 use App\Domain\Projects\Configuration\ValidationCommand;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
@@ -282,16 +283,9 @@ final readonly class SaveProjectSetupStep
                 $payload,
             ),
 
-            ProjectSetupStep::Policies => [
-                'default_reasoning' => $payload['default_reasoning'],
-                'provider_policy' => $payload['provider_policy'],
-                'budget_limit_minor' => $payload['budget_limit_minor'],
-                'budget_currency' => $payload['budget_currency'],
-                'automatic_retry_limit' => $payload['automatic_retry_limit'],
-                'autonomy_level' => $payload['autonomy_level'],
-                'approval_policy' => $payload['approval_policy'],
-                'notification_policy' => $payload['notification_policy'],
-            ],
+            ProjectSetupStep::Policies => ProjectPolicyConfiguration::fromValidatedPayload(
+                $payload,
+            )->toPersistenceAttributes(),
 
             ProjectSetupStep::Review => [],
         };

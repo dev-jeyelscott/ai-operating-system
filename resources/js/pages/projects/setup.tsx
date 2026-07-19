@@ -1,6 +1,7 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState  } from 'react';
+import type {ComponentProps} from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -197,6 +198,7 @@ function TechnologyStackFields({
                 name="languages"
                 defaultValue={asCommaSeparated(stack.languages)}
                 placeholder="PHP, TypeScript"
+                description="Separate multiple values with commas."
                 required
                 error={errors['technology_stack.languages']}
             />
@@ -207,6 +209,7 @@ function TechnologyStackFields({
                 name="frameworks"
                 defaultValue={asCommaSeparated(stack.frameworks)}
                 placeholder="Laravel 13, React, Inertia.js 3"
+                description="Separate multiple values with commas."
                 error={errors['technology_stack.frameworks']}
             />
 
@@ -216,6 +219,7 @@ function TechnologyStackFields({
                 name="databases"
                 defaultValue={asCommaSeparated(stack.databases)}
                 placeholder="PostgreSQL, Redis"
+                description="Separate multiple values with commas."
                 error={errors['technology_stack.databases']}
             />
 
@@ -225,6 +229,7 @@ function TechnologyStackFields({
                 name="infrastructure"
                 defaultValue={asCommaSeparated(stack.infrastructure)}
                 placeholder="Docker Compose, GitHub Actions, S3"
+                description="Separate multiple values with commas."
                 error={errors['technology_stack.infrastructure']}
             />
 
@@ -234,6 +239,7 @@ function TechnologyStackFields({
                 name="package_managers"
                 defaultValue={asCommaSeparated(stack.package_managers)}
                 placeholder="Composer, pnpm"
+                description="Separate multiple values with commas."
                 error={errors['technology_stack.package_managers']}
             />
 
@@ -243,6 +249,7 @@ function TechnologyStackFields({
                 name="runtimes"
                 defaultValue={asCommaSeparated(stack.runtimes)}
                 placeholder="PHP 8.5, Node.js 22"
+                description="Separate multiple values with commas."
                 error={errors['technology_stack.runtimes']}
             />
         </div>
@@ -415,8 +422,10 @@ function PolicyFields({
                     defaultValue={asCommaSeparated(
                         policy.provider.allowed_provider_ids,
                     )}
-                    placeholder="simulation"
+                    placeholder="simulation, openai"
+                    description="Use lowercase provider IDs separated by commas."
                     required
+                    spellCheck={false}
                     error={errors['provider_policy.allowed_provider_ids']}
                 />
 
@@ -427,7 +436,10 @@ function PolicyFields({
                     defaultValue={asCommaSeparated(
                         policy.provider.fallback_order,
                     )}
-                    placeholder="simulation"
+                    placeholder="simulation, openai"
+                    description="Order matters. Every fallback provider must also appear in the allowed-provider list."
+                    required
+                    spellCheck={false}
                     error={errors['provider_policy.fallback_order']}
                 />
             </div>
@@ -439,8 +451,11 @@ function PolicyFields({
                     name="budget_limit_minor"
                     type="number"
                     min="0"
+                    max="999999999999"
+                    step="1"
                     defaultValue={policy.budgetLimitMinor?.toString() ?? ''}
                     placeholder="10000"
+                    description="For example, 10000 USD equals $100.00. Leave blank for no project-level cap."
                     error={errors.budget_limit_minor}
                 />
 
@@ -448,9 +463,13 @@ function PolicyFields({
                     id="budget-currency"
                     label="Currency"
                     name="budget_currency"
+                    maxLength={3}
+                    pattern="[A-Za-z]{3}"
+                    autoCapitalize="characters"
                     defaultValue={policy.budgetCurrency}
                     placeholder="USD"
                     required
+                    spellCheck={false}
                     error={errors.budget_currency}
                 />
 
@@ -461,7 +480,9 @@ function PolicyFields({
                     type="number"
                     min="0"
                     max="10"
+                    step="1"
                     defaultValue={policy.automaticRetryLimit.toString()}
+                    description="Maximum automatic retries before the workflow requires another decision."
                     required
                     error={errors.automatic_retry_limit}
                 />
@@ -499,8 +520,16 @@ function PolicyFields({
                 name="notification_events"
                 defaultValue={asCommaSeparated(policy.notification.events)}
                 placeholder="roadmap.ready, approval.requested, execution.failed"
+                description="Separate event identifiers with commas."
+                spellCheck={false}
                 error={errors['notification_policy.events']}
             />
+
+            <p className="text-sm text-muted-foreground">
+                These values configure future routing and approval decisions.
+                Saving this step does not invoke a provider, execute a command,
+                or approve a workflow.
+            </p>
         </div>
     );
 }
@@ -594,12 +623,20 @@ function TextField({
     label,
     name,
     defaultValue,
+    description,
     error,
     ...props
-}: React.ComponentProps<typeof Input> & {
+}: Omit<ComponentProps<typeof Input>, 'id' | 'name'> & {
+    id: string;
     label: string;
+    name: string;
+    description?: string;
     error?: string;
 }) {
+    const descriptionId = description ? `${id}-description` : undefined;
+    const errorId = error ? `${id}-error` : undefined;
+    const describedBy = [descriptionId, errorId].filter(Boolean).join(' ');
+
     return (
         <div className="grid gap-2">
             <Label htmlFor={id}>{label}</Label>
@@ -609,15 +646,17 @@ function TextField({
                 name={name}
                 defaultValue={defaultValue}
                 aria-invalid={Boolean(error)}
-                aria-describedby={error ? `${id}-error` : undefined}
+                aria-describedby={describedBy || undefined}
                 {...props}
             />
 
-            <InputError id={`${id}-error`} message={error} />
+            {description && (
+                <p id={descriptionId} className="text-xs text-muted-foreground">
+                    {description}
+                </p>
+            )}
 
-            <p className="text-xs text-muted-foreground">
-                Separate multiple values with commas.
-            </p>
+            <InputError id={`${id}-error`} message={error} />
         </div>
     );
 }
@@ -642,7 +681,11 @@ function SelectField({
             <Label htmlFor={id}>{label}</Label>
 
             <Select name={name} defaultValue={defaultValue} required>
-                <SelectTrigger id={id} aria-invalid={Boolean(error)}>
+                <SelectTrigger
+                    id={id}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? `${id}-error` : undefined}
+                >
                     <SelectValue />
                 </SelectTrigger>
 
