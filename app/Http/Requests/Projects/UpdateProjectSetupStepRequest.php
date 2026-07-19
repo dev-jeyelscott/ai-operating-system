@@ -9,6 +9,8 @@ use App\Domain\Projects\Configuration\ReasoningLevel;
 use App\Domain\Projects\Configuration\RepositoryProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
+use App\Rules\Projects\ValidGitBranchName;
+use App\Rules\Projects\ValidGitHubRepositoryUrl;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -61,6 +63,27 @@ final class UpdateProjectSetupStepRequest extends FormRequest
                     'package_managers' => $this->commaSeparated('package_managers'),
                     'runtimes' => $this->commaSeparated('runtimes'),
                 ],
+            ]);
+        }
+
+        if ($this->step() === ProjectSetupStep::Repository) {
+            /*
+            * Normalize only presentation-level whitespace and provider casing.
+            * URL semantics and branch syntax remain authoritative validation concerns.
+            */
+            $this->merge([
+                'repository_provider' => strtolower(
+                    trim((string) $this->input('repository_provider', '')),
+                ),
+                'repository_url' => trim(
+                    (string) $this->input('repository_url', ''),
+                ),
+                'default_branch' => trim(
+                    (string) $this->input('default_branch', ''),
+                ),
+                'integration_branch' => trim(
+                    (string) $this->input('integration_branch', ''),
+                ),
             ]);
         }
 
@@ -159,9 +182,13 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Return structural repository metadata validation.
+     * Return deterministic repository metadata validation.
      *
-     * AIOS-023 and AIOS-024 will add repository-host and protected-branch rules.
+     * Validation checks syntax only. It does not perform DNS lookup, HTTP requests,
+     * GitHub API requests, repository cloning, fetching, or remote writes.
+     *
+     * AIOS-024 remains responsible for enforcing the protected integration-branch
+     * policy, including rejecting main as an automated target.
      *
      * @return array<string, mixed>
      */
@@ -169,26 +196,30 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     {
         return [
             'repository_provider' => [
+                'bail',
                 'required',
                 Rule::enum(RepositoryProvider::class),
             ],
             'repository_url' => [
+                'bail',
                 'required',
                 'string',
                 'max:2048',
-                'url:http,https',
+                new ValidGitHubRepositoryUrl,
             ],
             'default_branch' => [
+                'bail',
                 'required',
                 'string',
-                'min:1',
                 'max:255',
+                new ValidGitBranchName,
             ],
             'integration_branch' => [
+                'bail',
                 'required',
                 'string',
-                'min:1',
                 'max:255',
+                new ValidGitBranchName,
             ],
         ];
     }

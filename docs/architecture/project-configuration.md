@@ -49,8 +49,25 @@ notifications
 - Default branch
 - Integration branch
 
-Repository configuration is metadata only. It does not authorize repository
-reads or writes.
+Schema version 1 supports GitHub repository metadata.
+
+Repository URLs:
+
+- Must use HTTPS.
+- Must use the `github.com` host.
+- Must contain exactly one owner and repository segment.
+- May contain the terminal `.git` clone suffix.
+- Must not contain credentials, ports, query strings, or fragments.
+- Must not point to repository subpages such as issues or pull requests.
+
+Branch values follow Git reference-name syntax. Repository metadata validation
+does not check whether a branch or repository exists.
+
+Repository configuration is metadata only. Saving it performs no DNS lookup,
+GitHub API request, clone, fetch, checkout, push, or repository write.
+
+AIOS-024 separately enforces the automated integration-branch policy,
+including rejection of `main` as an automated target.
 
 ## Validation commands
 
@@ -101,7 +118,6 @@ Commands are persisted by this schema but are not executed by AIOS-021.
 ## Deferred tickets
 
 - AIOS-022: setup wizard and persisted wizard progress
-- AIOS-023: repository metadata validation
 - AIOS-024: reject main as an automated integration target
 - AIOS-025: validation-command rules
 - AIOS-026: policy mutation and validation
