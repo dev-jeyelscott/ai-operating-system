@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Repositories\Projects;
 
 use App\Application\Projects\Contracts\ProjectRepository;
+use App\Domain\Projects\ProjectSetupStep;
 use App\Domain\Projects\ProjectStatus;
 use App\Domain\Projects\ProjectType;
 use App\Models\Organization;
@@ -102,6 +103,15 @@ final class EloquentProjectRepository implements ProjectRepository
                  * creation cannot succeed without configuration initialization.
                  */
                 $project->configuration()->create();
+
+                /*
+                * Every project receives one resumable setup-progress row.
+                * The unique project_id constraint prevents duplicate wizard state.
+                */
+                $project->setupProgress()->create([
+                    'current_step' => ProjectSetupStep::Details,
+                    'completed_steps' => [],
+                ]);
 
                 return $project
                     ->refresh()

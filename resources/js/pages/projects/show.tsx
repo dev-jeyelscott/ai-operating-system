@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Archive, ArrowLeft, Pencil, RotateCcw } from 'lucide-react';
+import { Archive, ArrowLeft, Pencil, RotateCcw, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     archive as archiveProject,
@@ -17,6 +17,7 @@ type Props = {
     organization: OrganizationSummary;
     project: ProjectSummary;
     permissions: ProjectPermissions;
+    setupUrl: string;
 };
 
 /**
@@ -26,6 +27,7 @@ export default function ShowProject({
     organization,
     project,
     permissions,
+    setupUrl,
 }: Props) {
     const isArchived = project.archivedAt !== null;
 
@@ -69,6 +71,15 @@ export default function ShowProject({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        {permissions.update && !isArchived && (
+                            <Button asChild>
+                                <Link href={setupUrl}>
+                                    <Settings2 aria-hidden="true" />
+                                    Configure project
+                                </Link>
+                            </Button>
+                        )}
+
                         {permissions.update && (
                             <Button asChild variant="outline">
                                 <Link

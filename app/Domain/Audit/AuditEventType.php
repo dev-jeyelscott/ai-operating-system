@@ -17,4 +17,5 @@ enum AuditEventType: string
     case ProjectUpdated = 'project.updated';
     case ProjectArchived = 'project.archived';
     case ProjectRestored = 'project.restored';
+    case ProjectSetupUpdated = 'project.setup.updated';
 }

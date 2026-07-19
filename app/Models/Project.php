@@ -63,6 +63,16 @@ final class Project extends Model
     }
 
     /**
+     * Return the resumable project setup progress.
+     *
+     * @return HasOne<ProjectSetupProgress, $this>
+     */
+    public function setupProgress(): HasOne
+    {
+        return $this->hasOne(ProjectSetupProgress::class);
+    }
+
+    /**
      * Limit a query to projects owned by one explicit organization.
      *
      * Tenant context must always be supplied by the caller. This prevents
