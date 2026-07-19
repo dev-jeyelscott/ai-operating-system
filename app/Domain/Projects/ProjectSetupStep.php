@@ -75,23 +75,17 @@ enum ProjectSetupStep: string
     public function description(): string
     {
         return match ($this) {
-            self::Details =>
-                'Describe the primary languages, frameworks, databases, runtimes, and infrastructure.',
+            self::Details => 'Describe the primary languages, frameworks, databases, runtimes, and infrastructure.',
 
-            self::Repository =>
-                'Store repository metadata without performing repository writes.',
+            self::Repository => 'Store repository metadata without performing repository writes.',
 
-            self::Integrations =>
-                'Validate the external integrations required by this project.',
+            self::Integrations => 'Validate the external integrations required by this project.',
 
-            self::Commands =>
-                'Record the commands later execution providers must validate.',
+            self::Commands => 'Record the commands later execution providers must validate.',
 
-            self::Policies =>
-                'Configure reasoning, providers, budget, retries, autonomy, approvals, and notifications.',
+            self::Policies => 'Configure reasoning, providers, budget, retries, autonomy, approvals, and notifications.',
 
-            self::Review =>
-                'Review the configuration and confirm the persisted setup.',
+            self::Review => 'Review the configuration and confirm the persisted setup.',
         };
     }
 
@@ -126,7 +120,27 @@ enum ProjectSetupStep: string
     }
 
     /**
-     * Return the immediately following wizard step.
+     * Return project setup steps in their canonical workflow order.
+     *
+     * Business logic must use this method instead of relying on enum declaration
+     * order returned by cases().
+     *
+     * @return list<self>
+     */
+    public static function ordered(): array
+    {
+        return [
+            self::Details,
+            self::Repository,
+            self::Integrations,
+            self::Commands,
+            self::Policies,
+            self::Review,
+        ];
+    }
+
+    /**
+     * Return the next step in the canonical project setup workflow.
      */
     public function next(): ?self
     {

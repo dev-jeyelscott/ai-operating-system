@@ -362,61 +362,13 @@ function readyProjectPolicyConfigurationFixture(
         ->assertSessionHasNoErrors();
 
     /*
-    * Policy tests do not exercise the external Notion connection.
-    */
-    completeProjectIntegrationSetupForTesting($project);
-
-    $testCase->actingAs($user)
-        ->put(route('organizations.projects.setup.update', [
-            'organization' => $organization,
-            'project' => $project,
-            'step' => ProjectSetupStep::Details,
-        ]), [
-            'languages' => 'PHP, TypeScript',
-            'frameworks' => 'Laravel 13, Inertia.js 3, React',
-            'databases' => 'PostgreSQL, Redis',
-            'infrastructure' => 'Docker Compose, GitHub Actions',
-            'package_managers' => 'Composer, pnpm',
-            'runtimes' => 'PHP 8.5, Node.js 22',
-        ])
-        ->assertRedirect(route(
-            'organizations.projects.setup.show',
-            [
-                'organization' => $organization,
-                'project' => $project,
-                'step' => ProjectSetupStep::Repository,
-            ],
-        ))
-        ->assertSessionHasNoErrors();
-
-    $testCase->put(route('organizations.projects.setup.update', [
-        'organization' => $organization,
-        'project' => $project,
-        'step' => ProjectSetupStep::Repository,
-    ]), [
-        'repository_provider' => 'github',
-        'repository_url' => 'https://github.com/example/project',
-        'default_branch' => 'main',
-        'integration_branch' => 'develop',
-    ])
-        ->assertRedirect(route(
-            'organizations.projects.setup.show',
-            [
-                'organization' => $organization,
-                'project' => $project,
-                'step' => ProjectSetupStep::Integrations,
-            ],
-        ))
-        ->assertSessionHasNoErrors();
-
-    /*
-    * Policy tests are not responsible for testing the external Notion API.
-    */
+     * Policy tests do not exercise the external Notion connection.
+     */
     completeProjectIntegrationSetupForTesting($project);
 
     /*
-    * Commands must be submitted to the generic setup update endpoint.
-    */
+     * Commands must be submitted to the generic setup update endpoint.
+     */
     $testCase
         ->actingAs($user)
         ->put(route('organizations.projects.setup.update', [

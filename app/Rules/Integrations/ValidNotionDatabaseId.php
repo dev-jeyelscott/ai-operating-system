@@ -7,6 +7,7 @@ namespace App\Rules\Integrations;
 use App\Domain\Integrations\NotionDatabaseId;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Translation\PotentiallyTranslatedString;
 use InvalidArgumentException;
 
 /**
@@ -17,7 +18,7 @@ final readonly class ValidNotionDatabaseId implements ValidationRule
     /**
      * Validate the submitted database reference using the domain value object.
      *
-     * @param  Closure(string): void  $fail
+     * @param  Closure(string, ?string=): PotentiallyTranslatedString  $fail
      */
     public function validate(
         string $attribute,
@@ -25,7 +26,9 @@ final readonly class ValidNotionDatabaseId implements ValidationRule
         Closure $fail,
     ): void {
         if (! is_string($value)) {
-            $fail('The :attribute must be a valid Notion database identifier.');
+            $fail(
+                'The :attribute must be a valid Notion database identifier.',
+            );
 
             return;
         }

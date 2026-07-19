@@ -196,10 +196,8 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
                         $exception instanceof RequestException
                         && $exception->response->status() === 429
                     ) {
-                        $retryAfter = (int) (
-                            $exception->response->header(
-                                'Retry-After',
-                            ) ?? 0
+                        $retryAfter = (int) $exception->response->header(
+                            'Retry-After',
                         );
 
                         if ($retryAfter > 0) {
@@ -207,7 +205,7 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
                         }
                     }
 
-                    return min(
+                    return (int) min(
                         250 * (2 ** ($attempt - 1)),
                         2000,
                     );
@@ -233,10 +231,8 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
                      * synchronous user request. Surface long limits to the user.
                      */
                     if ($status === 429) {
-                        $retryAfter = (int) (
-                            $exception->response->header(
-                                'Retry-After',
-                            ) ?? 0
+                        $retryAfter = (int) $exception->response->header(
+                            'Retry-After',
                         );
 
                         return $retryAfter === 0
@@ -284,10 +280,12 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
      */
     private function requestId(Response $response): ?string
     {
-        $header = $response->header('x-request-id');
+        $headerRequestId = trim(
+            $response->header('x-request-id'),
+        );
 
-        if (is_string($header) && trim($header) !== '') {
-            return substr(trim($header), 0, 255);
+        if ($headerRequestId !== '') {
+            return substr($headerRequestId, 0, 255);
         }
 
         $bodyRequestId = $response->json('request_id');

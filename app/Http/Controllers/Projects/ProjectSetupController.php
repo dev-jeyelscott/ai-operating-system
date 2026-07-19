@@ -258,7 +258,7 @@ final class ProjectSetupController extends Controller
                     ],
                 ),
             ],
-            ProjectSetupStep::cases(),
+            ProjectSetupStep::ordered()
         );
     }
 

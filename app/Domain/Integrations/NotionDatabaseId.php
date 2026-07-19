@@ -95,24 +95,22 @@ final readonly class NotionDatabaseId
         );
 
         /*
-         * Notion URLs commonly place the UUID after a hyphenated page title.
-         * Remove separators and use the final 32-character hexadecimal match.
-         */
-        preg_match_all(
+        * Notion URLs commonly place the UUID after a hyphenated page title.
+        * Remove separators and use the final 32-character hexadecimal match.
+        */
+        $matchCount = preg_match_all(
             '/[0-9a-f]{32}/',
             str_replace('-', '', $path),
             $matches,
         );
 
-        $identifiers = $matches[0] ?? [];
-
-        if ($identifiers === []) {
+        if ($matchCount === false || $matchCount === 0) {
             throw new InvalidArgumentException(
                 'The Notion database URL does not contain a database identifier.',
             );
         }
 
-        return (string) end($identifiers);
+        return (string) end($matches[0]);
     }
 
     /**

@@ -52,7 +52,7 @@ function completeProjectIntegrationSetupForTesting(Project $project): void
         ] as $requiredStep
     ) {
         if (! $progress->hasCompleted($requiredStep)) {
-            throw new \LogicException(sprintf(
+            throw new LogicException(sprintf(
                 'Complete the "%s" setup step before bypassing Integrations.',
                 $requiredStep->value,
             ));

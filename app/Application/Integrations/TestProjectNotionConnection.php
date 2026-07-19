@@ -116,7 +116,7 @@ final readonly class TestProjectNotionConnection
          * result to be persisted against a different credential.
          */
         $testedCredentialVersion = $submittedCredential === null
-            ? $storedCredential?->version
+            ? $storedCredential->version
             : null;
 
         $existingIntegration = ProjectIntegration::query()
