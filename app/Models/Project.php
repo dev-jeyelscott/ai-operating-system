@@ -136,9 +136,9 @@ final class Project extends Model
                 }
 
                 /*
-                 * archived_at is intentionally excluded from mass assignment.
-                 * Only this guarded aggregate operation may change it.
-                 */
+                * archived_at is intentionally excluded from mass assignment.
+                * Only this guarded aggregate operation may change it.
+                */
                 $project->forceFill([
                     'archived_at' => now(),
                 ])->save();

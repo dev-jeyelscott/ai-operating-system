@@ -131,10 +131,10 @@ final class EloquentProjectRepository implements ProjectRepository
                 ]);
 
                 /*
-                 * The application action normalizes input before this boundary.
-                 * Dirtiness therefore represents a factual metadata difference,
-                 * not whitespace or empty-description variation.
-                 */
+                * The application action normalizes input before this boundary.
+                * Dirtiness therefore represents a factual metadata difference,
+                * not whitespace or empty-description variation.
+                */
                 $changed = $project->isDirty([
                     'name',
                     'description',
@@ -146,9 +146,9 @@ final class EloquentProjectRepository implements ProjectRepository
                 }
 
                 /*
-                 * Slug, organization ownership, workflow status, and archive
-                 * state remain immutable through the metadata update path.
-                 */
+                * Slug, organization ownership, workflow status, and archive
+                * state remain immutable through the metadata update path.
+                */
                 return new ProjectMutationResult(
                     project: $project->refresh(),
                     changed: $changed,
