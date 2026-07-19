@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
 use App\Http\Controllers\Integrations\StoreProjectIntegrationCredentialController;
+use App\Http\Controllers\Integrations\TestProjectNotionConnectionController;
 use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
@@ -59,6 +60,21 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->name('store');
                         });
 
+                    /*
+                     * Validate a Notion token, workspace, and database through
+                     * the dedicated integration connection-test action.
+                     */
+                    Route::post(
+                        '/{project}/integrations/notion/test',
+                        TestProjectNotionConnectionController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('manageIntegrations', 'project')
+                        ->name('integrations.notion.test');
+
+                    /*
+                     * Store or rotate an encrypted provider credential.
+                     */
                     Route::put(
                         '/{project}/integrations/{provider}/credential',
                         StoreProjectIntegrationCredentialController::class,
@@ -79,6 +95,10 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->can('update', 'project')
                                 ->name('start');
 
+                            /*
+                             * Every setup step must remain viewable, including
+                             * Integrations and Review.
+                             */
                             Route::get('/{step}', 'show')
                                 ->whereIn(
                                     'step',
@@ -87,10 +107,15 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->can('update', 'project')
                                 ->name('show');
 
+                            /*
+                             * Only directly persisted setup steps use the
+                             * generic update endpoint. Integrations uses its
+                             * dedicated connection-test action.
+                             */
                             Route::put('/{step}', 'update')
                                 ->whereIn(
                                     'step',
-                                    ProjectSetupStep::values(),
+                                    ProjectSetupStep::directUpdateValues(),
                                 )
                                 ->middleware('throttle:project-commands')
                                 ->can('update', 'project')

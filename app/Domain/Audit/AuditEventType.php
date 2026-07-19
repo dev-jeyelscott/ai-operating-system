@@ -22,4 +22,7 @@ enum AuditEventType: string
 
     case IntegrationCredentialStored = 'integration.credential.stored';
     case IntegrationCredentialRotated = 'integration.credential.rotated';
+
+    case NotionConnectionTestSucceeded = 'integration.notion.connection_test.succeeded';
+    case NotionConnectionTestFailed = 'integration.notion.connection_test.failed';
 }

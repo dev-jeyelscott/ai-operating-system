@@ -58,6 +58,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
         return match ($this->step()) {
             ProjectSetupStep::Details => $this->detailsRules(),
             ProjectSetupStep::Repository => $this->repositoryRules(),
+            ProjectSetupStep::Integrations => [],
             ProjectSetupStep::Commands => $this->validationCommandRules(),
             ProjectSetupStep::Policies => $this->policyRules(),
             ProjectSetupStep::Review => [

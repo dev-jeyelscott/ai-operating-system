@@ -97,4 +97,16 @@ return [
             20,
         ),
     ],
+
+    'integration_test' => [
+        'per_minute' => (int) env(
+            'RATE_LIMIT_NOTION_TEST_PER_MINUTE',
+            5,
+        ),
+
+        'per_hour' => (int) env(
+            'RATE_LIMIT_NOTION_TEST_PER_HOUR',
+            20,
+        ),
+    ],
 ];

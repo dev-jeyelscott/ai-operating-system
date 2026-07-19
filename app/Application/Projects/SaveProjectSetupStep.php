@@ -47,6 +47,7 @@ final readonly class SaveProjectSetupStep
         ProjectSetupStep $step,
         array $payload,
         ?string $correlationId = null,
+        bool $externalConfigurationChanged = false,
     ): ProjectSetupProgress {
         if ($actorUserId < 1) {
             throw new InvalidArgumentException(
@@ -62,6 +63,7 @@ final readonly class SaveProjectSetupStep
                 $step,
                 $payload,
                 $correlationId,
+                $externalConfigurationChanged
             ): ProjectSetupProgress {
                 $project = Project::query()
                     ->forOrganization($organizationId)
@@ -107,8 +109,13 @@ final readonly class SaveProjectSetupStep
                  * 3. Calling fill() before reading casted values may interact with
                  *    Eloquent's cast cache and produce incorrect comparisons.
                  */
+                /*
+                * Some configuration belongs to another module-owned table. A successful
+                * Notion target change still increments the global configuration revision.
+                */
                 $configurationChanged =
-                    $this->hasMaterialConfigurationChange(
+                    $externalConfigurationChanged
+                    || $this->hasMaterialConfigurationChange(
                         configuration: $configuration,
                         candidateAttributes: $configurationAttributes,
                     );
@@ -278,6 +285,8 @@ final readonly class SaveProjectSetupStep
                 'default_branch' => $payload['default_branch'],
                 'integration_branch' => $payload['integration_branch'],
             ],
+
+            ProjectSetupStep::Integrations => [],
 
             ProjectSetupStep::Commands => $this->validationCommandAttributes(
                 $payload,

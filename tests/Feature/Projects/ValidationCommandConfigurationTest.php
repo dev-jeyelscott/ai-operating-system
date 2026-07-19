@@ -24,7 +24,7 @@ beforeEach(function (): void {
     ] = validationCommandProjectFixture();
 
     /*
-     * Complete the required details step.
+     * Complete the required Details step.
      */
     $this->actingAs($this->user)
         ->put(route('organizations.projects.setup.update', [
@@ -50,7 +50,7 @@ beforeEach(function (): void {
         ->assertSessionHasNoErrors();
 
     /*
-     * Complete the required repository step.
+     * Complete the required Repository step.
      */
     $this->put(route('organizations.projects.setup.update', [
         'organization' => $this->organization,
@@ -67,10 +67,16 @@ beforeEach(function (): void {
             [
                 'organization' => $this->organization,
                 'project' => $this->project,
-                'step' => ProjectSetupStep::Commands,
+                'step' => ProjectSetupStep::Integrations,
             ],
         ))
         ->assertSessionHasNoErrors();
+
+    /*
+     * These tests concern validation-command persistence, not the external
+     * Notion transport, so arrange the completed integration prerequisite.
+     */
+    completeProjectIntegrationSetupForTesting($this->project);
 
     $this->commandUpdateUrl = route(
         'organizations.projects.setup.update',

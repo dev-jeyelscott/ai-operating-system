@@ -171,6 +171,8 @@ final class RateLimitServiceProvider extends ServiceProvider
 
             'organizations.projects.integrations.credentials.store' => 'credentials',
 
+            'organizations.projects.integrations.notion.test' => 'integration_test',
+
             'organizations.projects.archive' => 'archive',
             'organizations.projects.restore' => 'restore',
 

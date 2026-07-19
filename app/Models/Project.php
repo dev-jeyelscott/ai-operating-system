@@ -38,6 +38,7 @@ use LogicException;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  * @property-read Collection<int, ProviderCredential> $providerCredentials
+ * @property-read Collection<int, ProjectIntegration> $projectIntegrations
  */
 #[Fillable(['name', 'slug', 'description', 'project_type'])]
 #[UsePolicy(ProjectPolicy::class)]
@@ -298,5 +299,15 @@ final class Project extends Model
     public function providerCredentials(): HasMany
     {
         return $this->hasMany(ProviderCredential::class);
+    }
+
+    /**
+     * Return safe provider integration metadata owned by this project.
+     *
+     * @return HasMany<ProjectIntegration, $this>
+     */
+    public function projectIntegrations(): HasMany
+    {
+        return $this->hasMany(ProjectIntegration::class);
     }
 }

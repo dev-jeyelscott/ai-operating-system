@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Projects;
 
 use App\Application\Projects\SaveProjectSetupStep;
+use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Projects\UpdateProjectSetupStepRequest;
 use App\Models\Organization;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
+use App\Models\ProjectIntegration;
 use App\Models\ProjectSetupProgress;
+use App\Models\ProviderCredential;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -67,6 +70,25 @@ final class ProjectSetupController extends Controller
             ->where('project_id', $project->id)
             ->firstOrFail();
 
+        $notionIntegration = ProjectIntegration::query()
+            ->forOrganization($organization->id)
+            ->forProject($project->id)
+            ->where(
+                'provider',
+                IntegrationProvider::Notion->value,
+            )
+            ->first();
+
+        $notionCredentialConfigured =
+            ProviderCredential::query()
+                ->forOrganization($organization->id)
+                ->forProject($project->id)
+                ->where(
+                    'provider',
+                    IntegrationProvider::Notion->value,
+                )
+                ->exists();
+
         return Inertia::render('projects/setup', [
             'organization' => [
                 'id' => $organization->id,
@@ -85,20 +107,46 @@ final class ProjectSetupController extends Controller
                 progress: $progress,
             ),
             'configuration' => $this->serializeConfiguration($configuration),
+            'integration' => [
+                'provider' => IntegrationProvider::Notion->value,
+                'credentialConfigured' => $notionCredentialConfigured,
+                'status' => $notionIntegration?->connection_status->value,
+                'workspaceId' => $notionIntegration?->workspace_id,
+                'workspaceName' => $notionIntegration?->workspace_name,
+                'databaseId' => $notionIntegration?->database_id,
+                'databaseName' => $notionIntegration?->database_name,
+                'lastFailureCode' => $notionIntegration?->last_failure_code?->value,
+                'lastTestedAt' => $notionIntegration?->last_tested_at
+                    ->toIso8601String(),
+                'lastConnectedAt' => $notionIntegration?->last_connected_at
+                    ?->toIso8601String(),
+            ],
             'progress' => [
                 'currentStep' => $progress->current_step->value,
                 'completedSteps' => $progress->completed_steps,
                 'completedAt' => $progress->completed_at?->toIso8601String(),
             ],
             'urls' => [
-                'update' => route(
-                    'organizations.projects.setup.update',
-                    [
-                        'organization' => $organization,
-                        'project' => $project,
-                        'step' => $step,
-                    ],
-                ),
+                'update' => $step === ProjectSetupStep::Integrations
+                    ? route(
+                        'organizations.projects.integrations.notion.test',
+                        [
+                            'organization' => $organization,
+                            'project' => $project,
+                        ],
+                    )
+                    : route(
+                        'organizations.projects.setup.update',
+                        [
+                            'organization' => $organization,
+                            'project' => $project,
+                            'step' => $step,
+                        ],
+                    ),
+
+                'method' => $step === ProjectSetupStep::Integrations
+                    ? 'post'
+                    : 'put',
                 'project' => route(
                     'organizations.projects.show',
                     [

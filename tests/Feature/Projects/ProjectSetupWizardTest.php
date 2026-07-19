@@ -48,7 +48,7 @@ test('an authorized user can open persisted project setup', function () {
                 ->component('projects/setup')
                 ->where('activeStep', 'details')
                 ->where('progress.currentStep', 'details')
-                ->has('steps', 5),
+                ->has('steps', 6),
         );
 });
 
@@ -326,36 +326,38 @@ test('project setup submissions use the configured update command limit', functi
             [
                 'organization' => $organization,
                 'project' => $project,
-                'step' => ProjectSetupStep::Commands,
+                'step' => ProjectSetupStep::Integrations,
             ],
         ))
         ->assertSessionHasNoErrors();
 
-    $commandsPage = route('organizations.projects.setup.show', [
+    $integrationsPage = route('organizations.projects.setup.show', [
         'organization' => $organization,
         'project' => $project,
-        'step' => ProjectSetupStep::Commands,
+        'step' => ProjectSetupStep::Integrations,
     ]);
 
     /*
-     * The third mutation must be rejected because the test-specific update
-     * limit allows only two requests per minute.
-     */
+    * The third generic setup mutation must be rejected because the configured
+    * update limit allows only two requests per minute.
+    *
+    * Re-submit Repository rather than testing Commands because Integrations is
+    * now the required intermediate step.
+    */
     $this
         ->actingAs($user)
-        ->from($commandsPage)
+        ->from($integrationsPage)
         ->put(route('organizations.projects.setup.update', [
             'organization' => $organization,
             'project' => $project,
-            'step' => ProjectSetupStep::Commands,
+            'step' => ProjectSetupStep::Repository,
         ]), [
-            'build_command' => 'pnpm build',
-            'test_command' => 'composer test && pnpm test:unit',
-            'lint_command' => 'composer lint:check && pnpm lint:check',
-            'static_analysis_command' => 'composer types:check && pnpm types:check',
-            'security_command' => 'composer audit',
+            'repository_provider' => 'github',
+            'repository_url' => 'https://github.com/example/project',
+            'default_branch' => 'main',
+            'integration_branch' => 'develop',
         ])
-        ->assertRedirect($commandsPage)
+        ->assertRedirect($integrationsPage)
         ->assertHeader('Retry-After')
         ->assertSessionHasErrors('rate_limit');
 

@@ -13,6 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { NotionIntegrationFields } from '@/features/projects/components/notion-integration-fields';
 import { ProjectSetupStepper } from '@/features/projects/components/project-setup-stepper';
 import { ValidationCommandFields } from '@/features/projects/components/validation-command-fields';
 import type { ValidationCommandFormData } from '@/features/projects/components/validation-command-fields';
@@ -22,6 +23,7 @@ import type {
     ProjectSetupProgress,
     ProjectSetupStep,
 } from '@/types';
+import type { ProjectIntegrationConnection } from '@/types';
 
 type Props = {
     organization: OrganizationSummary;
@@ -34,8 +36,10 @@ type Props = {
     steps: ProjectSetupStep[];
     configuration: ProjectSetupConfiguration;
     progress: ProjectSetupProgress;
+    integration: ProjectIntegrationConnection;
     urls: {
         update: string;
+        method: 'post' | 'put';
         project: string;
     };
 };
@@ -54,6 +58,7 @@ export default function ProjectSetup({
     activeStep,
     steps,
     configuration,
+    integration,
     progress,
     urls,
 }: Props) {
@@ -103,7 +108,7 @@ export default function ProjectSetup({
 
                     <Form
                         action={urls.update}
-                        method="put"
+                        method={urls.method}
                         className="p-6"
                         disableWhileProcessing
                     >
@@ -129,6 +134,14 @@ export default function ProjectSetup({
                                     />
                                 )}
 
+                                {activeStep === 'integrations' && (
+                                    <NotionIntegrationFields
+                                        integration={integration}
+                                        errors={errors}
+                                        disabled={processing}
+                                    />
+                                )}
+
                                 {activeStep === 'commands' && (
                                     <CommandStep
                                         configuration={configuration}
@@ -147,7 +160,9 @@ export default function ProjectSetup({
                                 {activeStep === 'review' && (
                                     <ReviewStep
                                         configuration={configuration}
+                                        integration={integration}
                                         progress={progress}
+                                        totalSteps={steps.length}
                                         errors={errors}
                                     />
                                 )}
@@ -160,10 +175,14 @@ export default function ProjectSetup({
 
                                     <Button type="submit" disabled={processing}>
                                         {processing
-                                            ? 'Saving...'
+                                            ? activeStep === 'integrations'
+                                                ? 'Testing...'
+                                                : 'Saving...'
                                             : activeStep === 'review'
                                               ? 'Complete setup'
-                                              : 'Save and continue'}
+                                              : activeStep === 'integrations'
+                                                ? 'Test connection and continue'
+                                                : 'Save and continue'}
 
                                         {activeStep === 'review' ? (
                                             <CheckCircle2 aria-hidden="true" />
@@ -536,11 +555,15 @@ function PolicyFields({
 
 function ReviewStep({
     configuration,
+    integration,
     progress,
+    totalSteps,
     errors,
 }: {
     configuration: ProjectSetupConfiguration;
+    integration: ProjectIntegrationConnection;
     progress: ProjectSetupProgress;
+    totalSteps: number;
     errors: FormErrors;
 }) {
     return (
@@ -566,6 +589,32 @@ function ReviewStep({
                         value={configuration.repository.url ?? 'Not configured'}
                     />
                     <SummaryItem
+                        label="Notion connection"
+                        value={
+                            integration.status === 'connected'
+                                ? 'Connected'
+                                : 'Not connected'
+                        }
+                    />
+
+                    <SummaryItem
+                        label="Notion workspace"
+                        value={
+                            integration.workspaceName ??
+                            integration.workspaceId ??
+                            'Not configured'
+                        }
+                    />
+
+                    <SummaryItem
+                        label="Notion database"
+                        value={
+                            integration.databaseName ??
+                            integration.databaseId ??
+                            'Not configured'
+                        }
+                    />
+                    <SummaryItem
                         label="Integration branch"
                         value={configuration.repository.integrationBranch}
                     />
@@ -583,7 +632,7 @@ function ReviewStep({
                     />
                     <SummaryItem
                         label="Completed sections"
-                        value={`${progress.completedSteps.length} of 5`}
+                        value={`${progress.completedSteps.length} of ${totalSteps}`}
                     />
                 </dl>
             </div>

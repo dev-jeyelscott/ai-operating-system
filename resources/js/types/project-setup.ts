@@ -69,3 +69,19 @@ export type ProjectSetupProgress = {
     completedSteps: string[];
     completedAt: string | null;
 };
+
+/**
+ * Safe project-scoped Notion connection metadata.
+ */
+export type ProjectIntegrationConnection = {
+    provider: 'notion';
+    credentialConfigured: boolean;
+    status: 'connected' | 'failed' | null;
+    workspaceId: string | null;
+    workspaceName: string | null;
+    databaseId: string | null;
+    databaseName: string | null;
+    lastFailureCode: string | null;
+    lastTestedAt: string | null;
+    lastConnectedAt: string | null;
+};

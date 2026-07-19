@@ -35,4 +35,34 @@ return [
         ],
     ],
 
+    'notion' => [
+        /*
+        * Per-project credentials are stored in provider_credentials.
+        * Do not add a global Notion token here.
+        */
+        'base_url' => env(
+            'NOTION_API_BASE_URL',
+            'https://api.notion.com/v1',
+        ),
+
+        'version' => env(
+            'NOTION_API_VERSION',
+            '2026-03-11',
+        ),
+
+        'connect_timeout_seconds' => (int) env(
+            'NOTION_CONNECT_TIMEOUT_SECONDS',
+            3,
+        ),
+
+        'timeout_seconds' => (int) env(
+            'NOTION_TIMEOUT_SECONDS',
+            8,
+        ),
+
+        'retry_attempts' => (int) env(
+            'NOTION_RETRY_ATTEMPTS',
+            3,
+        ),
+    ],
 ];

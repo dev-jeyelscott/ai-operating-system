@@ -50,7 +50,7 @@ test(
                 [
                     'organization' => $organization,
                     'project' => $project,
-                    'step' => ProjectSetupStep::Commands,
+                    'step' => ProjectSetupStep::Integrations,
                 ],
             ));
 
@@ -72,7 +72,7 @@ test(
             ))
             ->toBeTrue()
             ->and($progress->current_step)
-            ->toBe(ProjectSetupStep::Commands);
+            ->toBe(ProjectSetupStep::Integrations);
 
         Http::assertNothingSent();
     },
