@@ -146,3 +146,66 @@ test('tenant scoped repository writes cannot mutate foreign projects', function 
         ->and($foreignArchivedProject->refresh()->archived_at)
         ->not->toBeNull();
 });
+
+test('project repository mutations report factual persistence changes', function () {
+    $organization = Organization::factory()->create();
+
+    $project = Project::factory()
+        ->for($organization)
+        ->create([
+            'name' => 'Stable Project',
+            'description' => null,
+            'project_type' => ProjectType::Api,
+        ]);
+
+    $projects = app(ProjectRepository::class);
+
+    $unchangedUpdate = $projects->update(
+        organizationId: $organization->id,
+        projectId: $project->id,
+        name: 'Stable Project',
+        description: null,
+        projectType: ProjectType::Api,
+    );
+
+    $changedUpdate = $projects->update(
+        organizationId: $organization->id,
+        projectId: $project->id,
+        name: 'Changed Project',
+        description: null,
+        projectType: ProjectType::Api,
+    );
+
+    $firstArchive = $projects->archive(
+        organizationId: $organization->id,
+        projectId: $project->id,
+    );
+
+    $secondArchive = $projects->archive(
+        organizationId: $organization->id,
+        projectId: $project->id,
+    );
+
+    $firstRestore = $projects->restore(
+        organizationId: $organization->id,
+        projectId: $project->id,
+    );
+
+    $secondRestore = $projects->restore(
+        organizationId: $organization->id,
+        projectId: $project->id,
+    );
+
+    expect($unchangedUpdate->changed)
+        ->toBeFalse()
+        ->and($changedUpdate->changed)
+        ->toBeTrue()
+        ->and($firstArchive->changed)
+        ->toBeTrue()
+        ->and($secondArchive->changed)
+        ->toBeFalse()
+        ->and($firstRestore->changed)
+        ->toBeTrue()
+        ->and($secondRestore->changed)
+        ->toBeFalse();
+});

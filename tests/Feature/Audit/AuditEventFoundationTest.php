@@ -5,7 +5,10 @@ declare(strict_types=1);
 use App\Application\Audit\Contracts\AuditEventRepository;
 use App\Application\Audit\Data\AuditEventData;
 use App\Application\Audit\RecordAuditEvent;
+use App\Application\Projects\ArchiveProject;
 use App\Application\Projects\CreateProject;
+use App\Application\Projects\RestoreProject;
+use App\Application\Projects\UpdateProject;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Audit\AuditSubjectType;
@@ -319,4 +322,180 @@ test('a failed audit append rolls back the privileged business mutation', functi
     ]);
 
     $this->assertDatabaseCount('audit_events', 0);
+});
+
+test('repeated archive commands append only one factual audit event', function () {
+    $user = User::factory()->create();
+    $organization = Organization::factory()->create();
+
+    $project = Project::factory()
+        ->for($organization)
+        ->create();
+
+    $archiveProject = app(ArchiveProject::class);
+
+    $firstResult = $archiveProject->handle(
+        actorUserId: $user->id,
+        organizationId: $organization->id,
+        projectId: $project->id,
+        correlationId: 'audit-project-archive-first',
+    );
+
+    $secondResult = $archiveProject->handle(
+        actorUserId: $user->id,
+        organizationId: $organization->id,
+        projectId: $project->id,
+        correlationId: 'audit-project-archive-second',
+    );
+
+    $events = AuditEvent::query()
+        ->where('project_id', $project->id)
+        ->where(
+            'event_type',
+            AuditEventType::ProjectArchived->value,
+        )
+        ->orderBy('sequence')
+        ->get();
+
+    expect($firstResult->isArchived())
+        ->toBeTrue()
+        ->and($secondResult->isArchived())
+        ->toBeTrue()
+        ->and($events)
+        ->toHaveCount(1)
+        ->and($events->sole()->correlation_id)
+        ->toBe('audit-project-archive-first');
+});
+
+test('repeated restore commands append only one factual audit event', function () {
+    $user = User::factory()->create();
+    $organization = Organization::factory()->create();
+
+    $project = Project::factory()
+        ->for($organization)
+        ->create([
+            'archived_at' => now()->subMinute(),
+        ]);
+
+    $restoreProject = app(RestoreProject::class);
+
+    $firstResult = $restoreProject->handle(
+        actorUserId: $user->id,
+        organizationId: $organization->id,
+        projectId: $project->id,
+        correlationId: 'audit-project-restore-first',
+    );
+
+    $secondResult = $restoreProject->handle(
+        actorUserId: $user->id,
+        organizationId: $organization->id,
+        projectId: $project->id,
+        correlationId: 'audit-project-restore-second',
+    );
+
+    $events = AuditEvent::query()
+        ->where('project_id', $project->id)
+        ->where(
+            'event_type',
+            AuditEventType::ProjectRestored->value,
+        )
+        ->orderBy('sequence')
+        ->get();
+
+    expect($firstResult->isArchived())
+        ->toBeFalse()
+        ->and($secondResult->isArchived())
+        ->toBeFalse()
+        ->and($events)
+        ->toHaveCount(1)
+        ->and($events->sole()->correlation_id)
+        ->toBe('audit-project-restore-first');
+});
+
+test('an update with identical normalized values appends no audit event', function () {
+    $user = User::factory()->create();
+    $organization = Organization::factory()->create();
+
+    $project = Project::factory()
+        ->for($organization)
+        ->create([
+            'name' => 'Stable Project',
+            'description' => 'Stable description.',
+            'project_type' => ProjectType::Api,
+        ]);
+
+    $originalUpdatedAt = $project->getRawOriginal('updated_at');
+
+    $updatedProject = app(UpdateProject::class)->handle(
+        actorUserId: $user->id,
+        organizationId: $organization->id,
+        projectId: $project->id,
+        name: '  Stable Project  ',
+        description: '  Stable description.  ',
+        projectType: ProjectType::Api,
+        correlationId: 'audit-project-update-noop',
+    );
+
+    expect($updatedProject->name)
+        ->toBe('Stable Project')
+        ->and($updatedProject->description)
+        ->toBe('Stable description.')
+        ->and($updatedProject->project_type)
+        ->toBe(ProjectType::Api)
+        ->and($updatedProject->getRawOriginal('updated_at'))
+        ->toBe($originalUpdatedAt);
+
+    $this->assertDatabaseMissing('audit_events', [
+        'project_id' => $project->id,
+        'event_type' => AuditEventType::ProjectUpdated->value,
+    ]);
+});
+
+test('a factual project metadata update appends one accurate audit event', function () {
+    $user = User::factory()->create();
+    $organization = Organization::factory()->create();
+
+    $project = Project::factory()
+        ->for($organization)
+        ->create([
+            'name' => 'Original Project',
+            'description' => null,
+            'project_type' => ProjectType::WebApplication,
+        ]);
+
+    $updatedProject = app(UpdateProject::class)->handle(
+        actorUserId: $user->id,
+        organizationId: $organization->id,
+        projectId: $project->id,
+        name: 'Updated Project',
+        description: 'Updated factual description.',
+        projectType: ProjectType::Api,
+        correlationId: 'audit-project-update-factual',
+    );
+
+    $events = AuditEvent::query()
+        ->where('project_id', $project->id)
+        ->where(
+            'event_type',
+            AuditEventType::ProjectUpdated->value,
+        )
+        ->orderBy('sequence')
+        ->get();
+
+    expect($updatedProject->name)
+        ->toBe('Updated Project')
+        ->and($updatedProject->description)
+        ->toBe('Updated factual description.')
+        ->and($updatedProject->project_type)
+        ->toBe(ProjectType::Api)
+        ->and($events)
+        ->toHaveCount(1)
+        ->and($events->sole()->correlation_id)
+        ->toBe('audit-project-update-factual')
+        ->and($events->sole()->metadata)
+        ->toMatchArray([
+            'name' => 'Updated Project',
+            'project_type' => ProjectType::Api->value,
+            'description_present' => true,
+        ]);
 });

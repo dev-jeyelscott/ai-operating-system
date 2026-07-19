@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Projects\Contracts;
 
+use App\Application\Projects\Data\ProjectMutationResult;
 use App\Domain\Projects\ProjectStatus;
 use App\Domain\Projects\ProjectType;
 use App\Models\Project;
@@ -47,7 +48,7 @@ interface ProjectRepository
     ): Project;
 
     /**
-     * Update mutable project metadata inside the supplied organization.
+     * Update mutable project metadata and report whether persistence changed.
      */
     public function update(
         int $organizationId,
@@ -55,23 +56,23 @@ interface ProjectRepository
         string $name,
         ?string $description,
         ProjectType $projectType,
-    ): Project;
+    ): ProjectMutationResult;
 
     /**
-     * Archive a project inside the supplied organization.
+     * Archive a project and report whether its archive state changed.
      */
     public function archive(
         int $organizationId,
         int $projectId,
-    ): Project;
+    ): ProjectMutationResult;
 
     /**
-     * Restore a project inside the supplied organization.
+     * Restore a project and report whether its archive state changed.
      */
     public function restore(
         int $organizationId,
         int $projectId,
-    ): Project;
+    ): ProjectMutationResult;
 
     /**
      * Apply a guarded workflow transition inside the supplied organization.

@@ -49,25 +49,29 @@ final readonly class RestoreProject
                 $projectId,
                 $correlationId,
             ): Project {
-                $project = $this->projects->restore(
+                $mutation = $this->projects->restore(
                     organizationId: $organizationId,
                     projectId: $projectId,
                 );
 
-                $this->audit->record(
-                    organizationId: $organizationId,
-                    projectId: $project->id,
-                    actorType: AuditActorType::User,
-                    actorId: (string) $actorUserId,
-                    eventType: AuditEventType::ProjectRestored,
-                    subjectType: AuditSubjectType::Project,
-                    subjectId: (string) $project->id,
-                    correlationId: $correlationId,
-                    metadata: [
-                        'archived_at' => null,
-                        'status' => $project->status->value,
-                    ],
-                );
+                $project = $mutation->project;
+
+                if ($mutation->changed) {
+                    $this->audit->record(
+                        organizationId: $organizationId,
+                        projectId: $project->id,
+                        actorType: AuditActorType::User,
+                        actorId: (string) $actorUserId,
+                        eventType: AuditEventType::ProjectRestored,
+                        subjectType: AuditSubjectType::Project,
+                        subjectId: (string) $project->id,
+                        correlationId: $correlationId,
+                        metadata: [
+                            'archived_at' => null,
+                            'status' => $project->status->value,
+                        ],
+                    );
+                }
 
                 return $project;
             },
