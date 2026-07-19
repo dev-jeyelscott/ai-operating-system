@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
+# Keep ordering and pattern matching deterministic between local and CI systems.
+export LC_ALL=C
+
+readonly -a REQUIRED_NON_EMPTY_DIRECTORIES=(
+    "docs/security"
+    "tests/Feature/Policies"
+    "tests/Feature/Security"
+    "tests/Unit/Policies"
+    "tests/Unit/Security"
+)
+
+readonly EVIDENCE_DIRECTORY="docs/evidence"
+
+readonly EVIDENCE_PLACEHOLDER_PATTERN='Add the .* here|Document any .* here|<number>|<scope>|(^|[^[:alnum:]_])TBD([^[:alnum:]_]|$)'
+
+failure_count=0
+
+declare -a tracked_backup_files=()
+declare -a empty_required_files=()
+declare -a unresolved_evidence_placeholders=()
+
+# Print one grouped error category with every actionable repository path.
+report_failures() {
+    local heading="$1"
+    shift
+
+    local item
+
+    printf 'ERROR: %s\n' "$heading" >&2
+
+    for item in "$@"; do
+        printf '  - %s\n' "$item" >&2
+    done
+
+    printf '\n' >&2
+}
+
+# Detect backup and editor-temporary files that already exist in Git's index.
+check_tracked_backup_files() {
+    local path
+
+    while IFS= read -r -d '' path; do
+        case "$path" in
+            *.backup | *.bak | *.orig | *~)
+                tracked_backup_files+=("$path")
+                ;;
+        esac
+    done < <(git ls-files -z)
+
+    if (( ${#tracked_backup_files[@]} > 0 )); then
+        report_failures \
+            'tracked backup or editor-temporary files were found:' \
+            "${tracked_backup_files[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Detect required security documentation and policy/security tests with no content.
+check_empty_required_files() {
+    local directory
+    local path
+
+    for directory in "${REQUIRED_NON_EMPTY_DIRECTORIES[@]}"; do
+        [[ -d "$directory" ]] || continue
+
+        while IFS= read -r -d '' path; do
+            empty_required_files+=("$path")
+        done < <(
+            find "$directory" \
+                -type f \
+                -size 0 \
+                -print0 \
+                | sort -z
+        )
+    done
+
+    if (( ${#empty_required_files[@]} > 0 )); then
+        report_failures \
+            'zero-byte required security documentation or tests were found:' \
+            "${empty_required_files[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Detect known instructional placeholders in release-evidence Markdown files.
+check_unresolved_evidence_placeholders() {
+    local match
+
+    [[ -d "$EVIDENCE_DIRECTORY" ]] || return
+
+    while IFS= read -r match; do
+        unresolved_evidence_placeholders+=("$match")
+    done < <(
+        {
+            grep \
+                --recursive \
+                --line-number \
+                --with-filename \
+                --include='*.md' \
+                --extended-regexp \
+                -- "$EVIDENCE_PLACEHOLDER_PATTERN" \
+                "$EVIDENCE_DIRECTORY" \
+                || true
+        } | sort
+    )
+
+    if (( ${#unresolved_evidence_placeholders[@]} > 0 )); then
+        report_failures \
+            'unresolved release-evidence placeholders were found:' \
+            "${unresolved_evidence_placeholders[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Reject execution outside a Git repository because tracked-file inspection
+# would otherwise produce incomplete or misleading results.
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    printf '%s\n' \
+        'ERROR: repository hygiene must run inside a Git working tree.' \
+        >&2
+
+    exit 2
+}
+
+check_tracked_backup_files
+check_empty_required_files
+check_unresolved_evidence_placeholders
+
+if (( failure_count > 0 )); then
+    if [[ "$failure_count" -eq 1 ]]; then
+        printf 'Repository hygiene failed with 1 error category.\n' >&2
+    else
+        printf \
+            'Repository hygiene failed with %d error categories.\n' \
+            "$failure_count" \
+            >&2
+    fi
+
+    exit 1
+fi
+
+printf 'Repository hygiene checks passed.\n'

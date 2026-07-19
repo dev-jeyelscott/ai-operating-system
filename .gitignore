@@ -48,6 +48,12 @@ Thumbs.db
 /test-results
 /blob-report
 
+# Editor and backup files
+*.backup
+*.bak
+*.orig
+*~
+
 # IDE and editor configuration
 /.fleet
 /.idea

@@ -64,8 +64,12 @@
         "lint:check": [
             "pint --parallel --test"
         ],
+        "repository:check": [
+            "bash bin/check-repository-hygiene"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
+            "@repository:check",
             "@lint:check",
             "@types:check",
             "@php artisan test",
