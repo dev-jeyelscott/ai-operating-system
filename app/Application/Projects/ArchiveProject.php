@@ -49,26 +49,30 @@ final readonly class ArchiveProject
                 $projectId,
                 $correlationId,
             ): Project {
-                $project = $this->projects->archive(
+                $mutation = $this->projects->archive(
                     organizationId: $organizationId,
                     projectId: $projectId,
                 );
 
-                $this->audit->record(
-                    organizationId: $organizationId,
-                    projectId: $project->id,
-                    actorType: AuditActorType::User,
-                    actorId: (string) $actorUserId,
-                    eventType: AuditEventType::ProjectArchived,
-                    subjectType: AuditSubjectType::Project,
-                    subjectId: (string) $project->id,
-                    correlationId: $correlationId,
-                    metadata: [
-                        'archived_at' => $project->archived_at
-                            ?->toIso8601String(),
-                        'status' => $project->status->value,
-                    ],
-                );
+                $project = $mutation->project;
+
+                if ($mutation->changed) {
+                    $this->audit->record(
+                        organizationId: $organizationId,
+                        projectId: $project->id,
+                        actorType: AuditActorType::User,
+                        actorId: (string) $actorUserId,
+                        eventType: AuditEventType::ProjectArchived,
+                        subjectType: AuditSubjectType::Project,
+                        subjectId: (string) $project->id,
+                        correlationId: $correlationId,
+                        metadata: [
+                            'archived_at' => $project->archived_at
+                                ?->toIso8601String(),
+                            'status' => $project->status->value,
+                        ],
+                    );
+                }
 
                 return $project;
             },

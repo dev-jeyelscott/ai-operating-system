@@ -127,13 +127,15 @@ final class Project extends Model
      *
      * The operation is idempotent. Repeating it does not change the workflow
      * status or create another state transition.
+     *
+     * @return bool True when archived_at changed from null to a timestamp.
      */
-    public function archive(): void
+    public function archive(): bool
     {
         $this->assertPersisted();
 
-        DB::transaction(
-            function (): void {
+        $changed = DB::transaction(
+            function (): bool {
                 /** @var self $project */
                 $project = self::query()
                     ->forOrganization($this->organization_id)
@@ -142,34 +144,40 @@ final class Project extends Model
                     ->firstOrFail();
 
                 if ($project->archived_at !== null) {
-                    return;
+                    return false;
                 }
 
                 /*
-                 * archived_at is intentionally excluded from mass assignment.
-                 * Only this guarded aggregate operation may change it.
-                 */
+                * archived_at is intentionally excluded from mass assignment.
+                * Only this guarded aggregate operation may change it.
+                */
                 $project->forceFill([
                     'archived_at' => now(),
                 ])->save();
+
+                return true;
             },
             attempts: 3,
         );
 
         $this->refresh();
+
+        return $changed;
     }
 
     /**
      * Restore an archived project under a database row lock.
      *
      * The operation is idempotent and does not change the workflow status.
+     *
+     * @return bool True when archived_at changed from a timestamp to null.
      */
-    public function restore(): void
+    public function restore(): bool
     {
         $this->assertPersisted();
 
-        DB::transaction(
-            function (): void {
+        $changed = DB::transaction(
+            function (): bool {
                 /** @var self $project */
                 $project = self::query()
                     ->forOrganization($this->organization_id)
@@ -178,17 +186,21 @@ final class Project extends Model
                     ->firstOrFail();
 
                 if ($project->archived_at === null) {
-                    return;
+                    return false;
                 }
 
                 $project->forceFill([
                     'archived_at' => null,
                 ])->save();
+
+                return true;
             },
             attempts: 3,
         );
 
         $this->refresh();
+
+        return $changed;
     }
 
     /**

@@ -157,12 +157,18 @@ final class RateLimitServiceProvider extends ServiceProvider
 
     /**
      * Resolve the logical project command from the current route name.
+     *
+     * Project setup submissions update persisted project configuration, so they
+     * intentionally share the existing project "update" limiter bucket.
      */
     private static function projectCommandName(Request $request): string
     {
         return match ($request->route()?->getName()) {
             'organizations.projects.store' => 'store',
-            'organizations.projects.update' => 'update',
+
+            'organizations.projects.update',
+            'organizations.projects.setup.update' => 'update',
+
             'organizations.projects.archive' => 'archive',
             'organizations.projects.restore' => 'restore',
 

@@ -12,6 +12,7 @@ enum AuditEventType: string
 {
     case OrganizationCreated = 'organization.created';
     case OrganizationMemberAdded = 'organization.member.added';
+    case OrganizationMemberRemoved = 'organization.member.removed';
 
     case ProjectCreated = 'project.created';
     case ProjectUpdated = 'project.updated';

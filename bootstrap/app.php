@@ -5,6 +5,7 @@ use App\Application\Shared\Exceptions\RetryableOperationException;
 use App\Http\Middleware\AssignRequestContext;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\TrustProxies as ApplicationTrustProxies;
 use App\Http\Responses\ApiErrorResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -13,6 +14,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Middleware\TrustProxies as FrameworkTrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -27,6 +29,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        /*
+        * Replace Laravel's default proxy middleware with the application
+        * implementation. Configuration is resolved during HTTP request handling,
+        * after Laravel has loaded the configuration repository.
+        */
+        $middleware->replace(
+            FrameworkTrustProxies::class,
+            ApplicationTrustProxies::class,
+        );
+
         // Keep UI preference cookies readable by the frontend.
         $middleware->encryptCookies(except: [
             'appearance',

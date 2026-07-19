@@ -60,7 +60,7 @@ final readonly class UpdateProject
                 $projectType,
                 $correlationId,
             ): Project {
-                $project = $this->projects->update(
+                $mutation = $this->projects->update(
                     organizationId: $organizationId,
                     projectId: $projectId,
                     name: $normalizedName,
@@ -68,21 +68,25 @@ final readonly class UpdateProject
                     projectType: $projectType,
                 );
 
-                $this->audit->record(
-                    organizationId: $organizationId,
-                    projectId: $project->id,
-                    actorType: AuditActorType::User,
-                    actorId: (string) $actorUserId,
-                    eventType: AuditEventType::ProjectUpdated,
-                    subjectType: AuditSubjectType::Project,
-                    subjectId: (string) $project->id,
-                    correlationId: $correlationId,
-                    metadata: [
-                        'name' => $project->name,
-                        'project_type' => $project->project_type->value,
-                        'description_present' => $project->description !== null,
-                    ],
-                );
+                $project = $mutation->project;
+
+                if ($mutation->changed) {
+                    $this->audit->record(
+                        organizationId: $organizationId,
+                        projectId: $project->id,
+                        actorType: AuditActorType::User,
+                        actorId: (string) $actorUserId,
+                        eventType: AuditEventType::ProjectUpdated,
+                        subjectType: AuditSubjectType::Project,
+                        subjectId: (string) $project->id,
+                        correlationId: $correlationId,
+                        metadata: [
+                            'name' => $project->name,
+                            'project_type' => $project->project_type->value,
+                            'description_present' => $project->description !== null,
+                        ],
+                    );
+                }
 
                 return $project;
             },

@@ -10,6 +10,14 @@ use App\Models\ProjectConfiguration;
 use App\Models\ProjectSetupProgress;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia;
+use Illuminate\Support\Facades\Cache;
+
+beforeEach(function (): void {
+    /*
+     * Isolate HTTP rate-limit counters between project setup tests.
+     */
+    Cache::store((string) config('cache.limiter'))->flush();
+});
 
 test('an authorized user can open persisted project setup', function () {
     [$user, $organization, $project] = projectSetupFixture();
@@ -208,6 +216,119 @@ test('cross-organization project setup routes do not disclose projects', functio
             'step' => ProjectSetupStep::Details,
         ]))
         ->assertNotFound();
+});
+
+test('project setup submissions use the configured update command limit', function () {
+    [$user, $organization, $project] = projectSetupFixture();
+
+    /*
+     * Permit exactly two setup mutations. This verifies that consecutive
+     * wizard steps share the configured update bucket instead of falling into
+     * the one-request unknown fallback bucket.
+     */
+    config()->set(
+        'rate-limits.project_commands.update.per_minute',
+        2,
+    );
+
+    config()->set(
+        'rate-limits.project_commands.update.per_hour',
+        20,
+    );
+
+    $detailsUrl = route('organizations.projects.setup.update', [
+        'organization' => $organization,
+        'project' => $project,
+        'step' => ProjectSetupStep::Details,
+    ]);
+
+    /*
+     * The first setup step must be persisted successfully.
+     */
+    $this
+        ->actingAs($user)
+        ->put($detailsUrl, [
+            'languages' => 'PHP, TypeScript',
+            'frameworks' => 'Laravel 13, React',
+            'databases' => 'PostgreSQL, Redis',
+            'infrastructure' => 'Docker Compose, GitHub Actions',
+            'package_managers' => 'Composer, pnpm',
+            'runtimes' => 'PHP 8.5, Node.js 22',
+        ])
+        ->assertRedirect(route(
+            'organizations.projects.setup.show',
+            [
+                'organization' => $organization,
+                'project' => $project,
+                'step' => ProjectSetupStep::Repository,
+            ],
+        ))
+        ->assertSessionHasNoErrors();
+
+    $repositoryUrl = route('organizations.projects.setup.update', [
+        'organization' => $organization,
+        'project' => $project,
+        'step' => ProjectSetupStep::Repository,
+    ]);
+
+    /*
+     * The second consecutive wizard step must still be permitted.
+     *
+     * Before the fix, this request resolves to the unknown bucket and is
+     * rejected because that missing configuration falls back to one attempt.
+     */
+    $this
+        ->actingAs($user)
+        ->put($repositoryUrl, [
+            'repository_provider' => 'github',
+            'repository_url' => 'https://github.com/example/project',
+            'default_branch' => 'main',
+            'integration_branch' => 'develop',
+        ])
+        ->assertRedirect(route(
+            'organizations.projects.setup.show',
+            [
+                'organization' => $organization,
+                'project' => $project,
+                'step' => ProjectSetupStep::Commands,
+            ],
+        ))
+        ->assertSessionHasNoErrors();
+
+    $commandsPage = route('organizations.projects.setup.show', [
+        'organization' => $organization,
+        'project' => $project,
+        'step' => ProjectSetupStep::Commands,
+    ]);
+
+    /*
+     * The third mutation must be rejected because the test-specific update
+     * limit allows only two requests per minute.
+     */
+    $this
+        ->actingAs($user)
+        ->from($commandsPage)
+        ->put(route('organizations.projects.setup.update', [
+            'organization' => $organization,
+            'project' => $project,
+            'step' => ProjectSetupStep::Commands,
+        ]), [
+            'build_command' => 'pnpm build',
+            'test_command' => 'composer test && pnpm test:unit',
+            'lint_command' => 'composer lint:check && pnpm lint:check',
+            'static_analysis_command' => 'composer types:check && pnpm types:check',
+            'security_command' => 'composer audit',
+        ])
+        ->assertRedirect($commandsPage)
+        ->assertHeader('Retry-After')
+        ->assertSessionHasErrors('rate_limit');
+
+    /*
+     * Only the two permitted submissions may change the configuration.
+     */
+    expect(
+        $project->configuration()->firstOrFail()->revision,
+    )->toBe(3);
 });
 
 /**

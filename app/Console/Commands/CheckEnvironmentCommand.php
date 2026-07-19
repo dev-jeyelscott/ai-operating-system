@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Support\Environment\ProductionConfigurationValidator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -18,6 +19,12 @@ final class CheckEnvironmentCommand extends Command
 
     protected $description =
         'Validate required application configuration and infrastructure.';
+
+    public function __construct(
+        private readonly ProductionConfigurationValidator $productionConfigurationValidator,
+    ) {
+        parent::__construct();
+    }
 
     /**
      * Execute every environment check and return a failing exit code when
@@ -121,40 +128,7 @@ final class CheckEnvironmentCommand extends Command
             return true;
         }
 
-        $this->ensure(
-            app()->environment('production'),
-            'APP_ENV must be production.',
-        );
-
-        $this->ensure(
-            config('app.debug') === false,
-            'APP_DEBUG must be false.',
-        );
-
-        $this->ensure(
-            config('mail.default') !== 'log',
-            'A real production mailer is required.',
-        );
-
-        $this->ensure(
-            config('mail.mailers.smtp.host') !== 'mailpit',
-            'Mailpit is local-only.',
-        );
-
-        $this->ensure(
-            blank(config('filesystems.disks.s3.endpoint')),
-            'AWS_ENDPOINT must be empty when using Amazon S3.',
-        );
-
-        $reverbKey = (string) config(
-            'broadcasting.connections.reverb.key',
-            '',
-        );
-
-        $this->ensure(
-            ! str_starts_with($reverbKey, 'local-'),
-            'Local Reverb credentials are forbidden in production.',
-        );
+        $this->productionConfigurationValidator->validate();
 
         return true;
     }

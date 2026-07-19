@@ -6,6 +6,7 @@ namespace App\Infrastructure\Persistence\Repositories\Projects;
 
 use App\Application\Projects\Contracts\ProjectRepository;
 use App\Domain\Projects\ProjectSetupStep;
+use App\Application\Projects\Data\ProjectMutationResult;
 use App\Domain\Projects\ProjectStatus;
 use App\Domain\Projects\ProjectType;
 use App\Models\Organization;
@@ -130,7 +131,7 @@ final class EloquentProjectRepository implements ProjectRepository
         string $name,
         ?string $description,
         ProjectType $projectType,
-    ): Project {
+    ): ProjectMutationResult {
         return DB::transaction(
             function () use (
                 $organizationId,
@@ -138,7 +139,7 @@ final class EloquentProjectRepository implements ProjectRepository
                 $name,
                 $description,
                 $projectType,
-            ): Project {
+            ): ProjectMutationResult {
                 $project = $this->lockedProject(
                     organizationId: $organizationId,
                     projectId: $projectId,
@@ -148,13 +149,31 @@ final class EloquentProjectRepository implements ProjectRepository
                     'name' => $name,
                     'description' => $description,
                     'project_type' => $projectType,
-                ])->save();
+                ]);
 
                 /*
-                 * Slug, organization ownership, workflow status, and archive
-                 * state remain immutable through the metadata update path.
-                 */
-                return $project->refresh();
+                * The application action normalizes input before this boundary.
+                * Dirtiness therefore represents a factual metadata difference,
+                * not whitespace or empty-description variation.
+                */
+                $changed = $project->isDirty([
+                    'name',
+                    'description',
+                    'project_type',
+                ]);
+
+                if ($changed) {
+                    $project->save();
+                }
+
+                /*
+                * Slug, organization ownership, workflow status, and archive
+                * state remain immutable through the metadata update path.
+                */
+                return new ProjectMutationResult(
+                    project: $project->refresh(),
+                    changed: $changed,
+                );
             },
             attempts: 3,
         );
@@ -166,15 +185,18 @@ final class EloquentProjectRepository implements ProjectRepository
     public function archive(
         int $organizationId,
         int $projectId,
-    ): Project {
+    ): ProjectMutationResult {
         $project = $this->findByIdOrFail(
             organizationId: $organizationId,
             projectId: $projectId,
         );
 
-        $project->archive();
+        $changed = $project->archive();
 
-        return $project;
+        return new ProjectMutationResult(
+            project: $project,
+            changed: $changed,
+        );
     }
 
     /**
@@ -183,15 +205,18 @@ final class EloquentProjectRepository implements ProjectRepository
     public function restore(
         int $organizationId,
         int $projectId,
-    ): Project {
+    ): ProjectMutationResult {
         $project = $this->findByIdOrFail(
             organizationId: $organizationId,
             projectId: $projectId,
         );
 
-        $project->restore();
+        $changed = $project->restore();
 
-        return $project;
+        return new ProjectMutationResult(
+            project: $project,
+            changed: $changed,
+        );
     }
 
     /**
