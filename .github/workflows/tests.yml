@@ -120,6 +120,9 @@ jobs:
       - name: Validate environment
         run: php artisan app:check
 
+      - name: Validate production configuration rules
+        run: php artisan test tests/Feature/Console/ProductionConfigurationValidatorTest.php
+
       - name: Validate Composer manifest
         run: composer validate --strict
 
