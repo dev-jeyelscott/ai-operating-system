@@ -1,9 +1,13 @@
 <?php
 
+use App\Http\Middleware\TrustProxies;
 use App\Models\User;
 use Illuminate\Auth\Events\OtherDeviceLogout;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Testing\TestResponse;
 
 test('successful password login regenerates the session identifier', function () {
     $user = User::factory()->create();
@@ -283,3 +287,152 @@ test('login throttling returns the stable retry response for json clients', func
         $response->json('error.details.retry_after_seconds'),
     )->toBeInt()->toBeGreaterThan(0);
 });
+
+test(
+    'login throttling separates clients behind an approved proxy',
+    function (): void {
+        $trustedProxy = '10.20.30.40';
+        $limitedClientAddress = '203.0.113.50';
+        $otherClientAddress = '203.0.113.51';
+        $email = 'proxied-rate-limit@example.test';
+
+        /*
+         * Use a small threshold so the test remains deterministic and fast.
+         */
+        config()->set(
+            'rate-limits.authentication.login_per_minute',
+            2,
+        );
+
+        /*
+         * Exercise the application middleware's environment-driven proxy
+         * configuration path instead of bypassing it with static overrides.
+         */
+        config()->set(
+            'http.trusted_proxies',
+            [$trustedProxy],
+        );
+
+        config()->set(
+            'http.trusted_proxy_headers',
+            Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
+
+        /*
+         * Clear authentication limiter counters created by previous requests
+         * in this process-local test cache.
+         */
+        Cache::store(
+            (string) config('cache.limiter'),
+        )->flush();
+
+        User::factory()->create([
+            'email' => $email,
+        ]);
+
+        /*
+         * Submit an invalid login through the same trusted proxy while varying
+         * the original client address supplied by that proxy.
+         */
+        $attemptInvalidLogin = function (
+            string $clientAddress,
+        ) use (
+            $email,
+            $trustedProxy,
+        ): TestResponse {
+            return $this
+                ->withServerVariables([
+                    'REMOTE_ADDR' => $trustedProxy,
+                    'SERVER_PORT' => 80,
+                    'HTTPS' => 'off',
+                ])
+                ->postJson(
+                    route('login.store'),
+                    [
+                        'email' => $email,
+                        'password' => 'incorrect-password',
+                    ],
+                    [
+                        'X-Forwarded-For' => $clientAddress,
+                        'X-Forwarded-Proto' => 'https',
+                    ],
+                );
+        };
+
+        try {
+            /*
+             * Consume both allowed attempts for the first forwarded client.
+             */
+            for ($attempt = 1; $attempt <= 2; $attempt++) {
+                $attemptInvalidLogin($limitedClientAddress)
+                    ->assertUnprocessable()
+                    ->assertJsonPath(
+                        'error.code',
+                        'validation_failed',
+                    )
+                    ->assertJsonPath(
+                        'error.details.fields.email.0',
+                        trans('auth.failed'),
+                    )
+                    ->assertHeaderMissing('Retry-After');
+            }
+
+            /*
+             * A second client behind the same trusted proxy must receive an
+             * independent limiter bucket.
+             */
+            $attemptInvalidLogin($otherClientAddress)
+                ->assertUnprocessable()
+                ->assertJsonPath(
+                    'error.code',
+                    'validation_failed',
+                )
+                ->assertJsonPath(
+                    'error.details.fields.email.0',
+                    trans('auth.failed'),
+                )
+                ->assertHeaderMissing('Retry-After');
+
+            /*
+             * The original client's third attempt must be rate limited.
+             */
+            $rateLimitedResponse = $attemptInvalidLogin(
+                $limitedClientAddress,
+            );
+
+            $rateLimitedResponse
+                ->assertTooManyRequests()
+                ->assertHeader('Retry-After')
+                ->assertJsonPath(
+                    'error.code',
+                    'rate_limit_exceeded',
+                )
+                ->assertJsonPath(
+                    'error.retryable',
+                    true,
+                );
+
+            expect(
+                $rateLimitedResponse->json(
+                    'error.details.retry_after_seconds',
+                ),
+            )
+                ->toBeInt()
+                ->toBeGreaterThan(0);
+        } finally {
+            /*
+             * Prevent proxy state, request configuration, and limiter counters
+             * from leaking into later tests.
+             */
+            TrustProxies::flushState();
+
+            $this->flushHeaders();
+            $this->withServerVariables([]);
+
+            Cache::store(
+                (string) config('cache.limiter'),
+            )->flush();
+        }
+    },
+);
