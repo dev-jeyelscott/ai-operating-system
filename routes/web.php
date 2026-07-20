@@ -11,6 +11,7 @@ use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
 use App\Http\Controllers\Projects\ArchiveProjectController;
+use App\Http\Controllers\Projects\ProjectConfigurationController;
 use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Projects\ProjectSetupController;
 use App\Http\Controllers\Projects\RestoreProjectController;
@@ -120,6 +121,23 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->middleware('throttle:project-commands')
                                 ->can('update', 'project')
                                 ->name('update');
+                        });
+
+                    Route::controller(ProjectConfigurationController::class)
+                        ->group(function (): void {
+                            /*
+                            * Display read-only configuration metadata and completeness results.
+                            */
+                            Route::get('/{project}/settings', 'settings')
+                                ->can('view', 'project')
+                                ->name('settings.show');
+
+                            /*
+                            * Display safe integration and credential metadata.
+                            */
+                            Route::get('/{project}/integrations', 'integrations')
+                                ->can('view', 'project')
+                                ->name('integrations.index');
                         });
 
                     Route::controller(ProjectController::class)

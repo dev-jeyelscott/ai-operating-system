@@ -145,6 +145,22 @@ final class ProjectController extends Controller
                 'organization' => $organization,
                 'project' => $project,
             ]),
+            'configurationUrls' => [
+                'settings' => route(
+                    'organizations.projects.settings.show',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+                'integrations' => route(
+                    'organizations.projects.integrations.index',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+            ],
             'permissions' => [
                 'update' => $user->can('update', $project),
                 'archive' => $user->can('archive', $project),
