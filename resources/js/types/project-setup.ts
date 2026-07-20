@@ -42,6 +42,7 @@ export type ProjectSetupConfiguration = {
         staticAnalysis: string | null;
         security: string | null;
     };
+    requiredDocuments: string[];
     policy: {
         defaultReasoning: string;
         provider: {

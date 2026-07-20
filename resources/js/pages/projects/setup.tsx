@@ -19,11 +19,11 @@ import { ValidationCommandFields } from '@/features/projects/components/validati
 import type { ValidationCommandFormData } from '@/features/projects/components/validation-command-fields';
 import type {
     OrganizationSummary,
+    ProjectIntegrationConnection,
     ProjectSetupConfiguration,
     ProjectSetupProgress,
     ProjectSetupStep,
 } from '@/types';
-import type { ProjectIntegrationConnection } from '@/types';
 
 type Props = {
     organization: OrganizationSummary;
@@ -292,7 +292,15 @@ function RepositoryFields({
                     defaultValue={configuration.repository.provider ?? 'github'}
                     required
                 >
-                    <SelectTrigger id="repository-provider">
+                    <SelectTrigger
+                        id="repository-provider"
+                        aria-invalid={Boolean(errors.repository_provider)}
+                        aria-describedby={
+                            errors.repository_provider
+                                ? 'repository-provider-error'
+                                : undefined
+                        }
+                    >
                         <SelectValue placeholder="Select provider" />
                     </SelectTrigger>
 
@@ -399,6 +407,18 @@ function PolicyFields({
 
     return (
         <div className="grid gap-6">
+            <TextField
+                id="required-documents"
+                label="Required document classes"
+                name="required_documents"
+                defaultValue={asCommaSeparated(configuration.requiredDocuments)}
+                placeholder="product_charter, requirements, architecture"
+                description="Enter stable lowercase identifiers separated by commas. These documents must be approved before project start."
+                required
+                spellCheck={false}
+                error={errors.required_documents}
+            />
+
             <div className="grid gap-5 md:grid-cols-2">
                 <SelectField
                     id="default-reasoning"
@@ -582,6 +602,12 @@ function ReviewStep({
                         label="Frameworks"
                         value={asCommaSeparated(
                             configuration.technologyStack.frameworks,
+                        )}
+                    />
+                    <SummaryItem
+                        label="Required documents"
+                        value={asCommaSeparated(
+                            configuration.requiredDocuments,
                         )}
                     />
                     <SummaryItem

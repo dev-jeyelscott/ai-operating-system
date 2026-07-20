@@ -292,9 +292,12 @@ final readonly class SaveProjectSetupStep
                 $payload,
             ),
 
-            ProjectSetupStep::Policies => ProjectPolicyConfiguration::fromValidatedPayload(
-                $payload,
-            )->toPersistenceAttributes(),
+            ProjectSetupStep::Policies => [
+                ...ProjectPolicyConfiguration::fromValidatedPayload(
+                    $payload,
+                )->toPersistenceAttributes(),
+                'required_documents' => $payload['required_documents'],
+            ],
 
             ProjectSetupStep::Review => [],
         };

@@ -286,6 +286,7 @@ final class ProjectSetupController extends Controller
                 'staticAnalysis' => $configuration->static_analysis_command,
                 'security' => $configuration->security_command,
             ],
+            'requiredDocuments' => $configuration->required_documents,
             'policy' => [
                 'defaultReasoning' => $configuration->default_reasoning->value,
                 'provider' => $configuration->provider_policy,

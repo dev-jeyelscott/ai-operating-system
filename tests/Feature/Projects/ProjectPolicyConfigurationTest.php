@@ -92,6 +92,12 @@ test(
             ->toBe('USD')
             ->and($configuration->automatic_retry_limit)
             ->toBe(2)
+            ->and($configuration->required_documents)
+            ->toBe([
+                'product_charter',
+                'requirements',
+                'architecture',
+            ])
             ->and($configuration->autonomy_level)
             ->toBe(AutonomyLevel::ApprovalRequired)
             ->and($approvalPolicy)
@@ -207,6 +213,13 @@ test(
         invalidProjectPolicyPayload(
             field: 'autonomy_level',
             invalidValue: 'unrestricted',
+        ),
+    ],
+    'required documents are empty' => [
+        'required_documents',
+        invalidProjectPolicyPayload(
+            field: 'required_documents',
+            invalidValue: '',
         ),
     ],
     'malformed approval boolean' => [
@@ -433,6 +446,11 @@ function readyProjectPolicyConfigurationFixture(
 function validProjectPolicyPayload(): array
 {
     return [
+        'required_documents' => implode(', ', [
+            'product_charter',
+            'requirements',
+            'architecture',
+        ]),
         'default_reasoning' => 'high',
         'allowed_provider_ids' => 'simulation, openai',
         'fallback_order' => 'openai, simulation',

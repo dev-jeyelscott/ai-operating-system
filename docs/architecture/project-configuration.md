@@ -156,3 +156,46 @@ redaction and access controls.
 Material command changes increment the project configuration revision.
 Submitting an identical normalized command set is a no-op and does not create a
 new revision.
+
+## Project completeness evaluation
+
+`EvaluateProjectCompleteness` is the authoritative read-only evaluator for
+project configuration readiness.
+
+It inspects persisted configuration directly rather than treating wizard
+navigation state as configuration truth.
+
+The evaluator verifies:
+
+- supported configuration schema version;
+- technology stack;
+- repository metadata and integration-branch policy;
+- encrypted Notion credential presence;
+- latest Notion connection state;
+- credential-test freshness;
+- verified Notion workspace and database identifiers;
+- build, test, lint, static-analysis, and security commands;
+- required document policy;
+- provider allowlist and fallback order;
+- execution, approval, budget, retry, autonomy, and notification policy;
+- final project setup confirmation.
+
+Every blocker contains:
+
+- a stable machine-readable key;
+- the setup step that owns remediation;
+- a human-readable explanation;
+- a specific remediation instruction.
+
+The evaluator:
+
+- performs no external requests;
+- decrypts no credential;
+- exposes no ciphertext;
+- performs no writes;
+- emits no audit event;
+- creates no configuration revision;
+- remains organization-scoped.
+
+AIOS-030 may expose the result through project settings. The future StartProject
+preflight must reuse this evaluator instead of duplicating configuration checks.

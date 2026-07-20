@@ -226,6 +226,33 @@ test(
     ],
 ]);
 
+test(
+    'main cannot be configured as the automated integration branch',
+    function (): void {
+        [$user, $organization, $project] =
+            repositoryMetadataConfigurationFixture();
+
+        $this->actingAs($user)
+            ->put(repositoryMetadataUpdateUrl(
+                $organization,
+                $project,
+            ), [
+                'repository_provider' => 'github',
+                'repository_url' => 'https://github.com/example/project',
+                'default_branch' => 'main',
+                'integration_branch' => 'main',
+            ])
+            ->assertSessionHasErrors('integration_branch');
+
+        expect(
+            $project
+                ->configuration()
+                ->firstOrFail()
+                ->integration_branch,
+        )->toBe('develop');
+    },
+);
+
 /**
  * Create a project positioned at the repository wizard step.
  *

@@ -75,6 +75,9 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'required_documents' => 'required documents',
+            'required_documents.*' => 'required document identifier',
+
             'build_command' => 'build command',
             'test_command' => 'test command',
             'lint_command' => 'lint command',
@@ -233,6 +236,9 @@ final class UpdateProjectSetupStepRequest extends FormRequest
 
         if ($step === ProjectSetupStep::Policies) {
             $this->merge([
+                'required_documents' => $this->commaSeparated(
+                    'required_documents',
+                ),
                 'default_reasoning' => $this->lowercaseTrimmedInput(
                     'default_reasoning',
                 ),
@@ -379,7 +385,20 @@ final class UpdateProjectSetupStepRequest extends FormRequest
                 'string',
                 'max:255',
                 new ValidGitBranchName,
+                Rule::notIn(['main']),
             ],
+        ];
+    }
+
+    /**
+     * Return custom project setup validation messages.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'integration_branch.not_in' => 'The integration branch cannot be main.',
         ];
     }
 
@@ -391,6 +410,21 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     private function policyRules(): array
     {
         return [
+            'required_documents' => [
+                'bail',
+                'required',
+                'array',
+                'min:1',
+                'max:20',
+            ],
+            'required_documents.*' => [
+                'bail',
+                'required',
+                'string',
+                'max:100',
+                'regex:/\A[a-z][a-z0-9_]{0,99}\z/D',
+                'distinct:strict',
+            ],
             'default_reasoning' => [
                 'bail',
                 'required',
