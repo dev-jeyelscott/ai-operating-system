@@ -7,13 +7,13 @@ namespace App\Domain\Projects\Configuration;
 use InvalidArgumentException;
 
 /**
- * Represents the deterministic result of evaluating project configuration
- * completeness.
+ * Represents the deterministic result of evaluating whether a project has all
+ * configuration required to begin execution.
  */
 final readonly class ProjectCompletenessResult
 {
     /**
-     * @param list<ProjectCompletenessIssue> $issues
+     * @param  list<ProjectCompletenessIssue>  $issues
      */
     public function __construct(
         public int $projectId,
@@ -27,7 +27,25 @@ final readonly class ProjectCompletenessResult
     }
 
     /**
-     * Determine whether the project has every required configuration value.
+     * Create a completeness result for one project.
+     *
+     * This named constructor keeps result creation consistent across evaluator
+     * exit paths, including missing configuration and unsupported schemas.
+     *
+     * @param  list<ProjectCompletenessIssue>  $issues
+     */
+    public static function forProject(
+        int $projectId,
+        array $issues,
+    ): self {
+        return new self(
+            projectId: $projectId,
+            issues: $issues,
+        );
+    }
+
+    /**
+     * Determine whether no configuration blockers remain.
      */
     public function isComplete(): bool
     {
@@ -35,7 +53,7 @@ final readonly class ProjectCompletenessResult
     }
 
     /**
-     * Return the ordered configuration keys that are still incomplete.
+     * Return the ordered keys of missing or invalid configuration.
      *
      * @return list<string>
      */
@@ -48,7 +66,7 @@ final readonly class ProjectCompletenessResult
     }
 
     /**
-     * Serialize the result into a stable, transport-safe structure.
+     * Serialize the result without exposing credentials or secret material.
      *
      * @return array{
      *     project_id: int,
@@ -67,7 +85,9 @@ final readonly class ProjectCompletenessResult
             'project_id' => $this->projectId,
             'complete' => $this->isComplete(),
             'missing_configuration' => array_map(
-                static fn (ProjectCompletenessIssue $issue): array => $issue->toArray(),
+                static fn (
+                    ProjectCompletenessIssue $issue,
+                ): array => $issue->toArray(),
                 $this->issues,
             ),
         ];
