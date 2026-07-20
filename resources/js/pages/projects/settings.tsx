@@ -18,10 +18,7 @@ function humanize(value: string): string {
 /**
  * Format a minor-unit budget using the configured currency.
  */
-function formatBudget(
-    limitMinor: number | null,
-    currency: string,
-): string {
+function formatBudget(limitMinor: number | null, currency: string): string {
     if (limitMinor === null) {
         return 'Not configured';
     }
@@ -94,7 +91,7 @@ function CommandValue({ value }: { value: string | null }) {
     }
 
     return (
-        <code className="break-all rounded bg-muted px-2 py-1 text-xs">
+        <code className="rounded bg-muted px-2 py-1 text-xs break-all">
             {value}
         </code>
     );
@@ -111,8 +108,7 @@ export default function ProjectSettings({
     permissions,
     urls,
 }: ProjectConfigurationScreenProps) {
-    const canEdit =
-        permissions.update && project.archivedAt === null;
+    const canEdit = permissions.update && project.archivedAt === null;
 
     return (
         <>
@@ -250,7 +246,8 @@ export default function ProjectSettings({
                             </DefinitionItem>
 
                             <DefinitionItem label="Repository URL">
-                                {configuration.repository.url ?? 'Not configured'}
+                                {configuration.repository.url ??
+                                    'Not configured'}
                             </DefinitionItem>
 
                             <DefinitionItem label="Default branch">
@@ -305,9 +302,7 @@ export default function ProjectSettings({
                             </DefinitionItem>
 
                             <DefinitionItem label="Autonomy level">
-                                {humanize(
-                                    configuration.policy.autonomyLevel,
-                                )}
+                                {humanize(configuration.policy.autonomyLevel)}
                             </DefinitionItem>
 
                             <DefinitionItem label="Automatic retry limit">

@@ -83,8 +83,7 @@ export default function ShowProject({
                         </p>
                     </div>
 
-                    < div className = "flex flex-wrap gap-2" >
-                                    
+                    <div className="flex flex-wrap gap-2">
                         <Button asChild variant="outline">
                             <Link href={configurationUrls.settings}>
                                 <SlidersHorizontal aria-hidden="true" />

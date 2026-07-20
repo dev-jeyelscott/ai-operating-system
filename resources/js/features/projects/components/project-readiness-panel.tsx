@@ -41,10 +41,7 @@ export function ProjectReadinessPanel({
                 )}
 
                 <div className="min-w-0 flex-1">
-                    <h2
-                        id="project-readiness-title"
-                        className="font-semibold"
-                    >
+                    <h2 id="project-readiness-title" className="font-semibold">
                         {title}
                     </h2>
 
@@ -73,9 +70,7 @@ export function ProjectReadinessPanel({
                                 </p>
 
                                 <Link
-                                    href={
-                                        setupStepUrls[issue.step] ?? setupUrl
-                                    }
+                                    href={setupStepUrls[issue.step] ?? setupUrl}
                                     className="mt-3 inline-flex text-sm font-medium underline underline-offset-4"
                                 >
                                     Open configuration step

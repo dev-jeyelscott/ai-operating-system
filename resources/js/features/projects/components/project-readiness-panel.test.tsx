@@ -17,9 +17,7 @@ describe('ProjectReadinessPanel', () => {
         );
 
         expect(
-            screen.getByText(
-                'All required project configuration is complete.',
-            ),
+            screen.getByText('All required project configuration is complete.'),
         ).toBeInTheDocument();
 
         expect(

@@ -13,9 +13,7 @@ import type {
  * Format an ISO timestamp for the current browser locale.
  */
 function formatDate(value: string | null): string {
-    return value === null
-        ? 'Never'
-        : new Date(value).toLocaleString();
+    return value === null ? 'Never' : new Date(value).toLocaleString();
 }
 
 /**
@@ -48,9 +46,7 @@ function DefinitionItem({
 /**
  * Resolve a human-readable Notion connection label.
  */
-function connectionStatus(
-    status: 'connected' | 'failed' | null,
-): string {
+function connectionStatus(status: 'connected' | 'failed' | null): string {
     if (status === 'connected') {
         return 'Connected';
     }
@@ -154,9 +150,7 @@ export default function ProjectIntegrations({
                 <div className="grid gap-6 lg:grid-cols-2">
                     <section className="rounded-xl border bg-card p-6 shadow-sm">
                         <div className="flex items-center justify-between gap-4">
-                            <h2 className="font-semibold">
-                                Notion connection
-                            </h2>
+                            <h2 className="font-semibold">Notion connection</h2>
 
                             <span className="rounded-full border px-2.5 py-1 text-xs font-medium">
                                 {connectionStatus(integration.status)}
@@ -198,18 +192,14 @@ export default function ProjectIntegrations({
 
                             <DefinitionItem label="Latest failure">
                                 {integration.lastFailureCode
-                                    ? humanize(
-                                          integration.lastFailureCode,
-                                      )
+                                    ? humanize(integration.lastFailureCode)
                                     : 'None'}
                             </DefinitionItem>
                         </dl>
                     </section>
 
                     <section className="rounded-xl border bg-card p-6 shadow-sm">
-                        <h2 className="font-semibold">
-                            Credential metadata
-                        </h2>
+                        <h2 className="font-semibold">Credential metadata</h2>
 
                         <p className="mt-2 text-sm text-muted-foreground">
                             Credential values are encrypted separately and are
@@ -229,15 +219,11 @@ export default function ProjectIntegrations({
                             </DefinitionItem>
 
                             <DefinitionItem label="Created">
-                                {formatDate(
-                                    integration.credential.createdAt,
-                                )}
+                                {formatDate(integration.credential.createdAt)}
                             </DefinitionItem>
 
                             <DefinitionItem label="Last rotated">
-                                {formatDate(
-                                    integration.credential.rotatedAt,
-                                )}
+                                {formatDate(integration.credential.rotatedAt)}
                             </DefinitionItem>
                         </dl>
                     </section>
