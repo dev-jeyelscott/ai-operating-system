@@ -23,9 +23,11 @@ describe('NotionIntegrationFields', () => {
             />,
         );
 
-        expect(
-            screen.getByLabelText('Notion integration token'),
-        ).toBeRequired();
+        const tokenInput = screen.getByLabelText('Notion integration token');
+
+        expect(tokenInput).toBeRequired();
+        expect(tokenInput).toHaveAttribute('type', 'password');
+        expect(tokenInput).toHaveAttribute('autocomplete', 'new-password');
 
         expect(screen.getByLabelText('Notion task database')).toBeRequired();
     });
@@ -54,6 +56,12 @@ describe('NotionIntegrationFields', () => {
 
         expect(tokenInput).not.toBeRequired();
         expect(tokenInput).toHaveValue('');
+        expect(tokenInput).toHaveAttribute('type', 'password');
+        expect(tokenInput).toHaveAttribute('autocomplete', 'new-password');
+
+        expect(
+            screen.getByText(/leave blank to test the encrypted credential/i),
+        ).toBeInTheDocument();
 
         expect(screen.getByText('AI Operating System')).toBeInTheDocument();
 
