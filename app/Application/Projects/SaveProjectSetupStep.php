@@ -25,10 +25,12 @@ use InvalidArgumentException;
 final readonly class SaveProjectSetupStep
 {
     /**
-     * Inject audit recording and the application transaction boundary.
+     * Inject audit recording, configuration history, and the application
+     * transaction boundary.
      */
     public function __construct(
         private RecordAuditEvent $audit,
+        private RecordProjectConfigurationVersion $configurationVersions,
         private TransactionManager $transactions,
     ) {}
 
@@ -126,6 +128,25 @@ final readonly class SaveProjectSetupStep
                     $configuration->forceFill([
                         'revision' => $configuration->revision + 1,
                     ])->save();
+
+                    /*
+                     * The immutable snapshot and matching audit event are part
+                     * of the same outer transaction as the mutable update.
+                     *
+                     * A no-op request never enters this branch and therefore
+                     * never creates duplicate history.
+                     */
+                    $this->configurationVersions->handle(
+                        organizationId: $organizationId,
+                        projectId: $project->id,
+                        actorType: AuditActorType::User,
+                        actorId: (string) $actorUserId,
+                        changeReason: sprintf(
+                            'project_setup.%s',
+                            $step->value,
+                        ),
+                        correlationId: $correlationId,
+                    );
                 }
 
                 /*

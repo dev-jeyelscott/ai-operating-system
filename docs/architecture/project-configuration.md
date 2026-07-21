@@ -104,6 +104,36 @@ Commands are persisted by this schema but are not executed by AIOS-021.
 5. AIOS-031 will persist immutable history keyed by project and revision.
 6. Context snapshots must use toVersionedArray() instead of raw model serialization.
 
+## Immutable configuration history
+
+`project_configurations` remains the mutable current configuration aggregate.
+
+`project_configuration_versions` stores immutable full snapshots of material
+configuration revisions.
+
+History rules:
+
+1. The initial application-created configuration records revision 1.
+2. A material configuration update increments the current revision and appends
+   exactly one immutable version with the same revision.
+3. A normalized no-op request creates neither a revision nor a version.
+4. `(project_id, revision)` is unique.
+5. Snapshots use `ProjectConfiguration::toVersionedArray()`.
+6. Credentials, tokens, ciphertext, cookies, and private keys are excluded.
+7. Every version records actor type, actor identifier, reason, and timestamp.
+8. Version creation and its audit event commit in the same transaction.
+9. PostgreSQL rejects update and delete operations against history rows.
+10. History is queried only through an organization-scoped project.
+
+Current and historical reads use:
+
+- `Project::configuration()` for the mutable current aggregate;
+- `Project::configurationVersions()` for complete ordered history;
+- `Project::latestConfigurationVersion()` for the latest immutable snapshot.
+
+Configuration rollback, restoration, retention, compaction, and visual diffs are
+outside AIOS-031.
+
 ## Security rules
 
 - Never store access tokens, passwords, private keys, cookies, or provider

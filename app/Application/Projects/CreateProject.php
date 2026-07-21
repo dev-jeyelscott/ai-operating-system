@@ -20,11 +20,13 @@ use InvalidArgumentException;
 final readonly class CreateProject
 {
     /**
-     * Inject project persistence, audit recording, and transactions.
+     * Inject project persistence, audit recording, configuration history,
+     * and transactions.
      */
     public function __construct(
         private ProjectRepository $projects,
         private RecordAuditEvent $audit,
+        private RecordProjectConfigurationVersion $configurationVersions,
         private TransactionManager $transactions,
     ) {}
 
@@ -79,6 +81,19 @@ final readonly class CreateProject
                         'status' => $project->status->value,
                         'description_present' => $project->description !== null,
                     ],
+                );
+
+                /*
+                 * Every application-created project receives an immutable
+                 * schema-v1 baseline in the same transaction as project creation.
+                 */
+                $this->configurationVersions->handle(
+                    organizationId: $organizationId,
+                    projectId: $project->id,
+                    actorType: AuditActorType::User,
+                    actorId: (string) $actorUserId,
+                    changeReason: 'project.created',
+                    correlationId: $correlationId,
                 );
 
                 return $project;

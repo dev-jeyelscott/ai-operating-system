@@ -6,7 +6,7 @@ namespace App\Domain\Audit;
 
 /**
  * Defines stable event names produced by currently implemented privileged
- * organization, membership, and project commands.
+ * organization, membership, project, and integration commands.
  */
 enum AuditEventType: string
 {
@@ -19,10 +19,15 @@ enum AuditEventType: string
     case ProjectArchived = 'project.archived';
     case ProjectRestored = 'project.restored';
     case ProjectSetupUpdated = 'project.setup.updated';
+    case ProjectConfigurationVersionCreated =
+        'project.configuration.version.created';
 
     case IntegrationCredentialStored = 'integration.credential.stored';
     case IntegrationCredentialRotated = 'integration.credential.rotated';
 
-    case NotionConnectionTestSucceeded = 'integration.notion.connection_test.succeeded';
-    case NotionConnectionTestFailed = 'integration.notion.connection_test.failed';
+    case NotionConnectionTestSucceeded =
+        'integration.notion.connection_test.succeeded';
+
+    case NotionConnectionTestFailed =
+        'integration.notion.connection_test.failed';
 }

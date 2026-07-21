@@ -12,6 +12,7 @@ enum AuditSubjectType: string
     case Organization = 'organization';
     case OrganizationMembership = 'organization_membership';
     case Project = 'project';
+    case ProjectConfigurationVersion = 'project_configuration_version';
     case ProviderCredential = 'provider_credential';
     case ProjectIntegration = 'project_integration';
 }

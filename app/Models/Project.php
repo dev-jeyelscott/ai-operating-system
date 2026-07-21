@@ -39,6 +39,9 @@ use LogicException;
  * @property CarbonImmutable|null $updated_at
  * @property-read Collection<int, ProviderCredential> $providerCredentials
  * @property-read Collection<int, ProjectIntegration> $projectIntegrations
+ * @property-read ProjectConfiguration|null $configuration
+ * @property-read Collection<int, ProjectConfigurationVersion> $configurationVersions
+ * @property-read ProjectConfigurationVersion|null $latestConfigurationVersion
  */
 #[Fillable(['name', 'slug', 'description', 'project_type'])]
 #[UsePolicy(ProjectPolicy::class)]
@@ -289,6 +292,28 @@ final class Project extends Model
     public function configuration(): HasOne
     {
         return $this->hasOne(ProjectConfiguration::class);
+    }
+
+    /**
+     * Return every immutable configuration snapshot in revision order.
+     *
+     * @return HasMany<ProjectConfigurationVersion, $this>
+     */
+    public function configurationVersions(): HasMany
+    {
+        return $this->hasMany(ProjectConfigurationVersion::class)
+            ->orderBy('revision');
+    }
+
+    /**
+     * Return the immutable snapshot with the greatest project revision.
+     *
+     * @return HasOne<ProjectConfigurationVersion, $this>
+     */
+    public function latestConfigurationVersion(): HasOne
+    {
+        return $this->hasOne(ProjectConfigurationVersion::class)
+            ->ofMany('revision', 'max');
     }
 
     /**
