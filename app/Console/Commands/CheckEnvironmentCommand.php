@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Support\Environment\ProductionConfigurationValidator;
+use App\Support\Health\ArtifactStorageProbe;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
@@ -22,6 +22,7 @@ final class CheckEnvironmentCommand extends Command
 
     public function __construct(
         private readonly ProductionConfigurationValidator $productionConfigurationValidator,
+        private readonly ArtifactStorageProbe $artifactStorageProbe,
     ) {
         parent::__construct();
     }
@@ -112,9 +113,7 @@ final class CheckEnvironmentCommand extends Command
      */
     private function checkArtifactStorage(): true
     {
-        $disk = (string) config('filesystems.artifact', 'local');
-
-        Storage::disk($disk)->files();
+        $this->artifactStorageProbe->probe();
 
         return true;
     }

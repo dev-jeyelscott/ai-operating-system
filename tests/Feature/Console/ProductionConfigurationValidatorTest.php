@@ -2,6 +2,7 @@
 
 use App\Support\Environment\InvalidProductionConfiguration;
 use App\Support\Environment\ProductionConfigurationValidator;
+use Illuminate\Config\Repository;
 
 beforeEach(function () {
     config()->set(validProductionConfiguration());
@@ -36,6 +37,37 @@ test(
     },
 )->with('unsafe production configuration');
 
+test(
+    'production validation requires a PostgreSQL database connection',
+    function (string $key, mixed $unsafeValue): void {
+        $configuration = new Repository;
+
+        foreach (validProductionConfiguration() as $configurationKey => $value) {
+            $configuration->set($configurationKey, $value);
+        }
+
+        $configuration->set($key, $unsafeValue);
+
+        $validator = new ProductionConfigurationValidator($configuration);
+
+        expect($validator->violations())->toContain(
+            'DB_CONNECTION must select a PostgreSQL connection.',
+        );
+    },
+)->with([
+    'mysql database connection' => [
+        'database.connections.pgsql.driver',
+        'mysql',
+    ],
+    'sqlite database connection' => [
+        'database.default',
+        'sqlite',
+    ],
+    'missing database connection' => [
+        'database.default',
+        '',
+    ],
+]);
 test('selected failover mailers cannot fall back to the log transport', function () {
     config()->set('mail.default', 'failover');
 
@@ -88,6 +120,7 @@ dataset('unsafe production configuration', [
         'https://localhost',
         'APP_URL must use HTTPS and a non-local host.',
     ],
+
     'file session driver' => [
         'session.driver',
         'file',
@@ -211,6 +244,10 @@ function validProductionConfiguration(): array
         'app.env' => 'production',
         'app.debug' => false,
         'app.url' => 'https://app.example.com',
+        'database.default' => 'pgsql',
+        'database.connections.pgsql.driver' => 'pgsql',
+        'database.connections.mysql.driver' => 'mysql',
+        'database.connections.sqlite.driver' => 'sqlite',
 
         'session.driver' => 'database',
         'session.encrypt' => true,

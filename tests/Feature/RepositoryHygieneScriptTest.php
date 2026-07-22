@@ -170,6 +170,34 @@ final class RepositoryHygieneScriptTest extends TestCase
         }
     }
 
+    public function test_mutable_github_action_reference_fails_with_actionable_path(): void
+    {
+        $this->writeFile(
+            '.github/workflows/quality.yml',
+            "steps:\n  - uses: actions/checkout@v7\n",
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString(
+            '.github/workflows/quality.yml:2: actions/checkout@v7',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_sha_pinned_github_action_reference_passes(): void
+    {
+        $this->writeFile(
+            '.github/workflows/quality.yml',
+            "steps:\n  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+    }
+
     /**
      * Execute the hygiene script inside the isolated repository.
      */

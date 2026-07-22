@@ -8,11 +8,14 @@ use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
-use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 final class HealthService
 {
+    public function __construct(
+        private readonly ArtifactStorageProbe $artifactStorageProbe,
+    ) {}
+
     /**
      * Probe every dependency required before the application accepts work.
      *
@@ -34,14 +37,9 @@ final class HealthService
             'redis' => $this->check(
                 fn (): mixed => Redis::connection()->ping(),
             ),
-            'storage' => $this->check(function (): array {
-                $disk = (string) config(
-                    'filesystems.artifact',
-                    'local',
-                );
-
-                return Storage::disk($disk)->files();
-            }),
+            'storage' => $this->check(
+                fn (): true => $this->artifactStorageProbe->probe(),
+            ),
         ];
 
         $ready = true;

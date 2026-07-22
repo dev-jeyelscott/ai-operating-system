@@ -18,6 +18,7 @@ readonly -a REQUIRED_NON_EMPTY_DIRECTORIES=(
 )
 
 readonly EVIDENCE_DIRECTORY="docs/evidence"
+readonly WORKFLOW_DIRECTORY=".github/workflows"
 
 readonly EVIDENCE_PLACEHOLDER_PATTERN='Add the .* here|Document any .* here|<number>|<scope>|(^|[^[:alnum:]_])TBD([^[:alnum:]_]|$)'
 
@@ -26,6 +27,7 @@ failure_count=0
 declare -a tracked_backup_files=()
 declare -a empty_required_files=()
 declare -a unresolved_evidence_placeholders=()
+declare -a mutable_workflow_actions=()
 
 # Print one grouped error category with every actionable repository path.
 report_failures() {
@@ -123,6 +125,46 @@ check_unresolved_evidence_placeholders() {
     fi
 }
 
+# Reject mutable third-party GitHub Actions references. Local actions are
+# versioned by this repository and therefore do not require an external SHA.
+check_mutable_workflow_actions() {
+    local path
+    local line
+    local line_number
+    local reference
+
+    [[ -d "$WORKFLOW_DIRECTORY" ]] || return 0
+
+    while IFS= read -r -d '' path; do
+        line_number=0
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            line_number=$((line_number + 1))
+
+            if [[ ! "$line" =~ ^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([^[:space:]#]+) ]]; then
+                continue
+            fi
+
+            reference="${BASH_REMATCH[2]}"
+
+            if [[ "$reference" == ./* ]]; then
+                continue
+            fi
+
+            if [[ ! "$reference" =~ @[[:xdigit:]]{40}$ ]]; then
+                mutable_workflow_actions+=("$path:$line_number: $reference")
+            fi
+        done < "$path"
+    done < <(find "$WORKFLOW_DIRECTORY" -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 | sort -z)
+
+    if (( ${#mutable_workflow_actions[@]} > 0 )); then
+        report_failures \
+            'mutable third-party GitHub Actions references were found:' \
+            "${mutable_workflow_actions[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
 # Reject execution outside a Git repository because tracked-file inspection
 # would otherwise produce incomplete or misleading results.
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
@@ -136,6 +178,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 check_tracked_backup_files
 check_empty_required_files
 check_unresolved_evidence_placeholders
+check_mutable_workflow_actions
 
 if (( failure_count > 0 )); then
     if [[ "$failure_count" -eq 1 ]]; then
