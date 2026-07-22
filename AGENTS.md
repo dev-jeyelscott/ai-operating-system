@@ -1,3 +1,5 @@
+You are working inside a WSL, always run `wsl -d Ubuntu` before starting.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
