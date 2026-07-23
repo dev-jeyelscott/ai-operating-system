@@ -42,6 +42,7 @@ use LogicException;
  * @property-read ProjectConfiguration|null $configuration
  * @property-read Collection<int, ProjectConfigurationVersion> $configurationVersions
  * @property-read ProjectConfigurationVersion|null $latestConfigurationVersion
+ * @property-read Collection<int, ProjectContextSnapshot> $contextSnapshots
  */
 #[Fillable(['name', 'slug', 'description', 'project_type'])]
 #[UsePolicy(ProjectPolicy::class)]
@@ -314,6 +315,13 @@ final class Project extends Model
     {
         return $this->hasOne(ProjectConfigurationVersion::class)
             ->ofMany('revision', 'max');
+    }
+
+    /** @return HasMany<ProjectContextSnapshot, $this> */
+    public function contextSnapshots(): HasMany
+    {
+        return $this->hasMany(ProjectContextSnapshot::class)
+            ->orderBy('created_at');
     }
 
     /**
