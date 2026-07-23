@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Immutable Composer image used before Laravel Sail is installed.
+readonly COMPOSER_IMAGE="composer:2.10.2@sha256:5946476338742b200bb9ff88f8be56275ddae4b3949c72305cb0dbf10cfcb760"
+
+cd "$PROJECT_ROOT"
+
+# Print a failure message and stop the bootstrap process.
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+# Add or replace one configuration value in the local environment file.
+set_env_value() {
+    local key="$1"
+    local value="$2"
+
+    if grep -q "^${key}=" .env; then
+        sed -i "s|^${key}=.*|${key}=${value}|" .env
+    else
+        printf '%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
+# Wait until PostgreSQL is ready to accept application connections.
+wait_for_postgres() {
+    local attempts=0
+    local maximum_attempts=60
+
+    until docker compose exec -T pgsql \
+        pg_isready \
+        -U "${DB_USERNAME:-sail}" \
+        -d "${DB_DATABASE:-ai_operating_system}" \
+        >/dev/null 2>&1; do
+        attempts=$((attempts + 1))
+
+        if [[ "$attempts" -ge "$maximum_attempts" ]]; then
+            fail "PostgreSQL did not become ready."
+        fi
+
+        sleep 1
+    done
+}
+
+command -v docker >/dev/null 2>&1 \
+    || fail "Docker is not installed."
+
+docker info >/dev/null 2>&1 \
+    || fail "Docker Desktop is not running or WSL integration is disabled."
+
+if [[ ! -f .env ]]; then
+    cp .env.example .env
+fi
+
+set_env_value "WWWUSER" "$(id -u)"
+set_env_value "WWWGROUP" "$(id -g)"
+
+# Install Composer dependencies before Sail exists on a clean clone.
+if [[ ! -x vendor/bin/sail ]]; then
+    # Install Composer dependencies before Laravel Sail is available.
+    #
+    # The Composer image has `composer` as its entrypoint, so the command starts
+    # with `install` instead of `composer install`.
+    docker run --rm \
+        --user "$(id -u):$(id -g)" \
+        --volume "$PWD:/app" \
+        --workdir /app \
+        "$COMPOSER_IMAGE" \
+        install \
+            --no-interaction \
+            --prefer-dist \
+            --ignore-platform-reqs
+fi
+
+./vendor/bin/sail up -d --build
+
+wait_for_postgres
+
+./vendor/bin/sail composer install \
+    --no-interaction \
+    --prefer-dist
+
+./vendor/bin/sail pnpm install --frozen-lockfile
+
+# Install the Chromium browser and Linux dependencies required by Playwright.
+#
+# PLAYWRIGHT_BROWSERS_PATH=0 keeps the browser binary with the installed
+# Playwright package so the installation remains version-aligned.
+docker compose exec -T -u root laravel.test bash -lc '
+    set -euo pipefail
+
+    PLAYWRIGHT_BROWSERS_PATH=0 \
+        pnpm exec playwright install --with-deps chromium
+
+    chown -R sail:sail \
+        node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/.local-browsers
+'
+
+# Generate APP_KEY only when the environment does not already contain one.
+if grep -q '^APP_KEY=$' .env; then
+    ./vendor/bin/sail artisan key:generate
+fi
+
+./vendor/bin/sail artisan migrate --force
+./vendor/bin/sail artisan storage:link
+
+# Create the local artifact bucket without failing when it already exists.
+docker compose exec -T minio sh -lc '
+    mc alias set \
+        local \
+        http://localhost:9000 \
+        "$MINIO_ROOT_USER" \
+        "$MINIO_ROOT_PASSWORD" \
+        >/dev/null
+
+    mc mb \
+        --ignore-existing \
+        "local/aios-local" \
+        >/dev/null
+'
+
+./vendor/bin/sail artisan optimize:clear
+./vendor/bin/sail pnpm build
+./vendor/bin/sail artisan app:check
+
+echo
+echo "Bootstrap completed successfully."
+echo "Run ./bin/dev and open http://localhost."

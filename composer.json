@@ -9,7 +9,7 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.3",
+        "php": "^8.5",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/chisel": "^0.1.0",
         "laravel/fortify": "^1.37.2",
@@ -64,12 +64,20 @@
         "lint:check": [
             "pint --parallel --test"
         ],
+        "repository:check": [
+            "bash bin/check-repository-hygiene"
+        ],
+        "containers:check": [
+            "bash bin/check-container-images"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
-            "pnpm run lint:check",
-            "pnpm run format:check",
-            "pnpm run types:check",
-            "@test"
+            "@repository:check",
+            "@containers:check",
+            "@lint:check",
+            "@types:check",
+            "@php artisan test",
+            "pnpm run quality"
         ],
         "types:check": [
             "phpstan analyse"

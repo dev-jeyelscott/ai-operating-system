@@ -16,6 +16,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
+/**
+ * Renders the account-deletion confirmation and server validation errors.
+ */
 export default function DeleteUser() {
     const passwordInput = useRef<HTMLInputElement>(null);
 
@@ -24,13 +27,16 @@ export default function DeleteUser() {
             <Heading
                 variant="small"
                 title="Delete account"
-                description="Delete your account and all of its resources"
+                description="Delete your account after transferring ownership of organizations you solely own"
             />
+
             <div className="space-y-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-200/10 dark:bg-red-700/10">
                 <div className="relative space-y-0.5 text-red-600 dark:text-red-100">
                     <p className="font-medium">Warning</p>
+
                     <p className="text-sm">
-                        Please proceed with caution, this cannot be undone.
+                        This action is permanent. You must add another owner to
+                        every organization where you are the only owner.
                     </p>
                 </div>
 
@@ -43,15 +49,17 @@ export default function DeleteUser() {
                             Delete account
                         </Button>
                     </DialogTrigger>
+
                     <DialogContent>
                         <DialogTitle>
                             Are you sure you want to delete your account?
                         </DialogTitle>
+
                         <DialogDescription>
-                            Once your account is deleted, all of its resources
-                            and data will also be permanently deleted. Please
-                            enter your password to confirm you would like to
-                            permanently delete your account.
+                            Deleting your account removes all of your
+                            organization memberships. If you are the final owner
+                            of an organization, add or promote another owner
+                            before continuing. Enter your password to confirm.
                         </DialogDescription>
 
                         <Form
@@ -59,12 +67,21 @@ export default function DeleteUser() {
                             options={{
                                 preserveScroll: true,
                             }}
-                            onError={() => passwordInput.current?.focus()}
+                            onError={(errors) => {
+                                if (errors.password) {
+                                    passwordInput.current?.focus();
+                                }
+                            }}
                             resetOnSuccess
                             className="space-y-6"
                         >
                             {({ resetAndClearErrors, processing, errors }) => (
                                 <>
+                                    <InputError
+                                        message={errors.account}
+                                        role="alert"
+                                    />
+
                                     <div className="grid gap-2">
                                         <Label
                                             htmlFor="password"

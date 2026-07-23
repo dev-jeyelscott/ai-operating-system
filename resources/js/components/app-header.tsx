@@ -1,5 +1,13 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Menu, Search } from 'lucide-react';
+import {
+    BookOpen,
+    Folder,
+    FolderKanban,
+    LayoutGrid,
+    Menu,
+    Search,
+} from 'lucide-react';
+
 import AppLogo from '@/components/app-logo';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -33,29 +41,31 @@ import { useCurrentUrl } from '@/hooks/use-current-url';
 import { useInitials } from '@/hooks/use-initials';
 import { cn, toUrl } from '@/lib/utils';
 import { dashboard } from '@/routes';
+import { dashboard as organizationDashboard } from '@/routes/organizations';
+import { index as organizationProjectsIndex } from '@/routes/organizations/projects';
 import type { BreadcrumbItem, NavItem } from '@/types';
 
 type Props = {
     breadcrumbs?: BreadcrumbItem[];
 };
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
+type HeaderPageProps = {
+    organizationContext?: {
+        current: {
+            slug: string;
+        } | null;
+    };
+};
 
 const rightNavItems: NavItem[] = [
     {
         title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
+        href: 'https://github.com/dev-jeyelscott/ai-operating-system',
         icon: Folder,
     },
     {
         title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
+        href: 'https://laravel.com/docs',
         icon: BookOpen,
     },
 ];
@@ -63,11 +73,44 @@ const rightNavItems: NavItem[] = [
 const activeItemStyles =
     'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100';
 
+/**
+ * Render the authenticated application header with organization-scoped links.
+ */
 export function AppHeader({ breadcrumbs = [] }: Props) {
-    const page = usePage();
-    const { auth } = page.props;
+    const { auth, organizationContext } = usePage<HeaderPageProps>().props;
     const getInitials = useInitials();
     const { isCurrentUrl, whenCurrentUrl } = useCurrentUrl();
+
+    const currentOrganization = organizationContext?.current;
+    const dashboardHref = currentOrganization
+        ? organizationDashboard({
+              organization: currentOrganization.slug,
+          })
+        : dashboard();
+
+    /**
+     * Build the header navigation from the active organization context.
+     *
+     * Organization-scoped links are only included when the user currently
+     * has an organization selected.
+     */
+    const mainNavItems: NavItem[] = [
+        {
+            title: 'Dashboard',
+            href: dashboardHref,
+            icon: LayoutGrid,
+        },
+    ];
+
+    if (currentOrganization) {
+        mainNavItems.push({
+            title: 'Projects',
+            href: organizationProjectsIndex({
+                organization: currentOrganization.slug,
+            }),
+            icon: FolderKanban,
+        });
+    }
 
     return (
         <>
@@ -81,6 +124,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                     variant="ghost"
                                     size="icon"
                                     className="mr-2 h-[34px] w-[34px]"
+                                    aria-label="Open navigation menu"
                                 >
                                     <Menu className="h-5 w-5" />
                                 </Button>
@@ -102,7 +146,13 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                                 <Link
                                                     key={item.title}
                                                     href={item.href}
+                                                    prefetch
                                                     className="flex items-center space-x-2 font-medium"
+                                                    aria-current={
+                                                        isCurrentUrl(item.href)
+                                                            ? 'page'
+                                                            : undefined
+                                                    }
                                                 >
                                                     {item.icon && (
                                                         <item.icon className="h-5 w-5" />
@@ -135,7 +185,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                     </div>
 
                     <Link
-                        href={dashboard()}
+                        href={dashboardHref}
                         prefetch
                         className="flex items-center space-x-2"
                     >
@@ -146,13 +196,19 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                     <div className="ml-6 hidden h-full items-center space-x-6 lg:flex">
                         <NavigationMenu className="flex h-full items-stretch">
                             <NavigationMenuList className="flex h-full items-stretch space-x-2">
-                                {mainNavItems.map((item, index) => (
+                                {mainNavItems.map((item) => (
                                     <NavigationMenuItem
-                                        key={index}
+                                        key={item.title}
                                         className="relative flex h-full items-center"
                                     >
                                         <Link
                                             href={item.href}
+                                            prefetch
+                                            aria-current={
+                                                isCurrentUrl(item.href)
+                                                    ? 'page'
+                                                    : undefined
+                                            }
                                             className={cn(
                                                 navigationMenuTriggerStyle(),
                                                 whenCurrentUrl(
@@ -168,7 +224,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                             {item.title}
                                         </Link>
                                         {isCurrentUrl(item.href) && (
-                                            <div className="absolute bottom-0 left-0 h-0.5 w-full translate-y-px bg-black dark:bg-white"></div>
+                                            <div className="absolute bottom-0 left-0 h-0.5 w-full translate-y-px bg-black dark:bg-white" />
                                         )}
                                     </NavigationMenuItem>
                                 ))}
@@ -182,13 +238,14 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                 variant="ghost"
                                 size="icon"
                                 className="group h-9 w-9 cursor-pointer"
+                                aria-label="Search"
                             >
                                 <Search className="!size-5 opacity-80 group-hover:opacity-100" />
                             </Button>
                             <div className="ml-1 hidden gap-1 lg:flex">
                                 {rightNavItems.map((item) => (
                                     <Tooltip key={item.title}>
-                                        <TooltipTrigger>
+                                        <TooltipTrigger asChild>
                                             <a
                                                 href={toUrl(item.href)}
                                                 target="_blank"

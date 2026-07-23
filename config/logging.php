@@ -1,5 +1,6 @@
 <?php
 
+use App\Logging\ConfigureStructuredLogging;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -127,6 +128,16 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        'json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/laravel.json.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => env('LOG_DAILY_DAYS', 14),
+            'tap' => [
+                ConfigureStructuredLogging::class,
+            ],
+            'replace_placeholders' => true,
+        ],
     ],
 
 ];

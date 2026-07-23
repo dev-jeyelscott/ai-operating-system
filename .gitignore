@@ -48,6 +48,15 @@ Thumbs.db
 /test-results
 /blob-report
 
+# Developer-local AI tooling configuration
+/.codex/laravel-boost.local.sh
+
+# Editor and backup files
+*.backup
+*.bak
+*.orig
+*~
+
 # IDE and editor configuration
 /.fleet
 /.idea
@@ -62,3 +71,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Ignore Windows download metadata materialized as files.
+*:Zone.Identifier

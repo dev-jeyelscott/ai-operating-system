@@ -128,19 +128,10 @@ Do not use `sudo chmod 666 /var/run/docker.sock`.
 Run these commands in Ubuntu:
 
 ```bash
-cd ~/projects/ai-operating-system
-
-cp .env.example .env
-
-./vendor/bin/sail up -d --build
-
-./vendor/bin/sail composer install
-./vendor/bin/sail pnpm install
-
-./vendor/bin/sail artisan key:generate
-./vendor/bin/sail artisan migrate
-./vendor/bin/sail artisan storage:link
-./vendor/bin/sail artisan optimize:clear
+git clone <repository>
+cd ai-operating-system
+./bin/bootstrap
+./bin/dev
 ```
 
 Do not regenerate `APP_KEY` after the application has started storing encrypted data.
@@ -382,6 +373,50 @@ Add a development-only frontend package:
 ```
 
 Avoid running pnpm as `root`. Root-owned Corepack caches, pnpm stores, or `node_modules` files can cause read-only database and Vite permission errors.
+
+## Updating pinned container images
+
+All externally pulled development, bootstrap, and CI container images must use
+an explicit version tag and an immutable multi-platform SHA-256 index digest:
+
+```text
+repository:version@sha256:digest
+```
+
+Do not use latest, bare distribution aliases such as alpine, major-only
+aliases such as composer:2, or digest-free references.
+
+To update an image:
+
+1. Select an explicit reviewed version.
+2. Inspect the official registry manifest:
+`docker buildx imagetools inspect image:version`
+3. Confirm the top-level digest is a valid sha256: value.
+4. Confirm the manifest supports linux/amd64 and linux/arm64.
+5. Update every corresponding reference in:
+    - `compose.yaml`
+    - `.github/workflows`
+    - bootstrap or maintenance scripts
+    - tracked Dockerfiles
+
+6. Run:
+
+    ```bash
+    docker compose config --quiet
+    docker compose config --images
+    bash bin/check-container-images
+    docker compose pull
+    docker compose up -d --build
+    ./vendor/bin/sail artisan app:check
+    ./vendor/bin/sail composer ci:check
+    ./vendor/bin/sail pnpm test:e2e
+    ```
+
+7. Record the registry inspection date and output in `docs/evidence`.
+8. Review the complete repository diff before committing.
+
+A previous verified digest must be used for rollback. Never roll back to a
+floating tag.
 
 ---
 

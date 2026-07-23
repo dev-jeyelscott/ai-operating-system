@@ -1,38 +1,191 @@
-name: tests
+name: quality
 
 on:
   push:
     branches:
+      - develop
       - main
   pull_request:
+    branches:
+      - develop
+      - main
 
 permissions:
   contents: read
 
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: testing
+  APP_DEBUG: 'false'
+  APP_URL: http://127.0.0.1:8000
+  APP_RELEASE: ci
+
+  DB_CONNECTION: pgsql
+  DB_HOST: 127.0.0.1
+  DB_PORT: 5432
+  DB_DATABASE: ai_operating_system_test
+  DB_USERNAME: postgres
+  DB_PASSWORD: postgres
+
+  REDIS_HOST: 127.0.0.1
+  REDIS_PORT: 6379
+
+  CACHE_STORE: redis
+  SESSION_DRIVER: array
+  QUEUE_CONNECTION: redis
+
+  FILESYSTEM_DISK: local
+  ARTIFACT_FILESYSTEM_DISK: local
+
+  MAIL_MAILER: array
+  BROADCAST_CONNECTION: log
+
+  PLAYWRIGHT_BASE_URL: http://127.0.0.1:8000
+
 jobs:
-  ci:
+  quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: 'postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15'
+        env:
+          POSTGRES_DB: ai_operating_system_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd
+          "pg_isready -U postgres -d ai_operating_system_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: 'redis:8.8.0-alpine3.23@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005'
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Checkout repository
+        # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
+      - name: Validate pinned container images
+        run: |
+          WWWUSER=1000 WWWGROUP=1000 \
+            docker compose \
+              --env-file .env.example \
+              config \
+              --quiet
+
+          WWWUSER=1000 WWWGROUP=1000 \
+            docker compose \
+              --env-file .env.example \
+              config \
+              --images
+
+          bash bin/check-container-images
+
+      - name: Pull pinned infrastructure images
+        run: |
+          WWWUSER=1000 WWWGROUP=1000 \
+            docker compose \
+              --env-file .env.example \
+              pull
+
       - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        # v2
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45
         with:
           php-version: '8.5'
+          extensions: pdo_pgsql, redis, pcntl, posix
           tools: composer:v2
           coverage: none
 
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - name: Setup pnpm
+        # v4
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
         with:
-          node-version: '22'
+          version: 11.4.0
 
-      - name: Setup Application
-        run: composer setup
+      - name: Setup Node
+        # v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: pnpm
 
-      - name: Run CI Checks
+      - name: Install PHP dependencies
+        run: >
+          composer install
+          --no-interaction
+          --prefer-dist
+          --no-progress
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan migrate:fresh --force
+
+      - name: Validate environment
+        run: php artisan app:check
+
+      - name: Validate production configuration rules
+        run: php artisan test tests/Feature/Console/ProductionConfigurationValidatorTest.php
+
+      - name: Validate Composer manifest
+        run: composer validate --strict
+
+      - name: Audit PHP dependencies
+        run: composer audit --no-interaction
+
+      - name: Run backend and frontend quality gates
         run: composer ci:check
+
+      - name: Audit frontend dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start application
+        run: |
+          php artisan serve \
+            --host=127.0.0.1 \
+            --port=8000 \
+            > storage/logs/e2e-server.log 2>&1 &
+
+          timeout 60 bash -c \
+            'until curl --fail --silent http://127.0.0.1:8000/up > /dev/null; do sleep 2; done'
+
+      - name: Run browser tests
+        run: pnpm test:e2e
+
+      - name: Upload browser artifacts on failure
+        if: failure()
+        # v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: playwright-results
+          path: |
+            playwright-report/
+            test-results/
+            storage/logs/e2e-server.log
+          if-no-files-found: ignore

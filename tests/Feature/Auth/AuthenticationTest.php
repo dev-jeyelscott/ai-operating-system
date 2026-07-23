@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Fortify\Features;
 
 test('login screen can be rendered', function () {
@@ -66,12 +65,35 @@ test('users can logout', function () {
 test('users are rate limited', function () {
     $user = User::factory()->create();
 
-    RateLimiter::increment(md5('login'.implode('|', [$user->email, '127.0.0.1'])), amount: 5);
+    /*
+     * Consume the configured five login attempts through the public
+     * authentication endpoint instead of coupling this test to Laravel's
+     * internal hashed rate-limit key format.
+     */
+    for ($attempt = 1; $attempt <= 5; $attempt++) {
+        $this
+            ->from(route('login'))
+            ->post(route('login.store'), [
+                'email' => $user->email,
+                'password' => 'wrong-password',
+            ])
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('email');
+    }
 
-    $response = $this->post(route('login.store'), [
-        'email' => $user->email,
-        'password' => 'wrong-password',
-    ]);
+    /*
+     * Browser clients remain in the normal form workflow. They receive a
+     * redirect with a validation-style rate-limit error and retry headers.
+     */
+    $this
+        ->from(route('login'))
+        ->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'wrong-password',
+        ])
+        ->assertRedirect(route('login'))
+        ->assertHeader('Retry-After')
+        ->assertSessionHasErrors('rate_limit');
 
-    $response->assertTooManyRequests();
+    $this->assertGuest();
 });
