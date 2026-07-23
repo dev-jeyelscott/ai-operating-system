@@ -48,6 +48,9 @@ Thumbs.db
 /test-results
 /blob-report
 
+# Developer-local AI tooling configuration
+/.codex/laravel-boost.local.sh
+
 # Editor and backup files
 *.backup
 *.bak

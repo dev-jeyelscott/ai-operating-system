@@ -36,6 +36,25 @@ final class RepositoryHygieneScriptTest extends TestCase
         chmod($this->sandbox.'/bin/check-repository-hygiene', 0755);
 
         $this->writeFile(
+            '.gitignore',
+            "/.codex/laravel-boost.local.sh\n",
+        );
+
+        $this->writeFile(
+            '.codex/config.toml',
+            <<<'TOML'
+[mcp_servers.laravel-boost]
+command = "bash"
+args = ["-lc", "exec \"$(git rev-parse --show-toplevel)/bin/codex-laravel-boost\""]
+TOML,
+        );
+
+        $this->writeFile(
+            'AGENTS.md',
+            "# Agent guidance\n\nUse the active execution environment.\n",
+        );
+
+        $this->writeFile(
             'docs/security/threat-model.md',
             "# Threat model\n\nRepository-hygiene test fixture.\n",
         );
@@ -96,6 +115,157 @@ final class RepositoryHygieneScriptTest extends TestCase
         $this->assertStringContainsString(
             'Repository hygiene checks passed.',
             $process->getOutput(),
+        );
+    }
+
+    public function test_portable_repository_agent_configuration_passes(): void
+    {
+        $this->writeFile(
+            '.codex/config.toml',
+            <<<'TOML'
+[mcp_servers.laravel-boost]
+command = "bash"
+args = ["-lc", "exec \"$(git rev-parse --show-toplevel)/bin/codex-laravel-boost\""]
+TOML,
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertTrue(
+            $process->isSuccessful(),
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_ignored_machine_specific_override_is_not_scanned(): void
+    {
+        $this->writeFile(
+            '.codex/laravel-boost.local.sh',
+            <<<'BASH'
+#!/usr/bin/env bash
+exec /home/local-developer/php artisan boost:mcp
+BASH,
+        );
+
+        $this->runCommand([
+            'git',
+            'check-ignore',
+            '--quiet',
+            '--',
+            '.codex/laravel-boost.local.sh',
+        ]);
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertTrue(
+            $process->isSuccessful(),
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_tracked_linux_home_path_in_agent_config_fails(): void
+    {
+        $this->writeFile(
+            '.codex/config.toml',
+            <<<'TOML'
+[mcp_servers.laravel-boost]
+command = "/home/local-developer/.config/herd-lite/bin/php"
+args = ["/home/local-developer/projects/aios/artisan", "boost:mcp"]
+TOML,
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+
+        $this->assertStringContainsString(
+            'machine-specific tracked agent configuration was found:',
+            $process->getErrorOutput(),
+        );
+
+        $this->assertStringContainsString(
+            '.codex/config.toml:',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_tracked_macos_home_path_in_agent_config_fails(): void
+    {
+        $this->writeFile(
+            '.codex/config.toml',
+            <<<'TOML'
+[mcp_servers.laravel-boost]
+command = "/Users/local-developer/bin/php"
+args = ["artisan", "boost:mcp"]
+TOML,
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+
+        $this->assertStringContainsString(
+            '.codex/config.toml:',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_tracked_windows_home_path_in_agent_config_fails(): void
+    {
+        $this->writeFile(
+            '.codex/config.toml',
+            <<<'TOML'
+[mcp_servers.laravel-boost]
+command = 'C:\Users\local-developer\php.exe'
+args = ["artisan", "boost:mcp"]
+TOML,
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+
+        $this->assertStringContainsString(
+            '.codex/config.toml:',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_tracked_wsl_executable_in_agent_config_fails(): void
+    {
+        $this->writeFile(
+            '.codex/config.toml',
+            <<<'TOML'
+[mcp_servers.laravel-boost]
+command = "wsl.exe"
+args = ["php", "artisan", "boost:mcp"]
+TOML,
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+
+        $this->assertStringContainsString(
+            'wsl.exe',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_unconditional_wsl_instruction_fails(): void
+    {
+        $this->writeFile(
+            'AGENTS.md',
+            'You are working inside WSL. Always run `wsl -d Ubuntu` first.',
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+
+        $this->assertStringContainsString(
+            'AGENTS.md:',
+            $process->getErrorOutput(),
         );
     }
 
@@ -180,6 +350,7 @@ final class RepositoryHygieneScriptTest extends TestCase
         $process = $this->runHygieneCheck();
 
         $this->assertFalse($process->isSuccessful());
+
         $this->assertStringContainsString(
             '.github/workflows/quality.yml:2: actions/checkout@v7',
             $process->getErrorOutput(),
@@ -195,7 +366,10 @@ final class RepositoryHygieneScriptTest extends TestCase
 
         $process = $this->runHygieneCheck();
 
-        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        $this->assertTrue(
+            $process->isSuccessful(),
+            $process->getErrorOutput(),
+        );
     }
 
     /**
