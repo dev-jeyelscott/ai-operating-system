@@ -7,6 +7,7 @@ namespace App\Application\Integrations;
 use App\Application\Audit\RecordAuditEvent;
 use App\Application\Integrations\Contracts\IntegrationCredentialCipher;
 use App\Application\Integrations\Contracts\NotionConnectionGateway;
+use App\Application\Projects\SaveProjectSetupStep;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
@@ -15,8 +16,10 @@ use App\Domain\Integrations\IntegrationCredentialSecret;
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Integrations\NotionDatabaseId;
+use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
 use App\Models\ProjectIntegration;
+use App\Models\ProjectSetupProgress;
 use App\Models\ProviderCredential;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -33,6 +36,7 @@ final readonly class TestProjectNotionConnection
         private IntegrationCredentialCipher $cipher,
         private NotionConnectionGateway $gateway,
         private SaveProjectIntegrationCredential $saveCredential,
+        private SaveProjectSetupStep $saveSetupStep,
         private RecordAuditEvent $audit,
         private TransactionManager $transactions,
     ) {}
@@ -79,6 +83,16 @@ final readonly class TestProjectNotionConnection
         if ($project->isArchived()) {
             throw ValidationException::withMessages([
                 'connection' => 'Archived projects cannot test integrations.',
+            ]);
+        }
+
+        $setupProgress = ProjectSetupProgress::query()
+            ->where('project_id', $project->id)
+            ->firstOrFail();
+
+        if (! $setupProgress->hasCompleted(ProjectSetupStep::Repository)) {
+            throw ValidationException::withMessages([
+                'step' => 'Complete "Repository" before continuing to "Integrations".',
             ]);
         }
 
@@ -134,29 +148,12 @@ final readonly class TestProjectNotionConnection
             expectedWorkspaceId: $existingIntegration?->workspace_id,
         );
 
-        /*
-         * Do not replace a valid stored credential with a candidate that failed
-         * authentication, workspace validation, or database access.
-         */
-        if ($result->successful && $submittedCredential !== null) {
-            $storedCredential = $this->saveCredential->handle(
-                actorUserId: $actorUserId,
-                organizationId: $organizationId,
-                projectId: $projectId,
-                provider: IntegrationProvider::Notion,
-                plaintextCredential: $submittedCredential->reveal(),
-                correlationId: $correlationId,
-            );
-
-            $testedCredentialVersion =
-                $storedCredential->version;
-        }
-
         return $this->transactions->run(
             function () use (
                 $actorUserId,
                 $organizationId,
                 $projectId,
+                $submittedCredential,
                 $testedCredentialVersion,
                 $result,
                 $correlationId,
@@ -196,6 +193,17 @@ final readonly class TestProjectNotionConnection
                     }
                 }
 
+                if ($result->successful && $submittedCredential !== null) {
+                    $this->saveCredential->handle(
+                        actorUserId: $actorUserId,
+                        organizationId: $organizationId,
+                        projectId: $projectId,
+                        provider: IntegrationProvider::Notion,
+                        plaintextCredential: $submittedCredential->reveal(),
+                        correlationId: $correlationId,
+                    );
+                }
+
                 $integration = ProjectIntegration::query()
                     ->forOrganization($organizationId)
                     ->forProject($projectId)
@@ -231,6 +239,32 @@ final readonly class TestProjectNotionConnection
                         || $integration->data_source_id
                             !== $result->dataSourceId
                     );
+
+                if (
+                    $result->successful
+                    && ! $configurationChanged
+                    && $integration->connection_status
+                        === NotionConnectionStatus::Connected
+                    && $integration->last_failure_code === null
+                    && $integration->workspace_id === $result->workspaceId
+                    && $integration->workspace_name === $result->workspaceName
+                    && $integration->database_id === $result->databaseId
+                    && $integration->database_name === $result->databaseName
+                    && $integration->data_source_id === $result->dataSourceId
+                    && $integration->data_source_name === $result->dataSourceName
+                ) {
+                    $this->saveSetupStep->handle(
+                        actorUserId: $actorUserId,
+                        organizationId: $organizationId,
+                        projectId: $projectId,
+                        step: ProjectSetupStep::Integrations,
+                        payload: [],
+                        correlationId: $correlationId,
+                        externalConfigurationChanged: false,
+                    );
+
+                    return $result->withConfigurationChanged(false);
+                }
 
                 $attributes = [
                     'connection_status' => $result->successful
@@ -295,6 +329,18 @@ final readonly class TestProjectNotionConnection
                         'provider_request_id' => $result->providerRequestId,
                     ],
                 );
+
+                if ($result->successful) {
+                    $this->saveSetupStep->handle(
+                        actorUserId: $actorUserId,
+                        organizationId: $organizationId,
+                        projectId: $projectId,
+                        step: ProjectSetupStep::Integrations,
+                        payload: [],
+                        correlationId: $correlationId,
+                        externalConfigurationChanged: $configurationChanged,
+                    );
+                }
 
                 return $result->withConfigurationChanged(
                     $configurationChanged,
