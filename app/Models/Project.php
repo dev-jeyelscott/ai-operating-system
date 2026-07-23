@@ -335,4 +335,14 @@ final class Project extends Model
     {
         return $this->hasMany(ProjectIntegration::class);
     }
+
+    /**
+     * Return documents owned by this project, newest first for inventory use.
+     *
+     * @return HasMany<Document, $this>
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class)->latest();
+    }
 }
