@@ -102,7 +102,10 @@ Commands are persisted by this schema but are not executed by AIOS-021.
 3. Never silently interpret an unsupported schema version.
 4. Increment revision only for material configuration changes.
 5. AIOS-031 will persist immutable history keyed by project and revision.
-6. Context snapshots must use toVersionedArray() instead of raw model serialization.
+6. Context snapshots use `BuildProjectConfigurationSnapshot`, which composes
+   Projects-owned configuration from `ProjectConfiguration::toVersionedArray()`
+   with credential-free integration metadata through an application read
+   contract.
 
 ## Immutable configuration history
 
@@ -118,7 +121,9 @@ History rules:
    exactly one immutable version with the same revision.
 3. A normalized no-op request creates neither a revision nor a version.
 4. `(project_id, revision)` is unique.
-5. Snapshots use `ProjectConfiguration::toVersionedArray()`.
+5. Snapshots use `BuildProjectConfigurationSnapshot`, not raw model
+   serialization. The builder composes `ProjectConfiguration::toVersionedArray()`
+   with the credential-free integrations snapshot.
 6. Credentials, tokens, ciphertext, cookies, and private keys are excluded.
 7. Every version records actor type, actor identifier, reason, and timestamp.
 8. Version creation and its audit event commit in the same transaction.

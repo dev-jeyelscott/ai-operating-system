@@ -25,6 +25,7 @@ final readonly class RecordProjectConfigurationVersion
      * Inject audit persistence and the application transaction boundary.
      */
     public function __construct(
+        private BuildProjectConfigurationSnapshot $snapshots,
         private RecordAuditEvent $audit,
         private TransactionManager $transactions,
     ) {}
@@ -77,6 +78,7 @@ final readonly class RecordProjectConfigurationVersion
                 $project = Project::query()
                     ->forOrganization($organizationId)
                     ->whereKey($projectId)
+                    ->lockForUpdate()
                     ->firstOrFail();
 
                 /*
@@ -88,6 +90,11 @@ final readonly class RecordProjectConfigurationVersion
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                $snapshot = $this->snapshots->handle(
+                    organizationId: $organizationId,
+                    configuration: $configuration,
+                );
+
                 $version = ProjectConfigurationVersion::query()->create([
                     'project_id' => $project->id,
                     'schema_version' => $configuration->schema_version,
@@ -95,7 +102,7 @@ final readonly class RecordProjectConfigurationVersion
                     'actor_type' => $actorType,
                     'actor_id' => $normalizedActorId,
                     'change_reason' => $normalizedChangeReason,
-                    'snapshot' => $configuration->toVersionedArray(),
+                    'snapshot' => $snapshot->toArray(),
                     'created_at' => now(),
                 ]);
 

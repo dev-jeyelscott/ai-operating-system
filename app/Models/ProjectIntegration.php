@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $last_tested_by_user_id
  * @property CarbonImmutable $last_tested_at
  * @property CarbonImmutable|null $last_connected_at
+ * @property int|null $verified_credential_version
  */
 #[Fillable([
     'organization_id',
@@ -49,6 +50,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'last_tested_by_user_id',
     'last_tested_at',
     'last_connected_at',
+    'verified_credential_version',
 ])]
 final class ProjectIntegration extends Model
 {
@@ -136,6 +138,7 @@ final class ProjectIntegration extends Model
             'last_failure_code' => $this->last_failure_code?->value,
             'last_tested_at' => $this->last_tested_at->toIso8601String(),
             'last_connected_at' => $this->last_connected_at?->toIso8601String(),
+            'verified_credential_version' => $this->verified_credential_version,
         ];
     }
 
@@ -152,6 +155,7 @@ final class ProjectIntegration extends Model
             'last_failure_code' => NotionConnectionFailureCode::class,
             'last_tested_at' => 'immutable_datetime',
             'last_connected_at' => 'immutable_datetime',
+            'verified_credential_version' => 'integer',
         ];
     }
 }

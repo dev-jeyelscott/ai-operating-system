@@ -14,7 +14,11 @@ use App\Domain\Projects\Configuration\Exceptions\UnsupportedProjectConfiguration
  */
 final class ProjectConfigurationSchema
 {
-    public const CURRENT_VERSION = 1;
+    public const VERSION_1 = 1;
+
+    public const VERSION_2 = 2;
+
+    public const CURRENT_VERSION = self::VERSION_2;
 
     public const INITIAL_REVISION = 1;
 
@@ -47,11 +51,18 @@ JSON;
 JSON;
 
     /**
-     * Determine whether this application release can read the given schema.
+     * Determine whether this application release recognizes the given schema.
      */
     public static function supports(int $version): bool
     {
-        return $version === self::CURRENT_VERSION;
+        return in_array(
+            $version,
+            [
+                self::VERSION_1,
+                self::VERSION_2,
+            ],
+            true,
+        );
     }
 
     /**

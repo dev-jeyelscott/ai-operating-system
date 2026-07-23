@@ -115,10 +115,12 @@ final class ProjectConfiguration extends Model
     }
 
     /**
-     * Serialize persistence columns into the stable schema-v1 contract.
+     * Serialize Projects-owned persistence columns into the stable contract.
      *
-     * This credential-free payload can later be copied into immutable
-     * configuration-history and project-context snapshots.
+     * Cross-module integration metadata is composed by
+     * BuildProjectConfigurationSnapshot.
+     *
+     * This method performs no database queries.
      *
      * @return array<string, mixed>
      */
@@ -129,13 +131,16 @@ final class ProjectConfiguration extends Model
         return [
             'schema_version' => $this->schema_version,
             'revision' => $this->revision,
+
             'technology_stack' => $this->technology_stack,
+
             'repository' => [
                 'provider' => $this->repository_provider?->value,
                 'url' => $this->repository_url,
                 'default_branch' => $this->default_branch,
                 'integration_branch' => $this->integration_branch,
             ],
+
             'validation_commands' => [
                 'build' => $this->build_command,
                 'test' => $this->test_command,
@@ -143,44 +148,25 @@ final class ProjectConfiguration extends Model
                 'static_analysis' => $this->static_analysis_command,
                 'security' => $this->security_command,
             ],
+
             'required_documents' => $this->required_documents,
+
             'policy' => [
                 'default_reasoning' => $this->default_reasoning->value,
                 'provider' => $this->provider_policy,
+
                 'budget' => [
                     'limit_minor' => $this->budget_limit_minor,
                     'currency' => $this->budget_currency,
                 ],
+
                 'automatic_retry_limit' => $this->automatic_retry_limit,
                 'autonomy_level' => $this->autonomy_level->value,
                 'approval' => $this->approval_policy,
             ],
-            'notifications' => $this->notification_policy,
-            'integrations' => $this->versionedIntegrations(),
-        ];
-    }
 
-    /**
-     * Capture credential-free integration targets alongside this revision.
-     *
-     * @return array<string, array<string, string|null>>
-     */
-    private function versionedIntegrations(): array
-    {
-        return ProjectIntegration::query()
-            ->where('project_id', $this->project_id)
-            ->get()
-            ->mapWithKeys(static fn (ProjectIntegration $integration): array => [
-                $integration->provider->value => [
-                    'workspace_id' => $integration->workspace_id,
-                    'workspace_name' => $integration->workspace_name,
-                    'database_id' => $integration->database_id,
-                    'database_name' => $integration->database_name,
-                    'data_source_id' => $integration->data_source_id,
-                    'data_source_name' => $integration->data_source_name,
-                ],
-            ])
-            ->all();
+            'notifications' => $this->notification_policy,
+        ];
     }
 
     /**

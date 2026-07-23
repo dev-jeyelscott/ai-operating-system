@@ -193,8 +193,10 @@ final readonly class TestProjectNotionConnection
                     }
                 }
 
+                $verifiedCredentialVersion = $testedCredentialVersion;
+
                 if ($result->successful && $submittedCredential !== null) {
-                    $this->saveCredential->handle(
+                    $storedCredential = $this->saveCredential->handle(
                         actorUserId: $actorUserId,
                         organizationId: $organizationId,
                         projectId: $projectId,
@@ -202,6 +204,17 @@ final readonly class TestProjectNotionConnection
                         plaintextCredential: $submittedCredential->reveal(),
                         correlationId: $correlationId,
                     );
+
+                    $verifiedCredentialVersion = $storedCredential->version;
+                }
+
+                if (
+                    $result->successful
+                    && $verifiedCredentialVersion === null
+                ) {
+                    throw ValidationException::withMessages([
+                        'connection' => 'The verified Notion credential version could not be resolved.',
+                    ]);
                 }
 
                 $integration = ProjectIntegration::query()
@@ -238,6 +251,8 @@ final readonly class TestProjectNotionConnection
                             !== $result->databaseId
                         || $integration->data_source_id
                             !== $result->dataSourceId
+                        || $integration->verified_credential_version
+                            !== $verifiedCredentialVersion
                     );
 
                 if (
@@ -252,6 +267,8 @@ final readonly class TestProjectNotionConnection
                     && $integration->database_name === $result->databaseName
                     && $integration->data_source_id === $result->dataSourceId
                     && $integration->data_source_name === $result->dataSourceName
+                    && $integration->verified_credential_version
+                        === $verifiedCredentialVersion
                 ) {
                     $this->saveSetupStep->handle(
                         actorUserId: $actorUserId,
@@ -283,12 +300,18 @@ final readonly class TestProjectNotionConnection
                 if ($result->successful) {
                     $attributes = [
                         ...$attributes,
+
                         'workspace_id' => $result->workspaceId,
                         'workspace_name' => $result->workspaceName,
+
                         'database_id' => $result->databaseId,
                         'database_name' => $result->databaseName,
+
                         'data_source_id' => $result->dataSourceId,
                         'data_source_name' => $result->dataSourceName,
+
+                        'verified_credential_version' => $verifiedCredentialVersion,
+
                         'last_connected_at' => now(),
                     ];
                 } elseif (! $integration->exists) {
@@ -327,6 +350,8 @@ final readonly class TestProjectNotionConnection
                         'data_source_id' => $result->dataSourceId,
 
                         'provider_request_id' => $result->providerRequestId,
+
+                        'verified_credential_version' => $result->successful ? $verifiedCredentialVersion : null,
                     ],
                 );
 

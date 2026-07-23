@@ -43,7 +43,7 @@ test(
                 fn (Assert $page): Assert => $page
                     ->component('projects/settings')
                     ->where('project.id', $project->id)
-                    ->where('configuration.schemaVersion', 1)
+                    ->where('configuration.schemaVersion', 2)
                     ->where(
                         'configuration.repository.integrationBranch',
                         'develop',

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Application\Audit\Contracts\AuditEventRepository;
+use App\Application\Projects\BuildProjectConfigurationSnapshot;
 use App\Application\Projects\CreateProject;
 use App\Application\Projects\SaveProjectSetupStep;
 use App\Domain\Audit\AuditActorType;
@@ -69,7 +70,12 @@ test('project creation records immutable revision one', function (): void {
     */
     $this->assertJsonStringEqualsJsonString(
         json_encode(
-            $configuration->toVersionedArray(),
+            app(BuildProjectConfigurationSnapshot::class)
+                ->handle(
+                    organizationId: $this->organization->id,
+                    configuration: $configuration,
+                )
+                ->toArray(),
             JSON_THROW_ON_ERROR,
         ),
         json_encode(
@@ -77,6 +83,27 @@ test('project creation records immutable revision one', function (): void {
             JSON_THROW_ON_ERROR,
         ),
     );
+
+    expect(data_get(
+        $version->snapshot,
+        'integrations.notion.connection_status',
+    ))
+        ->toBe('unconfigured')
+        ->and(data_get(
+            $version->snapshot,
+            'integrations.notion.workspace.id',
+        ))
+        ->toBeNull()
+        ->and(data_get(
+            $version->snapshot,
+            'integrations.notion.credential.configured',
+        ))
+        ->toBeFalse()
+        ->and(data_get(
+            $version->snapshot,
+            'integrations.notion.credential.verified_version',
+        ))
+        ->toBeNull();
 
     expect(
         $this->project
@@ -141,7 +168,12 @@ test('material configuration updates append the next revision', function (): voi
     */
     $this->assertJsonStringEqualsJsonString(
         json_encode(
-            $configuration->toVersionedArray(),
+            app(BuildProjectConfigurationSnapshot::class)
+                ->handle(
+                    organizationId: $this->organization->id,
+                    configuration: $configuration,
+                )
+                ->toArray(),
             JSON_THROW_ON_ERROR,
         ),
         json_encode(
@@ -149,6 +181,27 @@ test('material configuration updates append the next revision', function (): voi
             JSON_THROW_ON_ERROR,
         ),
     );
+
+    expect(data_get(
+        $baseline->snapshot,
+        'integrations.notion.connection_status',
+    ))
+        ->toBe('unconfigured')
+        ->and(data_get(
+            $baseline->snapshot,
+            'integrations.notion.workspace.id',
+        ))
+        ->toBeNull()
+        ->and(data_get(
+            $baseline->snapshot,
+            'integrations.notion.credential.configured',
+        ))
+        ->toBeFalse()
+        ->and(data_get(
+            $baseline->snapshot,
+            'integrations.notion.credential.verified_version',
+        ))
+        ->toBeNull();
 });
 
 test('identical normalized updates do not create duplicate versions', function (): void {
