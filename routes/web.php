@@ -4,6 +4,7 @@ use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Documents\ProjectDocumentController;
+use App\Http\Controllers\Documents\ReviewDocumentVersionController;
 use App\Http\Controllers\Documents\StoreProjectDocumentController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
@@ -87,6 +88,17 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                         ->can('view', 'project')->name('documents.index');
                     Route::get('/{project}/documents/{document}', [ProjectDocumentController::class, 'show'])
                         ->can('view', 'project')->name('documents.show');
+
+                    Route::controller(ReviewDocumentVersionController::class)
+                        ->prefix('/{project}/documents/{document}/versions/{version}')
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.versions.')
+                        ->group(function (): void {
+                            Route::post('/approve', 'approve')->name('approve');
+                            Route::post('/reject', 'reject')->name('reject');
+                            Route::post('/supersede', 'supersede')->name('supersede');
+                        });
 
                     /*
                      * Store or rotate an encrypted provider credential.

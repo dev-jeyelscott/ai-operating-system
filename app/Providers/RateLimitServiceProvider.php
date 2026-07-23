@@ -167,7 +167,10 @@ final class RateLimitServiceProvider extends ServiceProvider
             'organizations.projects.store' => 'store',
 
             'organizations.projects.update',
-            'organizations.projects.setup.update' => 'update',
+            'organizations.projects.setup.update',
+            'organizations.projects.documents.versions.approve',
+            'organizations.projects.documents.versions.reject',
+            'organizations.projects.documents.versions.supersede' => 'update',
 
             'organizations.projects.integrations.credentials.store' => 'credentials',
 
