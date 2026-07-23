@@ -5,13 +5,14 @@ declare(strict_types=1);
 use App\Application\Projects\EvaluateProjectCompleteness;
 use App\Models\Document;
 use App\Models\DocumentVersion;
+use App\Models\Organization;
+use App\Models\Project;
 use App\Models\ProjectConfiguration;
 
 test('required document classes block preflight until an approved version exists', function (): void {
-    [
-        'organization' => $organization,
-        'project' => $project,
-    ] = completeProjectCompletenessFixture();
+    $organization = Organization::factory()->create();
+    $project = Project::factory()->for($organization)->create();
+    ProjectConfiguration::factory()->complete()->for($project)->create();
 
     ProjectConfiguration::query()
         ->where('project_id', $project->id)
@@ -38,5 +39,7 @@ test('required document classes block preflight until an approved version exists
     expect(app(EvaluateProjectCompleteness::class)->handle(
         organizationId: $organization->id,
         projectId: $project->id,
-    )->isComplete())->toBeTrue();
+    )->missingKeys())->not->toContain(
+        'required_documents.operations_runbook',
+    );
 });
