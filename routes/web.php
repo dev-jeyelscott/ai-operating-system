@@ -4,6 +4,7 @@ use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Documents\ProjectDocumentController;
+use App\Http\Controllers\Documents\RetryDocumentVersionProcessingController;
 use App\Http\Controllers\Documents\ReviewDocumentVersionController;
 use App\Http\Controllers\Documents\StoreProjectDocumentController;
 use App\Http\Controllers\Health\HealthController;
@@ -99,6 +100,14 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                             Route::post('/reject', 'reject')->name('reject');
                             Route::post('/supersede', 'supersede')->name('supersede');
                         });
+
+                    Route::post(
+                        '/{project}/documents/{document}/versions/{version}/retry',
+                        RetryDocumentVersionProcessingController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.versions.retry');
 
                     /*
                      * Store or rotate an encrypted provider credential.
