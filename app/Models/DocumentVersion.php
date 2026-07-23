@@ -64,6 +64,29 @@ final class DocumentVersion extends Model
         });
     }
 
+    /**
+     * Start parsing only after a completed, approved malware scan.
+     */
+    public function beginParsing(
+        string $parserName,
+        string $parserVersion,
+    ): void {
+        if ($this->status !== DocumentStatus::ScanApproved) {
+            throw new LogicException(
+                'A document version cannot be parsed before scan approval.',
+            );
+        }
+
+        $this->forceFill([
+            'status' => DocumentStatus::Parsing,
+            'parser_name' => $parserName,
+            'parser_version' => $parserVersion,
+            'parsing_started_at' => now(),
+            'failure_code' => null,
+            'failure_message' => null,
+        ])->save();
+    }
+
     /** @return BelongsTo<Document, $this> */
     public function document(): BelongsTo
     {

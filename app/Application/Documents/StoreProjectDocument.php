@@ -6,6 +6,7 @@ namespace App\Application\Documents;
 
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
+use App\Jobs\ScanDocumentVersionJob;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Organization;
@@ -69,7 +70,7 @@ final class StoreProjectDocument
                     'title' => $title,
                 ]);
 
-                DocumentVersion::query()->create([
+                $documentVersion = DocumentVersion::query()->create([
                     'document_id' => $document->id,
                     'version' => 1,
                     'original_filename' => $this->originalFilename($uploadedFile),
@@ -78,9 +79,13 @@ final class StoreProjectDocument
                     'storage_disk' => $disk,
                     'storage_path' => $storedPath,
                     'checksum_sha256' => $checksum,
-                    'status' => DocumentStatus::Uploaded,
+                    'status' => DocumentStatus::Quarantined,
                     'classification' => DocumentClassification::Unclassified,
                 ]);
+
+                ScanDocumentVersionJob::dispatch(
+                    $documentVersion->id,
+                )->afterCommit();
 
                 return $document;
             });

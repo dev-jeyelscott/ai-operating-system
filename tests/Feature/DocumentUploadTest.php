@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
+use App\Jobs\ScanDocumentVersionJob;
 use App\Models\Document;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
@@ -11,6 +12,7 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
@@ -41,6 +43,7 @@ test('an authorized member stores a private project-scoped document with a compu
     ['organization' => $organization, 'project' => $project, 'user' => $user]
         = documentUploadOwner();
     $upload = UploadedFile::fake()->create('architecture.pdf', 128, 'application/pdf');
+    Queue::fake();
 
     $this
         ->actingAs($user)
@@ -70,10 +73,14 @@ test('an authorized member stores a private project-scoped document with a compu
             "documents/organizations/{$organization->id}/projects/{$project->id}/",
         )
         ->checksum_sha256->toBe(hash_file('sha256', $upload->getRealPath()))
-        ->status->toBe(DocumentStatus::Uploaded)
+        ->status->toBe(DocumentStatus::Quarantined)
         ->classification->toBe(DocumentClassification::Unclassified);
 
     Storage::disk('documents')->assertExists($version->storage_path);
+    Queue::assertPushed(
+        ScanDocumentVersionJob::class,
+        fn (ScanDocumentVersionJob $job): bool => $job->documentVersionId === $version->id,
+    );
 });
 
 test('uploads reject unsupported file types and oversized files before storage', function (): void {

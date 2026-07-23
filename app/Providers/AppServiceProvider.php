@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Application\Documents\Contracts\MalwareScanner;
 use App\Application\Shared\Contracts\TransactionManager;
+use App\Infrastructure\Documents\DeterministicMalwareScanner;
 use App\Infrastructure\Persistence\EloquentTransactionManager;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -17,6 +19,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(
+            MalwareScanner::class,
+            DeterministicMalwareScanner::class,
+        );
+
         $this->app->bind(
             TransactionManager::class,
             EloquentTransactionManager::class,
