@@ -36,6 +36,7 @@ use LogicException;
  * @property CarbonImmutable|null $parsed_at
  * @property string|null $parsed_content
  * @property string|null $analysis_summary
+ * @property list<string>|null $analysis_flags
  * @property string|null $failure_code
  * @property string|null $failure_message
  * @property int|null $supersedes_document_version_id
@@ -47,7 +48,7 @@ use LogicException;
     'document_id', 'version', 'original_filename', 'media_type', 'byte_size',
     'storage_disk', 'storage_path', 'checksum_sha256', 'status', 'classification',
     'parser_name', 'parser_version', 'parsing_started_at', 'parsed_at', 'parsed_content',
-    'analysis_summary', 'analysis_conflicts', 'analysis_gaps',
+    'analysis_summary', 'analysis_conflicts', 'analysis_gaps', 'analysis_flags',
     'failure_code', 'failure_message', 'supersedes_document_version_id',
 ])]
 final class DocumentVersion extends Model
@@ -120,6 +121,7 @@ final class DocumentVersion extends Model
             'parsed_at' => 'immutable_datetime',
             'analysis_conflicts' => 'array',
             'analysis_gaps' => 'array',
+            'analysis_flags' => 'array',
         ];
     }
 }

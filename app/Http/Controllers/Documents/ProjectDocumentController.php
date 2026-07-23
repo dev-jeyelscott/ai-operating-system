@@ -63,7 +63,8 @@ final class ProjectDocumentController extends Controller
      *         classification: string,
      *         checksum: string,
      *         parserVersion: string|null,
-     *         notes: string|null
+     *         notes: string|null,
+     *         flags: list<string>
      *     }>
      * }
      */
@@ -80,6 +81,7 @@ final class ProjectDocumentController extends Controller
                 'checksum' => (string) $version->checksum_sha256,
                 'parserVersion' => $version->parser_version,
                 'notes' => $version->analysis_summary,
+                'flags' => $version->analysis_flags ?? [],
             ])->values()->all(),
         ];
     }

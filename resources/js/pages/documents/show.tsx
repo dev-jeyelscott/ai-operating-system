@@ -8,6 +8,7 @@ type DocumentVersion = {
     checksum: string;
     parserVersion: string | null;
     notes: string | null;
+    flags: string[];
 };
 
 type Props = {
@@ -35,6 +36,12 @@ export default function DocumentShow({ document, urls }: Props) {
                             </div>
                             <div>Parser: {version.parserVersion ?? 'Pending'}</div>
                             <div>Notes: {version.notes ?? 'None'}</div>
+                            <div>
+                                Safety flags:{' '}
+                                {version.flags.length > 0
+                                    ? version.flags.join(', ')
+                                    : 'None'}
+                            </div>
                         </dl>
                     </section>
                 ))}

@@ -17,7 +17,16 @@ final readonly class AnalyzeDocumentVersion
         $version = DocumentVersion::query()->findOrFail($id);
         if ($version->status !== DocumentStatus::Parsed) {
             return;
-        } $analysis = $this->analyzer->analyze($version, $seed);
-        $version->forceFill(['classification' => $analysis->classification, 'analysis_summary' => $analysis->summary, 'analysis_conflicts' => $analysis->conflicts, 'analysis_gaps' => $analysis->gaps])->save();
+        }
+
+        $analysis = $this->analyzer->analyze($version, $seed);
+
+        $version->forceFill([
+            'classification' => $analysis->classification,
+            'analysis_summary' => $analysis->summary,
+            'analysis_conflicts' => $analysis->conflicts,
+            'analysis_gaps' => $analysis->gaps,
+            'analysis_flags' => $analysis->flags,
+        ])->save();
     }
 }
