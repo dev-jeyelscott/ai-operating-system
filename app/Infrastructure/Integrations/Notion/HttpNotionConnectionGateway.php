@@ -139,11 +139,25 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
             );
         }
 
+        $dataSource = $this->dataSource($databaseResponse);
+
+        if ($dataSource === null) {
+            return NotionConnectionTestResult::failed(
+                failureCode: NotionConnectionFailureCode::InvalidProviderResponse,
+                databaseId: $databaseId->value(),
+                providerRequestId: $this->requestId($databaseResponse),
+                workspaceId: $workspaceId,
+                workspaceName: $workspaceName,
+            );
+        }
+
         return NotionConnectionTestResult::connected(
             workspaceId: $workspaceId,
             workspaceName: $workspaceName,
             databaseId: $databaseId->value(),
             databaseName: $this->databaseName($databaseResponse),
+            dataSourceId: $dataSource['id'],
+            dataSourceName: $dataSource['name'],
             providerRequestId: $this->requestId($databaseResponse)
                 ?? $this->requestId($selfResponse),
         );
@@ -342,6 +356,38 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
         return $normalized !== ''
             ? mb_substr($normalized, 0, 255)
             : null;
+    }
+
+    /**
+     * Select the database's only data source so later schema and ticket queries
+     * can target the Notion data-source API rather than the database container.
+     *
+     * @return array{id: string, name: string|null}|null
+     */
+    private function dataSource(Response $response): ?array
+    {
+        $dataSources = $response->json('data_sources', []);
+
+        if (! is_array($dataSources) || count($dataSources) !== 1) {
+            return null;
+        }
+
+        $dataSource = $dataSources[0] ?? null;
+
+        if (! is_array($dataSource)) {
+            return null;
+        }
+
+        $id = $this->normalizedUuid($dataSource['id'] ?? null);
+
+        if ($id === null) {
+            return null;
+        }
+
+        return [
+            'id' => $id,
+            'name' => $this->nullableString($dataSource['name'] ?? null),
+        ];
     }
 
     /**

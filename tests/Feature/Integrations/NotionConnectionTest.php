@@ -95,7 +95,7 @@ test(
                         'plain_text' => 'AIOS Tickets',
                     ],
                 ],
-                'data_sources' => [],
+                'data_sources' => [['id' => '248104cd-477e-80af-bc30-000bd28de8f9', 'name' => 'Tickets']],
             ], 200, [
                 'x-request-id' => 'req-database',
             ]),

@@ -228,6 +228,8 @@ final readonly class TestProjectNotionConnection
                             !== $result->workspaceId
                         || $integration->database_id
                             !== $result->databaseId
+                        || $integration->data_source_id
+                            !== $result->dataSourceId
                     );
 
                 $attributes = [
@@ -251,6 +253,8 @@ final readonly class TestProjectNotionConnection
                         'workspace_name' => $result->workspaceName,
                         'database_id' => $result->databaseId,
                         'database_name' => $result->databaseName,
+                        'data_source_id' => $result->dataSourceId,
+                        'data_source_name' => $result->dataSourceName,
                         'last_connected_at' => now(),
                     ];
                 } elseif (! $integration->exists) {
@@ -285,6 +289,8 @@ final readonly class TestProjectNotionConnection
                         'failure_code' => $result->failureCode?->value,
 
                         'database_id' => $result->databaseId,
+
+                        'data_source_id' => $result->dataSourceId,
 
                         'provider_request_id' => $result->providerRequestId,
                     ],

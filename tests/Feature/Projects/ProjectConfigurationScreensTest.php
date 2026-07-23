@@ -294,6 +294,8 @@ function projectConfigurationScreensFixture(
         'workspace_name' => 'AIOS Test Workspace',
         'database_id' => (string) Str::uuid(),
         'database_name' => 'AIOS Delivery Tracker',
+        'data_source_id' => (string) Str::uuid(),
+        'data_source_name' => 'AIOS Delivery Tracker Data Source',
         'connection_status' => NotionConnectionStatus::Connected,
         'last_failure_code' => null,
         'last_provider_request_id' => 'request-aios-030',

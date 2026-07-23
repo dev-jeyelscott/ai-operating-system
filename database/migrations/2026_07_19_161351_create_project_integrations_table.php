@@ -40,6 +40,8 @@ return new class extends Migration
 
                 $table->uuid('database_id')->nullable();
                 $table->string('database_name', 255)->nullable();
+                $table->uuid('data_source_id')->nullable();
+                $table->string('data_source_name', 255)->nullable();
 
                 $table->string('connection_status', 32);
                 $table->string('last_failure_code', 64)->nullable();
@@ -122,6 +124,7 @@ return new class extends Migration
                             connection_status = 'connected'
                             AND workspace_id IS NOT NULL
                             AND database_id IS NOT NULL
+                            AND data_source_id IS NOT NULL
                             AND last_failure_code IS NULL
                         )
                         OR

@@ -24,6 +24,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $workspace_name
  * @property string|null $database_id
  * @property string|null $database_name
+ * @property string|null $data_source_id
+ * @property string|null $data_source_name
  * @property NotionConnectionStatus $connection_status
  * @property NotionConnectionFailureCode|null $last_failure_code
  * @property string|null $last_provider_request_id
@@ -39,6 +41,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'workspace_name',
     'database_id',
     'database_name',
+    'data_source_id',
+    'data_source_name',
     'connection_status',
     'last_failure_code',
     'last_provider_request_id',
@@ -127,6 +131,8 @@ final class ProjectIntegration extends Model
             'workspace_name' => $this->workspace_name,
             'database_id' => $this->database_id,
             'database_name' => $this->database_name,
+            'data_source_id' => $this->data_source_id,
+            'data_source_name' => $this->data_source_name,
             'last_failure_code' => $this->last_failure_code?->value,
             'last_tested_at' => $this->last_tested_at->toIso8601String(),
             'last_connected_at' => $this->last_connected_at?->toIso8601String(),

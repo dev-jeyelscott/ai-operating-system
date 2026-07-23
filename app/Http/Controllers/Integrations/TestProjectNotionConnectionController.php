@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Integrations;
 
 use App\Application\Integrations\TestProjectNotionConnection;
 use App\Application\Projects\SaveProjectSetupStep;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Requests\Integrations\TestProjectNotionConnectionRequest;
 use App\Models\Organization;
@@ -27,6 +28,7 @@ final class TestProjectNotionConnectionController
         Project $project,
         TestProjectNotionConnection $testConnection,
         SaveProjectSetupStep $saveProjectSetupStep,
+        TransactionManager $transactions,
     ): RedirectResponse {
         $user = $request->user();
 
@@ -40,17 +42,23 @@ final class TestProjectNotionConnectionController
 
         $credential = $validated['credential'] ?? null;
 
-        $result = $testConnection->handle(
-            actorUserId: $user->id,
-            organizationId: $organization->id,
-            projectId: $project->id,
-            databaseReference: (string) $validated['database_id'],
-            plaintextCredential: is_string($credential)
-                    ? $credential
-                    : null,
-            correlationId: is_string($correlationId)
-                    ? $correlationId
-                    : null,
+        $result = $transactions->run(
+            function () use (
+                $testConnection, $user, $organization, $project, $validated, $credential, $correlationId
+            ) {
+                return $testConnection->handle(
+                    actorUserId: $user->id,
+                    organizationId: $organization->id,
+                    projectId: $project->id,
+                    databaseReference: (string) $validated['database_id'],
+                    plaintextCredential: is_string($credential)
+                            ? $credential
+                            : null,
+                    correlationId: is_string($correlationId)
+                            ? $correlationId
+                            : null,
+                );
+            },
         );
 
         if (! $result->successful) {

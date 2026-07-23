@@ -156,7 +156,31 @@ final class ProjectConfiguration extends Model
                 'approval' => $this->approval_policy,
             ],
             'notifications' => $this->notification_policy,
+            'integrations' => $this->versionedIntegrations(),
         ];
+    }
+
+    /**
+     * Capture credential-free integration targets alongside this revision.
+     *
+     * @return array<string, array<string, string|null>>
+     */
+    private function versionedIntegrations(): array
+    {
+        return ProjectIntegration::query()
+            ->where('project_id', $this->project_id)
+            ->get()
+            ->mapWithKeys(static fn (ProjectIntegration $integration): array => [
+                $integration->provider->value => [
+                    'workspace_id' => $integration->workspace_id,
+                    'workspace_name' => $integration->workspace_name,
+                    'database_id' => $integration->database_id,
+                    'database_name' => $integration->database_name,
+                    'data_source_id' => $integration->data_source_id,
+                    'data_source_name' => $integration->data_source_name,
+                ],
+            ])
+            ->all();
     }
 
     /**
