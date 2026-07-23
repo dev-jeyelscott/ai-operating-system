@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Integrations;
 
 use App\Application\Integrations\TestProjectNotionConnection;
-use App\Application\Projects\SaveProjectSetupStep;
-use App\Application\Shared\Contracts\TransactionManager;
-use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Requests\Integrations\TestProjectNotionConnectionRequest;
 use App\Models\Organization;
 use App\Models\Project;
@@ -20,15 +17,13 @@ use Illuminate\Http\RedirectResponse;
 final class TestProjectNotionConnectionController
 {
     /**
-     * Test the connection and advance setup only after successful validation.
+     * Execute the application-owned Notion connection operation.
      */
     public function __invoke(
         TestProjectNotionConnectionRequest $request,
         Organization $organization,
         Project $project,
         TestProjectNotionConnection $testConnection,
-        SaveProjectSetupStep $saveProjectSetupStep,
-        TransactionManager $transactions,
     ): RedirectResponse {
         $user = $request->user();
 
@@ -37,28 +32,28 @@ final class TestProjectNotionConnectionController
         }
 
         $validated = $request->validated();
+
         $correlationId =
             $request->attributes->get('request_id');
 
         $credential = $validated['credential'] ?? null;
 
-        $result = $transactions->run(
-            function () use (
-                $testConnection, $user, $organization, $project, $validated, $credential, $correlationId
-            ) {
-                return $testConnection->handle(
-                    actorUserId: $user->id,
-                    organizationId: $organization->id,
-                    projectId: $project->id,
-                    databaseReference: (string) $validated['database_id'],
-                    plaintextCredential: is_string($credential)
-                            ? $credential
-                            : null,
-                    correlationId: is_string($correlationId)
-                            ? $correlationId
-                            : null,
-                );
-            },
+        /*
+         * The application command owns provider validation and every resulting
+         * local transaction. The controller must not coordinate transactions or
+         * setup persistence.
+         */
+        $result = $testConnection->handle(
+            actorUserId: $user->id,
+            organizationId: $organization->id,
+            projectId: $project->id,
+            databaseReference: (string) $validated['database_id'],
+            plaintextCredential: is_string($credential)
+                    ? $credential
+                    : null,
+            correlationId: is_string($correlationId)
+                    ? $correlationId
+                    : null,
         );
 
         if (! $result->successful) {
@@ -73,20 +68,11 @@ final class TestProjectNotionConnectionController
         }
 
         /*
-         * The integration step may only be completed through a successful test.
-         * It is intentionally excluded from the generic setup update endpoint.
+         * The command has already committed setup progress atomically. This
+         * query only determines the next redirect and performs no mutation.
          */
-        $progress = $saveProjectSetupStep->handle(
-            actorUserId: $user->id,
-            organizationId: $organization->id,
-            projectId: $project->id,
-            step: ProjectSetupStep::Integrations,
-            payload: [],
-            correlationId: is_string($correlationId)
-                    ? $correlationId
-                    : null,
-            externalConfigurationChanged: $result->configurationChanged,
-        );
+        $progress = $project->setupProgress()
+            ->firstOrFail();
 
         if ($progress->isComplete()) {
             return to_route(
