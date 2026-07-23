@@ -141,6 +141,26 @@ final class ProjectController extends Controller
         return Inertia::render('projects/show', [
             'organization' => $this->serializeOrganization($organization),
             'project' => $this->serializeProject($project),
+            'setupUrl' => route('organizations.projects.setup.start', [
+                'organization' => $organization,
+                'project' => $project,
+            ]),
+            'configurationUrls' => [
+                'settings' => route(
+                    'organizations.projects.settings.show',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+                'integrations' => route(
+                    'organizations.projects.integrations.index',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+            ],
             'permissions' => [
                 'update' => $user->can('update', $project),
                 'archive' => $user->can('archive', $project),

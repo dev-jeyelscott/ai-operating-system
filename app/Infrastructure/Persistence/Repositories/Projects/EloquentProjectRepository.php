@@ -6,6 +6,7 @@ namespace App\Infrastructure\Persistence\Repositories\Projects;
 
 use App\Application\Projects\Contracts\ProjectRepository;
 use App\Application\Projects\Data\ProjectMutationResult;
+use App\Domain\Projects\ProjectSetupStep;
 use App\Domain\Projects\ProjectStatus;
 use App\Domain\Projects\ProjectType;
 use App\Models\Organization;
@@ -95,7 +96,27 @@ final class EloquentProjectRepository implements ProjectRepository
                  */
                 $organization->projects()->save($project);
 
-                return $project->refresh();
+                /*
+                 * Every application-created project starts with a safe,
+                 * intentionally incomplete schema-v1 configuration.
+                 *
+                 * This runs inside the existing project transaction, so project
+                 * creation cannot succeed without configuration initialization.
+                 */
+                $project->configuration()->create();
+
+                /*
+                * Every project receives one resumable setup-progress row.
+                * The unique project_id constraint prevents duplicate wizard state.
+                */
+                $project->setupProgress()->create([
+                    'current_step' => ProjectSetupStep::Details,
+                    'completed_steps' => [],
+                ]);
+
+                return $project
+                    ->refresh()
+                    ->load('configuration');
             },
             attempts: 3,
         );

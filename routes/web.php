@@ -1,19 +1,25 @@
 <?php
 
+use App\Domain\Integrations\IntegrationProvider;
+use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
+use App\Http\Controllers\Integrations\StoreProjectIntegrationCredentialController;
+use App\Http\Controllers\Integrations\TestProjectNotionConnectionController;
 use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
 use App\Http\Controllers\Projects\ArchiveProjectController;
+use App\Http\Controllers\Projects\ProjectConfigurationController;
 use App\Http\Controllers\Projects\ProjectController;
+use App\Http\Controllers\Projects\ProjectSetupController;
 use App\Http\Controllers\Projects\RestoreProjectController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
 
-Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
+Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void {
     Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');
 
@@ -32,56 +38,140 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function () {
                 ->can('view', 'organization')
                 ->name('current.update');
 
-            Route::controller(ProjectController::class)
-                ->prefix('/projects')
+            Route::prefix('/projects')
                 ->name('projects.')
                 ->group(function (): void {
-                    Route::get('/', 'index')
-                        ->can('view', 'organization')
-                        ->name('index');
+                    Route::controller(ProjectController::class)
+                        ->group(function (): void {
+                            Route::get('/', 'index')
+                                ->can('view', 'organization')
+                                ->name('index');
+
+                            /*
+                             * Define /create before /{project} so "create" is
+                             * not interpreted as a project slug.
+                             */
+                            Route::get('/create', 'create')
+                                ->can('createProject', 'organization')
+                                ->name('create');
+
+                            Route::post('/', 'store')
+                                ->middleware('throttle:project-commands')
+                                ->can('createProject', 'organization')
+                                ->name('store');
+                        });
 
                     /*
-                     * Define /create before /{project} so "create" is not
-                     * interpreted as a project slug.
+                     * Validate a Notion token, workspace, and database through
+                     * the dedicated integration connection-test action.
                      */
-                    Route::get('/create', 'create')
-                        ->can('createProject', 'organization')
-                        ->name('create');
-
-                    Route::post('/', 'store')
+                    Route::post(
+                        '/{project}/integrations/notion/test',
+                        TestProjectNotionConnectionController::class,
+                    )
                         ->middleware('throttle:project-commands')
-                        ->can('createProject', 'organization')
-                        ->name('store');
+                        ->can('manageIntegrations', 'project')
+                        ->name('integrations.notion.test');
 
-                    Route::get('/{project}', 'show')
-                        ->can('view', 'project')
-                        ->name('show');
-
-                    Route::get('/{project}/edit', 'edit')
-                        ->can('update', 'project')
-                        ->name('edit');
-
-                    Route::put('/{project}', 'update')
+                    /*
+                     * Store or rotate an encrypted provider credential.
+                     */
+                    Route::put(
+                        '/{project}/integrations/{provider}/credential',
+                        StoreProjectIntegrationCredentialController::class,
+                    )
+                        ->whereIn(
+                            'provider',
+                            IntegrationProvider::values(),
+                        )
                         ->middleware('throttle:project-commands')
-                        ->can('update', 'project')
-                        ->name('update');
+                        ->can('manageIntegrations', 'project')
+                        ->name('integrations.credentials.store');
+
+                    Route::controller(ProjectSetupController::class)
+                        ->prefix('/{project}/setup')
+                        ->name('setup.')
+                        ->group(function (): void {
+                            Route::get('/', 'start')
+                                ->can('update', 'project')
+                                ->name('start');
+
+                            /*
+                             * Every setup step must remain viewable, including
+                             * Integrations and Review.
+                             */
+                            Route::get('/{step}', 'show')
+                                ->whereIn(
+                                    'step',
+                                    ProjectSetupStep::values(),
+                                )
+                                ->can('update', 'project')
+                                ->name('show');
+
+                            /*
+                             * Only directly persisted setup steps use the
+                             * generic update endpoint. Integrations uses its
+                             * dedicated connection-test action.
+                             */
+                            Route::put('/{step}', 'update')
+                                ->whereIn(
+                                    'step',
+                                    ProjectSetupStep::directUpdateValues(),
+                                )
+                                ->middleware('throttle:project-commands')
+                                ->can('update', 'project')
+                                ->name('update');
+                        });
+
+                    Route::controller(ProjectConfigurationController::class)
+                        ->group(function (): void {
+                            /*
+                            * Display read-only configuration metadata and completeness results.
+                            */
+                            Route::get('/{project}/settings', 'settings')
+                                ->can('view', 'project')
+                                ->name('settings.show');
+
+                            /*
+                            * Display safe integration and credential metadata.
+                            */
+                            Route::get('/{project}/integrations', 'integrations')
+                                ->can('view', 'project')
+                                ->name('integrations.index');
+                        });
+
+                    Route::controller(ProjectController::class)
+                        ->group(function (): void {
+                            Route::get('/{project}', 'show')
+                                ->can('view', 'project')
+                                ->name('show');
+
+                            Route::get('/{project}/edit', 'edit')
+                                ->can('update', 'project')
+                                ->name('edit');
+
+                            Route::put('/{project}', 'update')
+                                ->middleware('throttle:project-commands')
+                                ->can('update', 'project')
+                                ->name('update');
+                        });
+
+                    Route::put(
+                        '/{project}/archive',
+                        ArchiveProjectController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('archive', 'project')
+                        ->name('archive');
+
+                    Route::put(
+                        '/{project}/restore',
+                        RestoreProjectController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('restore', 'project')
+                        ->name('restore');
                 });
-
-            Route::put(
-                '/projects/{project}/archive',
-                ArchiveProjectController::class,
-            )
-                ->middleware('throttle:project-commands')
-                ->can('archive', 'project')
-                ->name('projects.archive');
-
-            Route::put(
-                '/projects/{project}/restore',
-                RestoreProjectController::class,
-            )
-                ->middleware('throttle:project-commands')
-                ->can('restore', 'project')
-                ->name('projects.restore');
         });
 });
 

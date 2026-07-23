@@ -13,9 +13,12 @@ use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\UsePolicy;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -29,10 +32,16 @@ use LogicException;
  * @property string|null $description
  * @property ProjectType $project_type
  * @property ProjectStatus $status
+ * @property-read ProjectConfiguration|null $configuration
  * @property CarbonImmutable $status_changed_at
  * @property CarbonImmutable|null $archived_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
+ * @property-read Collection<int, ProviderCredential> $providerCredentials
+ * @property-read Collection<int, ProjectIntegration> $projectIntegrations
+ * @property-read ProjectConfiguration|null $configuration
+ * @property-read Collection<int, ProjectConfigurationVersion> $configurationVersions
+ * @property-read ProjectConfigurationVersion|null $latestConfigurationVersion
  */
 #[Fillable(['name', 'slug', 'description', 'project_type'])]
 #[UsePolicy(ProjectPolicy::class)]
@@ -58,6 +67,16 @@ final class Project extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * Return the resumable project setup progress.
+     *
+     * @return HasOne<ProjectSetupProgress, $this>
+     */
+    public function setupProgress(): HasOne
+    {
+        return $this->hasOne(ProjectSetupProgress::class);
     }
 
     /**
@@ -263,5 +282,57 @@ final class Project extends Model
             'status_changed_at' => 'immutable_datetime',
             'archived_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * Return the current versioned configuration for this project.
+     *
+     * @return HasOne<ProjectConfiguration, $this>
+     */
+    public function configuration(): HasOne
+    {
+        return $this->hasOne(ProjectConfiguration::class);
+    }
+
+    /**
+     * Return every immutable configuration snapshot in revision order.
+     *
+     * @return HasMany<ProjectConfigurationVersion, $this>
+     */
+    public function configurationVersions(): HasMany
+    {
+        return $this->hasMany(ProjectConfigurationVersion::class)
+            ->orderBy('revision');
+    }
+
+    /**
+     * Return the immutable snapshot with the greatest project revision.
+     *
+     * @return HasOne<ProjectConfigurationVersion, $this>
+     */
+    public function latestConfigurationVersion(): HasOne
+    {
+        return $this->hasOne(ProjectConfigurationVersion::class)
+            ->ofMany('revision', 'max');
+    }
+
+    /**
+     * Return encrypted provider credentials owned by this project.
+     *
+     * @return HasMany<ProviderCredential, $this>
+     */
+    public function providerCredentials(): HasMany
+    {
+        return $this->hasMany(ProviderCredential::class);
+    }
+
+    /**
+     * Return safe provider integration metadata owned by this project.
+     *
+     * @return HasMany<ProjectIntegration, $this>
+     */
+    public function projectIntegrations(): HasMany
+    {
+        return $this->hasMany(ProjectIntegration::class);
     }
 }

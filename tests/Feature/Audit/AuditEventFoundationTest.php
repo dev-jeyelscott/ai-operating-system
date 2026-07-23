@@ -140,10 +140,11 @@ test('project commands append tenant scoped audit events in sequence order', fun
         ->get();
 
     expect($events)
-        ->toHaveCount(4)
+        ->toHaveCount(5)
         ->and($events->pluck('event_type')->all())
         ->toBe([
             AuditEventType::ProjectCreated,
+            AuditEventType::ProjectConfigurationVersionCreated,
             AuditEventType::ProjectUpdated,
             AuditEventType::ProjectArchived,
             AuditEventType::ProjectRestored,
@@ -165,9 +166,15 @@ test('project commands append tenant scoped audit events in sequence order', fun
                 ->all(),
         );
 
+    /*
+     * Sensitive project descriptions must not be copied into lifecycle or
+     * configuration-history audit metadata.
+     */
     expect($events[0]->metadata)
         ->not->toHaveKey('description')
         ->and($events[1]->metadata)
+        ->not->toHaveKey('description')
+        ->and($events[2]->metadata)
         ->not->toHaveKey('description');
 });
 

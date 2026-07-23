@@ -8,6 +8,7 @@ use App\Domain\Projects\ProjectStatus;
 use App\Domain\Projects\ProjectType;
 use App\Models\Organization;
 use App\Models\Project;
+use App\Models\ProjectConfiguration;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -41,6 +42,17 @@ final class ProjectFactory extends Factory
             'status' => ProjectStatus::Draft,
             'status_changed_at' => now(),
         ];
+    }
+
+    /**
+     * Create the project with its current configuration aggregate.
+     */
+    public function withConfiguration(): static
+    {
+        return $this->has(
+            ProjectConfiguration::factory(),
+            'configuration',
+        );
     }
 
     /**

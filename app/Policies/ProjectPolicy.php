@@ -49,6 +49,20 @@ final readonly class ProjectPolicy
     }
 
     /**
+     * Allow only owners and administrators to manage integration credentials.
+     */
+    public function manageIntegrations(
+        User $user,
+        Project $project,
+    ): Response {
+        return $this->authorizePermission(
+            user: $user,
+            project: $project,
+            permission: ProjectPermission::ManageIntegrations,
+        );
+    }
+
+    /**
      * Allow owners and administrators to archive projects.
      */
     public function archive(User $user, Project $project): Response

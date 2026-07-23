@@ -12,6 +12,27 @@ use Symfony\Component\HttpFoundation\Response;
 final class RateLimitExceededResponse
 {
     /**
+     * Input fields that must never be flashed back to the session.
+     *
+     * This protects integration credentials and other authentication material
+     * from being persisted as Laravel old input after throttled requests.
+     *
+     * @var list<string>
+     */
+    private const SENSITIVE_INPUT_KEYS = [
+        'authorization',
+        'credential',
+        'current_password',
+        'password',
+        'password_confirmation',
+        'private_key',
+        'secret',
+        'token',
+        'api_key',
+        'access_key',
+    ];
+
+    /**
      * Return a stable retry response for a rate-limited request.
      *
      * JSON clients receive the platform API error contract. Browser and
@@ -41,7 +62,13 @@ final class RateLimitExceededResponse
         }
 
         return back()
-            ->withInput()
+            /*
+             * Preserve safe form data while ensuring credentials, passwords,
+             * tokens, and private keys never enter the session as old input.
+             */
+            ->withInput(
+                $request->except(self::SENSITIVE_INPUT_KEYS),
+            )
             ->withErrors([
                 'rate_limit' => sprintf(
                     'Too many requests. Please retry in %d seconds.',
