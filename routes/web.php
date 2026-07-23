@@ -3,6 +3,7 @@
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Documents\ProjectDocumentController;
 use App\Http\Controllers\Documents\StoreProjectDocumentController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
@@ -81,6 +82,11 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                         ->middleware('throttle:project-commands')
                         ->can('update', 'project')
                         ->name('documents.store');
+
+                    Route::get('/{project}/documents', [ProjectDocumentController::class, 'index'])
+                        ->can('view', 'project')->name('documents.index');
+                    Route::get('/{project}/documents/{document}', [ProjectDocumentController::class, 'show'])
+                        ->can('view', 'project')->name('documents.show');
 
                     /*
                      * Store or rotate an encrypted provider credential.
