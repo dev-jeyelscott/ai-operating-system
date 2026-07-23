@@ -141,6 +141,7 @@ test('uploads cannot address a project outside the route organization', function
 test('uploads are rate limited per actor and organization before persistence', function (): void {
     config()->set('rate-limits.project_commands.upload.per_minute', 1);
     config()->set('rate-limits.project_commands.upload.per_hour', 20);
+    Queue::fake();
 
     ['organization' => $organization, 'project' => $project, 'user' => $user]
         = documentUploadOwner();

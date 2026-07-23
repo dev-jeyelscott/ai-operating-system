@@ -7,6 +7,7 @@ namespace App\Application\Documents;
 use App\Application\Documents\Contracts\MalwareScanner;
 use App\Domain\Documents\DocumentStatus;
 use App\Domain\Documents\MalwareScanResult;
+use App\Jobs\ParseDocumentVersionJob;
 use App\Models\DocumentVersion;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -81,6 +82,8 @@ final readonly class ScanDocumentVersion
                     'failure_code' => null,
                     'failure_message' => null,
                 ])->save();
+
+                ParseDocumentVersionJob::dispatch($documentVersion->id)->afterCommit();
 
                 return;
             }

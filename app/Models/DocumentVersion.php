@@ -34,6 +34,7 @@ use LogicException;
  * @property string|null $parser_version
  * @property CarbonImmutable|null $parsing_started_at
  * @property CarbonImmutable|null $parsed_at
+ * @property string|null $parsed_content
  * @property string|null $failure_code
  * @property string|null $failure_message
  * @property int|null $supersedes_document_version_id
@@ -44,7 +45,7 @@ use LogicException;
 #[Fillable([
     'document_id', 'version', 'original_filename', 'media_type', 'byte_size',
     'storage_disk', 'storage_path', 'checksum_sha256', 'status', 'classification',
-    'parser_name', 'parser_version', 'parsing_started_at', 'parsed_at',
+    'parser_name', 'parser_version', 'parsing_started_at', 'parsed_at', 'parsed_content',
     'failure_code', 'failure_message', 'supersedes_document_version_id',
 ])]
 final class DocumentVersion extends Model
