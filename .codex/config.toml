@@ -1,3 +1,1 @@
 [mcp_servers.laravel-boost]
-command = "wsl.exe"
-args = ["/home/leward/.config/herd-lite/bin/php", "/home/leward/projects/ai-operating-system/artisan", "boost:mcp"]
