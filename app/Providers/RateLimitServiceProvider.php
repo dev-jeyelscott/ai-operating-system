@@ -173,6 +173,8 @@ final class RateLimitServiceProvider extends ServiceProvider
 
             'organizations.projects.integrations.notion.test' => 'integration_test',
 
+            'organizations.projects.documents.store' => 'upload',
+
             'organizations.projects.archive' => 'archive',
             'organizations.projects.restore' => 'restore',
 

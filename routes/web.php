@@ -3,6 +3,7 @@
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Documents\StoreProjectDocumentController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
 use App\Http\Controllers\Integrations\StoreProjectIntegrationCredentialController;
@@ -72,6 +73,14 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                         ->middleware('throttle:project-commands')
                         ->can('manageIntegrations', 'project')
                         ->name('integrations.notion.test');
+
+                    Route::post(
+                        '/{project}/documents',
+                        StoreProjectDocumentController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.store');
 
                     /*
                      * Store or rotate an encrypted provider credential.

@@ -64,6 +64,17 @@ return [
             ),
         ],
 
+        'upload' => [
+            'per_minute' => (int) env(
+                'RATE_LIMIT_DOCUMENT_UPLOAD_PER_MINUTE',
+                10,
+            ),
+            'per_hour' => (int) env(
+                'RATE_LIMIT_DOCUMENT_UPLOAD_PER_HOUR',
+                100,
+            ),
+        ],
+
         'archive' => [
             'per_minute' => (int) env(
                 'RATE_LIMIT_PROJECT_ARCHIVE_PER_MINUTE',
