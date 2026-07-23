@@ -44,6 +44,9 @@ promoted:
 - [F-005 / AIOS-166 — Complete authorization matrix and policy test coverage](https://app.notion.com/p/3a2e87ebc38b81c4a4d4c300aec3d6a1)
 - [F-006 / AIOS-167 — Finalize Phase 0 evidence and repository hygiene checks](https://app.notion.com/p/3a2e87ebc38b8168afdce8c6d21a1018)
 - [F-007 / AIOS-168 — Pin development and CI container images to immutable digests](https://app.notion.com/p/3a2e87ebc38b810988fdd85c87f78886)
+- F-008 / AIOS-169 — Pin GitHub Actions to immutable commit SHAs.
+- F-009 / AIOS-170 — Replace artifact-storage enumeration in readiness checks.
+- F-010 / AIOS-171 — Enforce PostgreSQL for production validation.
 
 ## Risk disposition
 

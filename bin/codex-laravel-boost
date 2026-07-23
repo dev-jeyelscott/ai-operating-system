@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# Resolve the repository root from this script's tracked location.
+resolve_project_root() {
+    cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
+}
+
+# Verify that the configured PHP executable is available before launching Artisan.
+assert_php_binary_available() {
+    local php_binary="$1"
+
+    if [[ "$php_binary" == */* ]]; then
+        if [[ ! -x "$php_binary" ]]; then
+            printf 'ERROR: configured PHP binary is not executable: %s\n' \
+                "$php_binary" >&2
+
+            exit 127
+        fi
+
+        return
+    fi
+
+    if ! command -v "$php_binary" >/dev/null 2>&1; then
+        printf 'ERROR: PHP binary was not found in PATH: %s\n' \
+            "$php_binary" >&2
+
+        printf '%s\n' \
+            'Create .codex/laravel-boost.local.sh for machine-specific setup.' \
+            >&2
+
+        exit 127
+    fi
+}
+
+# Launch Laravel Boost using either an ignored local override or portable defaults.
+main() {
+    local project_root
+    local local_override
+    local php_binary
+    local artisan_path
+
+    project_root="$(resolve_project_root)"
+    local_override="${project_root}/.codex/laravel-boost.local.sh"
+
+    if [[ -f "$local_override" ]]; then
+        if [[ ! -x "$local_override" ]]; then
+            printf 'ERROR: local Laravel Boost override is not executable: %s\n' \
+                "$local_override" >&2
+
+            printf 'Run: chmod +x %s\n' "$local_override" >&2
+
+            exit 126
+        fi
+
+        exec "$local_override" "$project_root"
+    fi
+
+    php_binary="${CODEX_LARAVEL_BOOST_PHP:-php}"
+    artisan_path="${CODEX_LARAVEL_BOOST_ARTISAN:-${project_root}/artisan}"
+
+    assert_php_binary_available "$php_binary"
+
+    if [[ ! -f "$artisan_path" ]]; then
+        printf 'ERROR: Artisan entry point was not found: %s\n' \
+            "$artisan_path" >&2
+
+        exit 1
+    fi
+
+    exec "$php_binary" "$artisan_path" boost:mcp
+}
+
+main "$@"

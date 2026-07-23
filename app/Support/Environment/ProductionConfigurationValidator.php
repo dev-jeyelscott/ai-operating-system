@@ -48,6 +48,14 @@ final class ProductionConfigurationValidator
             $this->isHttpsProductionUrl($this->string('app.url')),
             'APP_URL must use HTTPS and a non-local host.',
         );
+        $this->require(
+            $violations,
+            $this->selectedDriver(
+                'database.default',
+                'database.connections',
+            ) === 'pgsql',
+            'DB_CONNECTION must select a PostgreSQL connection.',
+        );
 
         $this->require(
             $violations,
@@ -78,7 +86,6 @@ final class ProductionConfigurationValidator
             ),
             'SESSION_SAME_SITE must be lax or strict.',
         );
-
         $this->require(
             $violations,
             $this->selectedDriver('cache.default', 'cache.stores') === 'redis',

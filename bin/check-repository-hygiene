@@ -17,7 +17,22 @@ readonly -a REQUIRED_NON_EMPTY_DIRECTORIES=(
     "tests/Unit/Security"
 )
 
+readonly -a SHARED_AGENT_CONFIGURATION_PATHS=(
+    ".codex/config.toml"
+    "AGENTS.md"
+)
+
+readonly -a MACHINE_SPECIFIC_AGENT_PATTERNS=(
+    '/home/[[:alnum:]_.-]+/'
+    '/Users/[[:alnum:]_.-]+/'
+    '[[:alpha:]]:\\+Users\\+[[:alnum:]_.-]+\\+'
+    '[[:alpha:]]:/+Users/+[[:alnum:]_.-]+/+'
+    'wsl\.exe'
+    'always[[:space:]]+run.*wsl[[:space:]]+-d'
+)
+
 readonly EVIDENCE_DIRECTORY="docs/evidence"
+readonly WORKFLOW_DIRECTORY=".github/workflows"
 
 readonly EVIDENCE_PLACEHOLDER_PATTERN='Add the .* here|Document any .* here|<number>|<scope>|(^|[^[:alnum:]_])TBD([^[:alnum:]_]|$)'
 
@@ -26,10 +41,13 @@ failure_count=0
 declare -a tracked_backup_files=()
 declare -a empty_required_files=()
 declare -a unresolved_evidence_placeholders=()
+declare -a mutable_workflow_actions=()
+declare -a machine_specific_agent_configuration=()
 
 # Print one grouped error category with every actionable repository path.
 report_failures() {
     local heading="$1"
+
     shift
 
     local item
@@ -123,8 +141,91 @@ check_unresolved_evidence_placeholders() {
     fi
 }
 
-# Reject execution outside a Git repository because tracked-file inspection
-# would otherwise produce incomplete or misleading results.
+# Reject mutable third-party GitHub Actions references.
+check_mutable_workflow_actions() {
+    local path
+    local line
+    local line_number
+    local reference
+
+    [[ -d "$WORKFLOW_DIRECTORY" ]] || return 0
+
+    while IFS= read -r -d '' path; do
+        line_number=0
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            line_number=$((line_number + 1))
+
+            if [[ ! "$line" =~ ^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([^[:space:]#]+) ]]; then
+                continue
+            fi
+
+            reference="${BASH_REMATCH[2]}"
+
+            if [[ "$reference" == ./* ]]; then
+                continue
+            fi
+
+            if [[ ! "$reference" =~ @[[:xdigit:]]{40}$ ]]; then
+                mutable_workflow_actions+=(
+                    "$path:$line_number: $reference"
+                )
+            fi
+        done < "$path"
+    done < <(
+        find "$WORKFLOW_DIRECTORY" \
+            -type f \
+            \( -name '*.yml' -o -name '*.yaml' \) \
+            -print0 \
+            | sort -z
+    )
+
+    if (( ${#mutable_workflow_actions[@]} > 0 )); then
+        report_failures \
+            'mutable third-party GitHub Actions references were found:' \
+            "${mutable_workflow_actions[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Reject personal paths and workstation-only commands in tracked shared agent configuration.
+check_machine_specific_agent_configuration() {
+    local path
+    local pattern
+    local match
+
+    for path in "${SHARED_AGENT_CONFIGURATION_PATHS[@]}"; do
+        if ! git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+            continue
+        fi
+
+        for pattern in "${MACHINE_SPECIFIC_AGENT_PATTERNS[@]}"; do
+            while IFS= read -r match; do
+                machine_specific_agent_configuration+=("$match")
+            done < <(
+                grep \
+                    --ignore-case \
+                    --line-number \
+                    --with-filename \
+                    --extended-regexp \
+                    -- "$pattern" \
+                    "$path" \
+                    || true
+            )
+        done
+    done
+
+    if (( ${#machine_specific_agent_configuration[@]} > 0 )); then
+        report_failures \
+            'machine-specific tracked agent configuration was found:' \
+            "${machine_specific_agent_configuration[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Reject execution outside Git because tracked-file checks would be incomplete.
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     printf '%s\n' \
         'ERROR: repository hygiene must run inside a Git working tree.' \
@@ -136,6 +237,8 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 check_tracked_backup_files
 check_empty_required_files
 check_unresolved_evidence_placeholders
+check_mutable_workflow_actions
+check_machine_specific_agent_configuration
 
 if (( failure_count > 0 )); then
     if [[ "$failure_count" -eq 1 ]]; then
