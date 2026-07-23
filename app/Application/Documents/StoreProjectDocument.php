@@ -30,6 +30,7 @@ final class StoreProjectDocument
         Organization $organization,
         Project $project,
         string $title,
+        ?string $documentClass,
         UploadedFile $uploadedFile,
     ): Document {
         $disk = (string) config('filesystems.artifact');
@@ -60,6 +61,7 @@ final class StoreProjectDocument
             return DB::transaction(function () use (
                 $project,
                 $title,
+                $documentClass,
                 $uploadedFile,
                 $disk,
                 $storedPath,
@@ -68,6 +70,7 @@ final class StoreProjectDocument
                 $document = Document::query()->create([
                     'project_id' => $project->id,
                     'title' => $title,
+                    'document_class' => $documentClass,
                 ]);
 
                 $documentVersion = DocumentVersion::query()->create([

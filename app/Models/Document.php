@@ -20,11 +20,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $id
  * @property int $project_id
  * @property string $title
+ * @property string|null $document_class
  * @property-read Project $project
  * @property-read Collection<int, DocumentVersion> $versions
  * @property-read DocumentVersion|null $latestVersion
  */
-#[Fillable(['project_id', 'title'])]
+#[Fillable(['project_id', 'title', 'document_class'])]
 final class Document extends Model
 {
     /** @use HasFactory<DocumentFactory> */

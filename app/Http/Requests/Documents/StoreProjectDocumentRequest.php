@@ -42,6 +42,12 @@ final class StoreProjectDocumentRequest extends FormRequest
                 'min:1',
                 'max:191',
             ],
+            'document_class' => [
+                'nullable',
+                'string',
+                'max:100',
+                'regex:/\A[a-z][a-z0-9_]{0,99}\z/D',
+            ],
             'document' => [
                 'required',
                 'file',
@@ -55,6 +61,7 @@ final class StoreProjectDocumentRequest extends FormRequest
     {
         $this->merge([
             'title' => trim((string) $this->input('title')),
+            'document_class' => trim((string) $this->input('document_class')),
         ]);
     }
 }

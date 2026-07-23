@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Documents;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
 use Inertia\Inertia;
@@ -51,20 +52,35 @@ final class ProjectDocumentController extends Controller
         ]);
     }
 
+    /**
+     * @return array{
+     *     id: int,
+     *     title: string,
+     *     versions: array<int, array{
+     *         id: int,
+     *         version: int,
+     *         status: string,
+     *         classification: string,
+     *         checksum: string,
+     *         parserVersion: string|null,
+     *         notes: string|null
+     *     }>
+     * }
+     */
     private function document(Document $document): array
     {
         return [
             'id' => $document->id,
             'title' => $document->title,
-            'versions' => $document->versions->map(fn ($version): array => [
-                'id' => $version->id,
-                'version' => $version->version,
+            'versions' => $document->versions->map(fn (DocumentVersion $version): array => [
+                'id' => (int) $version->id,
+                'version' => (int) $version->version,
                 'status' => $version->status->value,
                 'classification' => $version->classification->value,
-                'checksum' => $version->checksum_sha256,
+                'checksum' => (string) $version->checksum_sha256,
                 'parserVersion' => $version->parser_version,
                 'notes' => $version->analysis_summary,
-            ]),
+            ])->values()->all(),
         ];
     }
 }

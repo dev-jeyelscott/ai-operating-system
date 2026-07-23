@@ -30,6 +30,7 @@ final class StoreProjectDocumentController extends Controller
             organization: $organization,
             project: $project,
             title: (string) $request->validated('title'),
+            documentClass: $request->validated('document_class'),
             uploadedFile: $uploadedFile,
         );
 

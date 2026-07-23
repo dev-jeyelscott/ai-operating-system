@@ -6,6 +6,8 @@ use App\Application\Projects\EvaluateProjectCompleteness;
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Projects\ProjectSetupStep;
+use App\Models\Document;
+use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
@@ -227,6 +229,17 @@ function completeProjectCompletenessFixture(): array
         ->complete()
         ->for($project)
         ->create();
+
+    foreach (['product_charter', 'requirements', 'architecture'] as $documentClass) {
+        $document = Document::factory()
+            ->for($project)
+            ->create(['document_class' => $documentClass]);
+
+        DocumentVersion::factory()
+            ->for($document)
+            ->approved()
+            ->create();
+    }
 
     ProjectSetupProgress::query()->create([
         'project_id' => $project->id,
