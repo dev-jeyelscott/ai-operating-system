@@ -46,32 +46,6 @@ test('authorized editors can approve or reject analyzed document versions', func
         ->toBe(DocumentStatus::Rejected);
 });
 
-test('superseding an approved version preserves it and creates an unapproved successor', function (): void {
-    $user = User::factory()->create();
-    $project = Project::factory()->create();
-    OrganizationMembership::factory()->owner()->for($project->organization)->for($user)->create();
-    $document = Document::factory()->for($project)->create();
-    $approved = DocumentVersion::factory()->for($document)->approved()->create([
-        'parsed_content' => 'Approved architecture.',
-        'analysis_summary' => 'Architecture summary.',
-    ]);
-
-    $this->actingAs($user)
-        ->post(reviewRoute('supersede', $project, $document, $approved))
-        ->assertRedirect();
-
-    $successor = DocumentVersion::query()
-        ->where('supersedes_document_version_id', $approved->id)
-        ->firstOrFail();
-
-    expect($approved->fresh()->status)->toBe(DocumentStatus::Superseded)
-        ->and($successor)
-        ->version->toBe(2)
-        ->status->toBe(DocumentStatus::NeedsReview)
-        ->checksum_sha256->toBe($approved->checksum_sha256)
-        ->parsed_content->toBe('Approved architecture.');
-});
-
 test('review commands are unavailable to viewers and cannot cross document boundaries', function (): void {
     $viewer = User::factory()->create();
     $project = Project::factory()->create();

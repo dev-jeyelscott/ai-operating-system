@@ -11,6 +11,8 @@ use App\Models\Organization;
 use App\Models\Project;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Domain\Documents\DocumentStatus;
+use Illuminate\Http\Request;
 
 final class ProjectDocumentController extends Controller
 {
@@ -38,16 +40,75 @@ final class ProjectDocumentController extends Controller
         ]);
     }
 
-    public function show(Organization $organization, Project $project, Document $document): Response
-    {
-        abort_unless($document->project_id === $project->id, 404);
+    public function show(
+        Request $request,
+        Organization $organization,
+        Project $project,
+        Document $document,
+    ): Response {
+        abort_unless(
+            $document->project_id === $project->id,
+            404,
+        );
+
+        $document->load('versions');
+
+        $documentData = $this->document($document);
+
+        $documentData['versions'] = collect(
+            $documentData['versions'],
+        )
+            ->map(
+                function (
+                    array $version,
+                ) use (
+                    $organization,
+                    $project,
+                    $document,
+                ): array {
+                    $canReceiveReplacement =
+                        $version['status']
+                        === DocumentStatus::Approved->value;
+
+                    return [
+                        ...$version,
+                        'replacementUrl' =>
+                            $canReceiveReplacement
+                                ? route(
+                                    'organizations.projects.documents.versions.replacement.store',
+                                    [
+                                        'organization' => $organization,
+                                        'project' => $project,
+                                        'document' => $document,
+                                        'version' => $version['id'],
+                                    ],
+                                )
+                                : null,
+                    ];
+                },
+            )
+            ->all();
 
         return Inertia::render('documents/show', [
-            'organization' => ['name' => $organization->name, 'slug' => $organization->slug],
-            'project' => ['name' => $project->name, 'slug' => $project->slug],
-            'document' => $this->document($document->load('versions')),
+            'organization' => [
+                'name' => $organization->name,
+                'slug' => $organization->slug,
+            ],
+            'project' => [
+                'name' => $project->name,
+                'slug' => $project->slug,
+            ],
+            'document' => $documentData,
+            'permissions' => [
+                'replace' => $request
+                    ->user()
+                    ?->can('update', $project) === true,
+            ],
             'urls' => [
-                'index' => route('organizations.projects.documents.index', compact('organization', 'project')),
+                'index' => route(
+                    'organizations.projects.documents.index',
+                    compact('organization', 'project'),
+                ),
             ],
         ]);
     }

@@ -7,6 +7,7 @@ use App\Http\Controllers\Documents\ProjectDocumentController;
 use App\Http\Controllers\Documents\RetryDocumentVersionProcessingController;
 use App\Http\Controllers\Documents\ReviewDocumentVersionController;
 use App\Http\Controllers\Documents\StoreProjectDocumentController;
+use App\Http\Controllers\Documents\StoreReplacementDocumentVersionController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
 use App\Http\Controllers\Integrations\StoreProjectIntegrationCredentialController;
@@ -98,8 +99,15 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                         ->group(function (): void {
                             Route::post('/approve', 'approve')->name('approve');
                             Route::post('/reject', 'reject')->name('reject');
-                            Route::post('/supersede', 'supersede')->name('supersede');
                         });
+
+                    Route::post(
+                        '/{project}/documents/{document}/versions/{version}/replacement',
+                        StoreReplacementDocumentVersionController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.versions.replacement.store');
 
                     Route::post(
                         '/{project}/documents/{document}/versions/{version}/retry',

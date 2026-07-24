@@ -86,26 +86,97 @@ final class DocumentVersion extends Model
     use HasFactory;
 
     /**
-     * Prevent mutation of immutable uploaded-file identity.
+     * Fields that define the immutable identity of one uploaded revision.
+     *
+     * @var list<string>
+     */
+    private const IMMUTABLE_FILE_IDENTITY = [
+        'document_id',
+        'version',
+        'original_filename',
+        'media_type',
+        'byte_size',
+        'storage_disk',
+        'storage_path',
+        'checksum_sha256',
+        'supersedes_document_version_id',
+    ];
+
+    /**
+     * Analysis and safety fields frozen after analysis reaches review.
+     *
+     * @var list<string>
+     */
+    private const IMMUTABLE_COMPLETED_ANALYSIS = [
+        'classification',
+        'parser_name',
+        'parser_version',
+        'parsing_started_at',
+        'parsed_at',
+        'parsed_content',
+        'analyzer_name',
+        'analyzer_version',
+        'analysis_seed',
+        'analysis_started_at',
+        'analysis_completed_at',
+        'analysis_summary',
+        'analysis_conflicts',
+        'analysis_gaps',
+        'analysis_flags',
+        'failure_code',
+        'failure_message',
+    ];
+
+    /**
+     * States whose completed analysis is historical evidence.
+     *
+     * @var list<string>
+     */
+    private const COMPLETED_ANALYSIS_STATUSES = [
+        'needs_review',
+        'approved',
+        'rejected',
+        'superseded',
+    ];
+
+    /**
+     * Prevent mutation of revision identity and completed safety evidence.
      */
     protected static function booted(): void
     {
-        self::updating(static function (self $documentVersion): void {
-            if ($documentVersion->isDirty([
-                'document_id',
-                'version',
-                'original_filename',
-                'media_type',
-                'byte_size',
-                'storage_disk',
-                'storage_path',
-                'checksum_sha256',
-            ])) {
-                throw new LogicException(
-                    'Document version file identity is immutable.',
-                );
-            }
-        });
+        self::updating(
+            static function (
+                self $documentVersion,
+            ): void {
+                if (
+                    $documentVersion->isDirty(
+                        self::IMMUTABLE_FILE_IDENTITY,
+                    )
+                ) {
+                    throw new LogicException(
+                        'Document version file identity is immutable.',
+                    );
+                }
+
+                $originalStatus = (string) $documentVersion
+                    ->getRawOriginal('status');
+
+                if (
+                    in_array(
+                        $originalStatus,
+                        self::COMPLETED_ANALYSIS_STATUSES,
+                        true,
+                    )
+                    && $documentVersion->isDirty(
+                        self::IMMUTABLE_COMPLETED_ANALYSIS,
+                    )
+                ) {
+                    throw new LogicException(
+                        'Completed document analysis metadata is immutable.',
+                    );
+                }
+            },
+        );
     }
 
     /**

@@ -11,147 +11,193 @@ use Illuminate\Support\Facades\DB;
 use LogicException;
 
 /**
- * Applies explicit review decisions while preserving every prior revision.
+ * Applies explicit review decisions while preserving version authority.
  */
 final class ReviewDocumentVersion
 {
     /**
-     * Approve a fully analyzed document version.
+     * Approve a fully analyzed version.
+     *
+     * For a replacement, the previous approved version is superseded in the
+     * same transaction that approves the successor.
      */
     public function approve(
         Document $document,
         DocumentVersion $version,
     ): void {
-        $this->review(
-            $document,
-            $version,
-            DocumentStatus::Approved,
+        DB::transaction(
+            function () use ($document, $version): void {
+                $lockedDocument = $this->lockedDocument(
+                    $document,
+                );
+
+                $candidate = $this->lockedVersion(
+                    document: $lockedDocument,
+                    version: $version,
+                );
+
+                if (! $candidate->isReadyForReview()) {
+                    throw new LogicException(
+                        'Only a successfully analyzed document version can be approved.',
+                    );
+                }
+
+                if (
+                    $candidate->supersedes_document_version_id
+                    === null
+                ) {
+                    $this->approveInitialVersion(
+                        document: $lockedDocument,
+                        candidate: $candidate,
+                    );
+
+                    return;
+                }
+
+                $this->approveReplacementVersion(
+                    document: $lockedDocument,
+                    candidate: $candidate,
+                );
+            },
+            attempts: 3,
         );
     }
 
     /**
-     * Reject a fully analyzed document version.
+     * Reject a fully analyzed version without changing current authority.
      */
     public function reject(
         Document $document,
         DocumentVersion $version,
     ): void {
-        $this->review(
-            $document,
-            $version,
-            DocumentStatus::Rejected,
-        );
-    }
-
-    /**
-     * Supersede an approved version and create an unapproved successor.
-     *
-     * Because the successor has identical immutable file identity, its completed
-     * deterministic analysis is copied and it starts at NeedsReview.
-     */
-    public function supersede(
-        Document $document,
-        DocumentVersion $version,
-    ): DocumentVersion {
-        return DB::transaction(
-            function () use (
-                $document,
-                $version,
-            ): DocumentVersion {
-                $document = Document::query()
-                    ->lockForUpdate()
-                    ->findOrFail($document->id);
-
-                $source = $this->lockedVersion(
-                    $document,
-                    $version,
-                );
-
-                if (
-                    $source->status
-                    !== DocumentStatus::Approved
-                ) {
-                    throw new LogicException(
-                        'Only an approved document version can be superseded.',
-                    );
-                }
-
-                $latestVersion = $document->versions()
-                    ->lockForUpdate()
-                    ->orderByDesc('version')
-                    ->firstOrFail();
-
-                $source->forceFill([
-                    'status' => DocumentStatus::Superseded,
-                ])->save();
-
-                return DocumentVersion::query()->create([
-                    'document_id' => $document->id,
-                    'version' => $latestVersion->version + 1,
-                    'original_filename' => $source->original_filename,
-                    'media_type' => $source->media_type,
-                    'byte_size' => $source->byte_size,
-                    'storage_disk' => $source->storage_disk,
-                    'storage_path' => $source->storage_path,
-                    'checksum_sha256' => $source->checksum_sha256,
-                    'status' => DocumentStatus::NeedsReview,
-                    'classification' => $source->classification,
-                    'parser_name' => $source->parser_name,
-                    'parser_version' => $source->parser_version,
-                    'parsing_started_at' => $source->parsing_started_at,
-                    'parsed_at' => $source->parsed_at,
-                    'parsed_content' => $source->parsed_content,
-                    'analyzer_name' => $source->analyzer_name,
-                    'analyzer_version' => $source->analyzer_version,
-                    'analysis_seed' => $source->analysis_seed,
-                    'analysis_started_at' => $source->analysis_started_at,
-                    'analysis_completed_at' => $source->analysis_completed_at,
-                    'analysis_summary' => $source->analysis_summary,
-                    'analysis_conflicts' => $source->analysis_conflicts,
-                    'analysis_gaps' => $source->analysis_gaps,
-                    'analysis_flags' => $source->analysis_flags,
-                    'failure_code' => null,
-                    'failure_message' => null,
-                    'supersedes_document_version_id' => $source->id,
-                ]);
-            },
-        );
-    }
-
-    /**
-     * Apply an authorized review decision inside a locked transaction.
-     */
-    private function review(
-        Document $document,
-        DocumentVersion $version,
-        DocumentStatus $decision,
-    ): void {
         DB::transaction(
-            function () use (
-                $document,
-                $version,
-                $decision,
-            ): void {
-                $source = $this->lockedVersion(
+            function () use ($document, $version): void {
+                $lockedDocument = $this->lockedDocument(
                     $document,
-                    $version,
                 );
 
-                if (! $source->isReadyForReview()) {
+                $candidate = $this->lockedVersion(
+                    document: $lockedDocument,
+                    version: $version,
+                );
+
+                if (! $candidate->isReadyForReview()) {
                     throw new LogicException(
-                        'Only a successfully analyzed document version can be reviewed.',
+                        'Only a successfully analyzed document version can be rejected.',
                     );
                 }
 
-                $source->forceFill([
-                    'status' => $decision,
+                $candidate->forceFill([
+                    'status' => DocumentStatus::Rejected,
                 ])->save();
             },
+            attempts: 3,
         );
     }
 
     /**
-     * Lock the requested version while enforcing document ownership.
+     * Approve an initial version only when no other authority exists.
+     */
+    private function approveInitialVersion(
+        Document $document,
+        DocumentVersion $candidate,
+    ): void {
+        $approvedVersionExists = $document
+            ->versions()
+            ->where(
+                'status',
+                DocumentStatus::Approved->value,
+            )
+            ->where('id', '<>', $candidate->id)
+            ->lockForUpdate()
+            ->exists();
+
+        if ($approvedVersionExists) {
+            throw new LogicException(
+                'This document already has an approved version.',
+            );
+        }
+
+        $candidate->forceFill([
+            'status' => DocumentStatus::Approved,
+        ])->save();
+    }
+
+    /**
+     * Atomically replace the exact approved predecessor.
+     */
+    private function approveReplacementVersion(
+        Document $document,
+        DocumentVersion $candidate,
+    ): void {
+        $previousApprovedVersion = DocumentVersion::query()
+            ->whereKey(
+                $candidate->supersedes_document_version_id,
+            )
+            ->where('document_id', $document->id)
+            ->lockForUpdate()
+            ->first();
+
+        if (
+            ! $previousApprovedVersion
+            instanceof DocumentVersion
+        ) {
+            throw new LogicException(
+                'The replacement predecessor could not be found.',
+            );
+        }
+
+        if (
+            $previousApprovedVersion->status
+            !== DocumentStatus::Approved
+        ) {
+            throw new LogicException(
+                'The replacement predecessor is no longer the approved version.',
+            );
+        }
+
+        $approvedVersionIds = $document
+            ->versions()
+            ->where(
+                'status',
+                DocumentStatus::Approved->value,
+            )
+            ->lockForUpdate()
+            ->pluck('id');
+
+        if (
+            $approvedVersionIds->count() !== 1
+            || (int) $approvedVersionIds->first()
+                !== $previousApprovedVersion->id
+        ) {
+            throw new LogicException(
+                'The document does not have one unambiguous approved predecessor.',
+            );
+        }
+
+        $previousApprovedVersion->forceFill([
+            'status' => DocumentStatus::Superseded,
+        ])->save();
+
+        $candidate->forceFill([
+            'status' => DocumentStatus::Approved,
+        ])->save();
+    }
+
+    /**
+     * Lock the document aggregate before locking individual versions.
+     */
+    private function lockedDocument(
+        Document $document,
+    ): Document {
+        return Document::query()
+            ->whereKey($document->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+    }
+
+    /**
+     * Lock a version while enforcing document ownership.
      */
     private function lockedVersion(
         Document $document,

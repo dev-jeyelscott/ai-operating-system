@@ -15,7 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use LogicException;
 
 /**
- * Handles explicit document review and replacement commands.
+ * Handles explicit approve and reject document review commands.
  */
 final class ReviewDocumentVersionController extends Controller
 {
@@ -57,26 +57,6 @@ final class ReviewDocumentVersionController extends Controller
 
         return $this->redirectToDocument($organization, $project, $document)
             ->with('status', 'document-version-rejected');
-    }
-
-    public function supersede(
-        ReviewDocumentVersionRequest $request,
-        Organization $organization,
-        Project $project,
-        Document $document,
-        DocumentVersion $version,
-        ReviewDocumentVersion $reviewDocumentVersion,
-    ): RedirectResponse {
-        $this->ensureVersionBelongsToProject($project, $document, $version);
-
-        try {
-            $reviewDocumentVersion->supersede($document, $version);
-        } catch (LogicException $exception) {
-            abort(422, $exception->getMessage());
-        }
-
-        return $this->redirectToDocument($organization, $project, $document)
-            ->with('status', 'document-version-superseded');
     }
 
     private function ensureVersionBelongsToProject(
