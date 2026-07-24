@@ -210,6 +210,67 @@ test(
         $version->refresh();
         $successor->refresh();
 
+        /*
+         * Changing the authoritative approved document version must produce a
+         * distinct snapshot without requiring a configuration revision change.
+         */
+        $replacementSnapshot = app(
+            CreateProjectContextSnapshot::class,
+        )->handle(
+            organizationId: $organization->id,
+            projectId: $project->id,
+        );
+
+        expect($replacementSnapshot->id)
+            ->not->toBe($snapshot->id)
+            ->and(
+                $replacementSnapshot
+                    ->project_configuration_version_id,
+            )
+            ->toBe(
+                $snapshot
+                    ->project_configuration_version_id,
+            )
+            ->and(
+                $replacementSnapshot
+                    ->approved_document_set_fingerprint,
+            )
+            ->not->toBe(
+                $snapshot
+                    ->approved_document_set_fingerprint,
+            )
+            ->and(
+                $replacementSnapshot
+                    ->approved_document_versions,
+            )
+            ->toHaveCount(1)
+            ->and(
+                $replacementSnapshot
+                    ->approved_document_versions[0]['document_version_id'],
+            )
+            ->toBe($successor->id);
+
+        /*
+         * The original snapshot remains reconstructable even though its source
+         * revision is now superseded.
+         */
+        $originalContext = app(
+            BuildProviderBoundDocumentContext::class,
+        )->handle($snapshot);
+
+        $replacementContext = app(
+            BuildProviderBoundDocumentContext::class,
+        )->handle($replacementSnapshot);
+
+        expect($originalContext[0]['content'])
+            ->not->toContain('replacement-secret')
+            ->and($replacementContext[0]['content'])
+            ->not->toContain('replacement-secret')
+            ->and($replacementContext[0]['content'])
+            ->toContain(
+                'Updated replacement architecture.',
+            );
+
         expect($version->status)
             ->toBe(DocumentStatus::Superseded)
             ->and($version->checksum_sha256)
