@@ -102,7 +102,7 @@ function replacementUploadRoute(
 }
 
 /**
- * Build an explicit version-review route.
+ * Build an explicit document-version review route.
  */
 function replacementReviewRoute(
     string $action,
@@ -133,16 +133,21 @@ test(
             'user' => $user,
         ] = replacementContext();
 
-        $upload = UploadedFile::fake()
-            ->createWithContent(
-                'architecture-v2.md',
-                "# Replacement architecture\n\nVersion two.",
-            );
+        $upload = UploadedFile::fake()->createWithContent(
+            'architecture-v2.md',
+            "# Replacement architecture\n\nVersion two.",
+        );
+
+        $realPath = $upload->getRealPath();
+
+        expect($realPath)->toBeString();
 
         $expectedChecksum = hash_file(
             'sha256',
-            $upload->getRealPath(),
+            (string) $realPath,
         );
+
+        expect($expectedChecksum)->toBeString();
 
         $this
             ->actingAs($user)
@@ -153,7 +158,9 @@ test(
                     $document,
                     $approved,
                 ),
-                ['document' => $upload],
+                [
+                    'document' => $upload,
+                ],
             )
             ->assertRedirect()
             ->assertSessionHas(
@@ -168,35 +175,40 @@ test(
             )
             ->sole();
 
-        expect($approved->fresh())
-            ->status->toBe(DocumentStatus::Approved)
-            ->analysis_flags->toBe([
+        $approved->refresh();
+        $replacement->refresh();
+
+        expect($approved->status)
+            ->toBe(DocumentStatus::Approved)
+            ->and($approved->analysis_flags)
+            ->toBe([
                 'prompt_injection_detected',
             ])
-            ->and($replacement)
-            ->version->toBe(2)
-            ->status->toBe(DocumentStatus::Quarantined)
-            ->storage_path->not->toBe(
-                $approved->storage_path,
-            )
-            ->checksum_sha256->toBe(
-                $expectedChecksum,
-            )
-            ->checksum_sha256->not->toBe(
-                $approved->checksum_sha256,
-            )
-            ->parser_name->toBeNull()
-            ->analyzer_name->toBeNull()
-            ->analysis_flags->toBeNull();
+            ->and($replacement->version)
+            ->toBe(2)
+            ->and($replacement->status)
+            ->toBe(DocumentStatus::Quarantined)
+            ->and($replacement->storage_path)
+            ->not->toBe($approved->storage_path)
+            ->and($replacement->checksum_sha256)
+            ->toBe($expectedChecksum)
+            ->and($replacement->checksum_sha256)
+            ->not->toBe($approved->checksum_sha256)
+            ->and($replacement->parser_name)
+            ->toBeNull()
+            ->and($replacement->analyzer_name)
+            ->toBeNull()
+            ->and($replacement->analysis_flags)
+            ->toBeNull();
 
         Storage::disk('documents')
             ->assertExists($replacement->storage_path);
 
         Queue::assertPushed(
             ScanDocumentVersionJob::class,
-            fn (ScanDocumentVersionJob $job): bool =>
-                $job->documentVersionId
-                === $replacement->id,
+            fn (ScanDocumentVersionJob $job): bool => (
+                $job->documentVersionId === $replacement->id
+            ),
         );
     },
 );
@@ -235,17 +247,18 @@ test(
             )
             ->assertStatus(422);
 
-        expect(
-            DocumentVersion::query()
-                ->where(
-                    'supersedes_document_version_id',
-                    $approved->id,
-                )
-                ->count(),
-        )->toBe(0);
+        $replacementCount = DocumentVersion::query()
+            ->where(
+                'supersedes_document_version_id',
+                $approved->id,
+            )
+            ->count();
 
-        Storage::disk('documents')
-            ->assertDirectoryEmpty('/');
+        expect($replacementCount)->toBe(0);
+
+        expect(
+            Storage::disk('documents')->allFiles(),
+        )->toBeEmpty();
 
         Queue::assertNothingPushed();
     },
@@ -267,14 +280,12 @@ test(
             ->for($document)
             ->create([
                 'version' => 2,
-                'storage_path' =>
-                    'documents/replacement-v2.txt',
+                'storage_path' => 'documents/replacement-v2.txt',
                 'checksum_sha256' => hash(
                     'sha256',
                     'replacement-version-two',
                 ),
-                'supersedes_document_version_id' =>
-                    $approved->id,
+                'supersedes_document_version_id' => $approved->id,
                 'analysis_flags' => [
                     'replacement_safety_warning',
                 ],
@@ -293,26 +304,31 @@ test(
             )
             ->assertRedirect();
 
-        expect($approved->fresh())
-            ->status->toBe(DocumentStatus::Superseded)
-            ->analysis_flags->toBe([
+        $approved->refresh();
+        $replacement->refresh();
+
+        expect($approved->status)
+            ->toBe(DocumentStatus::Superseded)
+            ->and($approved->analysis_flags)
+            ->toBe([
                 'prompt_injection_detected',
             ])
-            ->and($replacement->fresh())
-            ->status->toBe(DocumentStatus::Approved)
-            ->analysis_flags->toBe([
+            ->and($replacement->status)
+            ->toBe(DocumentStatus::Approved)
+            ->and($replacement->analysis_flags)
+            ->toBe([
                 'replacement_safety_warning',
-            ])
-            ->and(
-                $document
-                    ->versions()
-                    ->where(
-                        'status',
-                        DocumentStatus::Approved->value,
-                    )
-                    ->count(),
+            ]);
+
+        $approvedVersionCount = $document
+            ->versions()
+            ->where(
+                'status',
+                DocumentStatus::Approved->value,
             )
-            ->toBe(1);
+            ->count();
+
+        expect($approvedVersionCount)->toBe(1);
     },
 );
 
@@ -332,8 +348,7 @@ test(
             ->for($document)
             ->create([
                 'version' => 2,
-                'supersedes_document_version_id' =>
-                    $approved->id,
+                'supersedes_document_version_id' => $approved->id,
             ]);
 
         $this
@@ -349,9 +364,12 @@ test(
             )
             ->assertRedirect();
 
-        expect($approved->fresh()->status)
+        $approved->refresh();
+        $replacement->refresh();
+
+        expect($approved->status)
             ->toBe(DocumentStatus::Approved)
-            ->and($replacement->fresh()->status)
+            ->and($replacement->status)
             ->toBe(DocumentStatus::Rejected);
     },
 );
@@ -372,8 +390,7 @@ test(
             ->for($document)
             ->create([
                 'version' => 2,
-                'supersedes_document_version_id' =>
-                    $approved->id,
+                'supersedes_document_version_id' => $approved->id,
             ]);
 
         $second = DocumentVersion::factory()
@@ -381,8 +398,7 @@ test(
             ->for($document)
             ->create([
                 'version' => 3,
-                'supersedes_document_version_id' =>
-                    $approved->id,
+                'supersedes_document_version_id' => $approved->id,
             ]);
 
         $this
@@ -411,22 +427,26 @@ test(
             )
             ->assertStatus(422);
 
-        expect($approved->fresh()->status)
+        $approved->refresh();
+        $first->refresh();
+        $second->refresh();
+
+        expect($approved->status)
             ->toBe(DocumentStatus::Superseded)
-            ->and($first->fresh()->status)
+            ->and($first->status)
             ->toBe(DocumentStatus::Approved)
-            ->and($second->fresh()->status)
-            ->toBe(DocumentStatus::NeedsReview)
-            ->and(
-                $document
-                    ->versions()
-                    ->where(
-                        'status',
-                        DocumentStatus::Approved->value,
-                    )
-                    ->count(),
+            ->and($second->status)
+            ->toBe(DocumentStatus::NeedsReview);
+
+        $approvedVersionCount = $document
+            ->versions()
+            ->where(
+                'status',
+                DocumentStatus::Approved->value,
             )
-            ->toBe(1);
+            ->count();
+
+        expect($approvedVersionCount)->toBe(1);
     },
 );
 
@@ -448,7 +468,13 @@ test(
             'Completed document analysis metadata is immutable.',
         );
 
-        expect($approved->fresh()->analysis_flags)
+        /*
+         * The failed update leaves the in-memory model dirty. Refresh it before
+         * asserting the persisted historical evidence.
+         */
+        $approved->refresh();
+
+        expect($approved->analysis_flags)
             ->toBe([
                 'prompt_injection_detected',
             ]);
