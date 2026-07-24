@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Documents;
 
+use App\Application\Audit\Data\AuditContext;
+use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Jobs\ParseDocumentVersionJob;
@@ -17,18 +19,27 @@ use LogicException;
  */
 final class RetryDocumentVersionProcessing
 {
+    public function __construct(
+        private RecordDocumentLifecycleEvent $events,
+    ) {}
+
     /**
      * Reset and dispatch the appropriate failed processing stage.
      */
-    public function handle(DocumentVersion $version): void
-    {
+    public function handle(
+        DocumentVersion $version,
+        AuditContext $auditContext,
+    ): void {
         $job = DB::transaction(
-            function () use ($version): string {
+            function () use ($version, $auditContext): string {
                 $lockedVersion = DocumentVersion::query()
                     ->lockForUpdate()
                     ->findOrFail($version->id);
 
-                return match ($lockedVersion->status) {
+                $previousStatus = $lockedVersion->status;
+                $previousFailureCode = $lockedVersion->failure_code;
+
+                $stage = match ($lockedVersion->status) {
                     DocumentStatus::ScanFailed => $this->retryScan(
                         $lockedVersion,
                     ),
@@ -42,18 +53,44 @@ final class RetryDocumentVersionProcessing
                         'Only failed document processing can be retried.',
                     ),
                 };
+
+                $retryEvent = $this->events->version(
+                    version: $lockedVersion,
+                    eventType: AuditEventType::DocumentProcessingRetryRequested,
+                    context: $auditContext,
+                    metadata: [
+                        'stage' => $stage,
+                        'previous_status' => $previousStatus->value,
+                        'new_status' => $lockedVersion->status->value,
+                        'previous_failure_code' => $previousFailureCode,
+                    ],
+                );
+
+                return $stage.'|'.$retryEvent->eventId;
             },
         );
 
-        match ($job) {
+        [$stage, $causationId] = explode('|', $job, 2);
+        $context = $auditContext->causedBy($causationId);
+
+        match ($stage) {
             'scan' => ScanDocumentVersionJob::dispatch(
-                $version->id,
+                documentVersionId: $version->id,
+                correlationId: $context->correlationId,
+                causationId: $context->causationId,
+                executionId: $context->executionId,
             )->afterCommit(),
             'parse' => ParseDocumentVersionJob::dispatch(
-                $version->id,
+                documentVersionId: $version->id,
+                correlationId: $context->correlationId,
+                causationId: $context->causationId,
+                executionId: $context->executionId,
             )->afterCommit(),
             'analysis' => AnalyzeDocumentVersionJob::dispatch(
-                $version->id,
+                documentVersionId: $version->id,
+                correlationId: $context->correlationId,
+                causationId: $context->causationId,
+                executionId: $context->executionId,
             )->afterCommit(),
             default => throw new LogicException(
                 'Unsupported document retry stage.',

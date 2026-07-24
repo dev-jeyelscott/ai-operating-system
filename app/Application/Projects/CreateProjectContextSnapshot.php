@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Application\Projects;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\ApprovedDocumentSetFingerprint;
 use App\Application\Documents\Exceptions\DocumentContextIntegrityException;
+use App\Application\Documents\RecordDocumentLifecycleEvent;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\DocumentVersion;
 use App\Models\Project;
@@ -33,6 +35,7 @@ final readonly class CreateProjectContextSnapshot
 {
     public function __construct(
         private ApprovedDocumentSetFingerprint $fingerprint,
+        private RecordDocumentLifecycleEvent $events,
     ) {}
 
     /**
@@ -41,11 +44,15 @@ final readonly class CreateProjectContextSnapshot
     public function handle(
         int $organizationId,
         int $projectId,
+        ?AuditContext $auditContext = null,
     ): ProjectContextSnapshot {
+        $auditContext ??= AuditContext::system(actorId: 'context-snapshot-command');
+
         return DB::transaction(
             function () use (
                 $organizationId,
                 $projectId,
+                $auditContext,
             ): ProjectContextSnapshot {
                 /*
                  * Lock the project aggregate so concurrent snapshot requests
@@ -122,7 +129,7 @@ final readonly class CreateProjectContextSnapshot
                     return $existingSnapshot;
                 }
 
-                return ProjectContextSnapshot::query()
+                $snapshot = ProjectContextSnapshot::query()
                     ->create([
                         'project_id' => $project->id,
                         'project_configuration_version_id' => $configurationVersion->id,
@@ -131,6 +138,14 @@ final readonly class CreateProjectContextSnapshot
                         'approved_document_set_fingerprint' => $documentSetFingerprint,
                         'approved_document_versions' => $approvedDocumentVersions,
                     ]);
+
+                $this->events->snapshot(
+                    project: $project,
+                    snapshot: $snapshot,
+                    context: $auditContext,
+                );
+
+                return $snapshot;
             },
             attempts: 3,
         );

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Documents;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\Contracts\DocumentParser;
+use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
@@ -17,6 +19,7 @@ final readonly class ParseDocumentVersion
 {
     public function __construct(
         private DocumentParser $documentParser,
+        private RecordDocumentLifecycleEvent $events,
     ) {}
 
     /**
@@ -27,10 +30,11 @@ final readonly class ParseDocumentVersion
      *
      * @throws Throwable
      */
-    public function handle(int $id): void
+    public function handle(int $id, ?AuditContext $auditContext = null): void
     {
+        $auditContext ??= AuditContext::system(actorId: 'document-parse-worker');
         $version = DB::transaction(
-            function () use ($id): ?DocumentVersion {
+            function () use ($id, $auditContext): ?DocumentVersion {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
                     ->findOrFail($id);
@@ -45,7 +49,7 @@ final readonly class ParseDocumentVersion
                 if (! $this->documentParser->supports(
                     $version->media_type,
                 )) {
-                    $this->markUnsupportedMediaType($version);
+                    $this->markUnsupportedMediaType($version, $auditContext);
 
                     return null;
                 }
@@ -57,6 +61,18 @@ final readonly class ParseDocumentVersion
                     $version->beginParsing(
                         $this->documentParser->name(),
                         $this->documentParser->version(),
+                    );
+
+                    $this->events->version(
+                        version: $version,
+                        eventType: AuditEventType::DocumentParseStarted,
+                        context: $auditContext,
+                        metadata: [
+                            'previous_status' => DocumentStatus::ScanApproved->value,
+                            'new_status' => DocumentStatus::Parsing->value,
+                            'parser_name' => $this->documentParser->name(),
+                            'parser_version' => $this->documentParser->version(),
+                        ],
                     );
 
                     return $version->fresh();
@@ -79,7 +95,7 @@ final readonly class ParseDocumentVersion
         $parsed = $this->documentParser->parse($version);
 
         $analysisPending = DB::transaction(
-            function () use ($id, $parsed): bool {
+            function () use ($id, $parsed, $auditContext): bool {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
                     ->findOrFail($id);
@@ -111,6 +127,25 @@ final readonly class ParseDocumentVersion
                     'failure_message' => null,
                 ])->save();
 
+                $parsedEvent = $this->events->version(
+                    version: $version,
+                    eventType: AuditEventType::DocumentParseCompleted,
+                    context: $auditContext,
+                    metadata: [
+                        'previous_status' => DocumentStatus::Parsing->value,
+                        'new_status' => DocumentStatus::AnalysisPending->value,
+                        'parser_name' => $parsed->parserName,
+                        'parser_version' => $parsed->parserVersion,
+                    ],
+                );
+
+                AnalyzeDocumentVersionJob::dispatch(
+                    documentVersionId: $version->id,
+                    correlationId: $auditContext->correlationId,
+                    causationId: $parsedEvent->eventId,
+                    executionId: $auditContext->executionId,
+                )->afterCommit();
+
                 return true;
             },
         );
@@ -118,9 +153,6 @@ final readonly class ParseDocumentVersion
         if (! $analysisPending) {
             return;
         }
-
-        AnalyzeDocumentVersionJob::dispatch($id)
-            ->afterCommit();
 
         Log::info('document.parsed', [
             'document_version_id' => $id,
@@ -131,20 +163,35 @@ final readonly class ParseDocumentVersion
     /**
      * Record terminal parser failure after queue attempts are exhausted.
      */
-    public function markFailed(int $id): void
+    public function markFailed(int $id, ?AuditContext $auditContext = null): void
     {
-        DocumentVersion::query()
-            ->whereKey($id)
-            ->where(
-                'status',
-                DocumentStatus::Parsing->value,
-            )
-            ->update([
-                'status' => DocumentStatus::ParseFailed->value,
+        $auditContext ??= AuditContext::system(actorId: 'document-parse-worker');
+        DB::transaction(function () use ($id, $auditContext): void {
+            $version = DocumentVersion::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($version->status !== DocumentStatus::Parsing) {
+                return;
+            }
+
+            $version->forceFill([
+                'status' => DocumentStatus::ParseFailed,
                 'failure_code' => 'parse_failed',
                 'failure_message' => 'The document could not be parsed.',
-                'updated_at' => now(),
-            ]);
+            ])->save();
+
+            $this->events->version(
+                version: $version,
+                eventType: AuditEventType::DocumentParseFailed,
+                context: $auditContext,
+                metadata: [
+                    'previous_status' => DocumentStatus::Parsing->value,
+                    'new_status' => DocumentStatus::ParseFailed->value,
+                    'failure_code' => 'parse_failed',
+                ],
+            );
+        });
     }
 
     /**
@@ -152,6 +199,7 @@ final readonly class ParseDocumentVersion
      */
     private function markUnsupportedMediaType(
         DocumentVersion $version,
+        AuditContext $auditContext,
     ): void {
         $version->forceFill([
             'status' => DocumentStatus::ParseFailed,
@@ -170,6 +218,17 @@ final readonly class ParseDocumentVersion
                 ),
             ),
         ])->save();
+
+        $this->events->version(
+            version: $version,
+            eventType: AuditEventType::DocumentParseFailed,
+            context: $auditContext,
+            metadata: [
+                'previous_status' => DocumentStatus::ScanApproved->value,
+                'new_status' => DocumentStatus::ParseFailed->value,
+                'failure_code' => 'unsupported_media_type',
+            ],
+        );
 
         Log::warning('document.parsing_rejected', [
             'document_version_id' => $version->id,

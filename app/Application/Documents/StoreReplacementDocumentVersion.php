@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Documents;
 
+use App\Application\Audit\Data\AuditContext;
+use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\ScanDocumentVersionJob;
@@ -24,6 +26,10 @@ use Throwable;
  */
 final readonly class StoreReplacementDocumentVersion
 {
+    public function __construct(
+        private RecordDocumentLifecycleEvent $events,
+    ) {}
+
     /**
      * Store a new immutable replacement file and begin its safety lifecycle.
      *
@@ -38,7 +44,9 @@ final readonly class StoreReplacementDocumentVersion
         Document $document,
         DocumentVersion $approvedVersion,
         UploadedFile $uploadedFile,
+        ?AuditContext $auditContext = null,
     ): DocumentVersion {
+        $auditContext ??= AuditContext::system(actorId: 'document-replacement-command');
         $this->ensureRouteScope(
             organization: $organization,
             project: $project,
@@ -111,6 +119,7 @@ final readonly class StoreReplacementDocumentVersion
                     $disk,
                     $storedPath,
                     $checksum,
+                    $auditContext,
                 ): DocumentVersion {
                     /*
                      * Lock the parent aggregate before allocating the next
@@ -153,7 +162,7 @@ final readonly class StoreReplacementDocumentVersion
                     if (
                         $approvedVersionIds->count() !== 1
                         || (int) $approvedVersionIds->first()
-                            !== $lockedApprovedVersion->id
+                        !== $lockedApprovedVersion->id
                     ) {
                         throw new LogicException(
                             'The document does not have one unambiguous approved version.',
@@ -198,11 +207,23 @@ final readonly class StoreReplacementDocumentVersion
                         'supersedes_document_version_id' => $lockedApprovedVersion->id,
                     ]);
 
-                    /*
-                     * The scanner must never observe an uncommitted version.
-                     */
+                    $uploadedEvent = $this->events->version(
+                        version: $replacement,
+                        eventType: AuditEventType::DocumentReplacementUploaded,
+                        context: $auditContext,
+                        metadata: [
+                            'source' => 'replacement_upload',
+                            'previous_status' => null,
+                            'new_status' => DocumentStatus::Quarantined->value,
+                            'supersedes_document_version_id' => $lockedApprovedVersion->id,
+                        ],
+                    );
+
                     ScanDocumentVersionJob::dispatch(
-                        $replacement->id,
+                        documentVersionId: $replacement->id,
+                        correlationId: $auditContext->correlationId,
+                        causationId: $uploadedEvent->eventId,
+                        executionId: $auditContext->executionId,
                     )->afterCommit();
 
                     return $replacement;

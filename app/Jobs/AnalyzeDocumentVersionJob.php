@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\AnalyzeDocumentVersion;
 use App\Models\DocumentVersion;
 use Illuminate\Bus\Queueable;
@@ -32,6 +33,9 @@ final class AnalyzeDocumentVersionJob implements ShouldBeUnique, ShouldQueue
      */
     public function __construct(
         public int $documentVersionId,
+        public ?string $correlationId = null,
+        public ?string $causationId = null,
+        public ?string $executionId = null,
     ) {}
 
     /**
@@ -51,6 +55,12 @@ final class AnalyzeDocumentVersionJob implements ShouldBeUnique, ShouldQueue
         $analyzeDocumentVersion->handle(
             id: $documentVersion->id,
             seed: $seed,
+            auditContext: AuditContext::system(
+                actorId: 'document-analysis-worker',
+                correlationId: $this->correlationId,
+                causationId: $this->causationId,
+                executionId: $this->executionId,
+            ),
         );
     }
 
@@ -59,8 +69,15 @@ final class AnalyzeDocumentVersionJob implements ShouldBeUnique, ShouldQueue
      */
     public function failed(?Throwable $exception): void
     {
-        app(AnalyzeDocumentVersion::class)
-            ->markFailed($this->documentVersionId);
+        app(AnalyzeDocumentVersion::class)->markFailed(
+            id: $this->documentVersionId,
+            auditContext: AuditContext::system(
+                actorId: 'document-analysis-worker',
+                correlationId: $this->correlationId,
+                causationId: $this->causationId,
+                executionId: $this->executionId,
+            ),
+        );
     }
 
     /**

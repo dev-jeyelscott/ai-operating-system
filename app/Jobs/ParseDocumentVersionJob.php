@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\ParseDocumentVersion;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -23,16 +24,37 @@ final class ParseDocumentVersionJob implements ShouldBeUnique, ShouldQueue
     /** @var list<int> */
     public array $backoff = [5, 30, 120];
 
-    public function __construct(public int $documentVersionId) {}
+    public function __construct(
+        public int $documentVersionId,
+        public ?string $correlationId = null,
+        public ?string $causationId = null,
+        public ?string $executionId = null,
+    ) {}
 
     public function handle(ParseDocumentVersion $parser): void
     {
-        $parser->handle($this->documentVersionId);
+        $parser->handle(
+            id: $this->documentVersionId,
+            auditContext: AuditContext::system(
+                actorId: 'document-parse-worker',
+                correlationId: $this->correlationId,
+                causationId: $this->causationId,
+                executionId: $this->executionId,
+            ),
+        );
     }
 
     public function failed(?Throwable $exception): void
     {
-        app(ParseDocumentVersion::class)->markFailed($this->documentVersionId);
+        app(ParseDocumentVersion::class)->markFailed(
+            id: $this->documentVersionId,
+            auditContext: AuditContext::system(
+                actorId: 'document-parse-worker',
+                correlationId: $this->correlationId,
+                causationId: $this->causationId,
+                executionId: $this->executionId,
+            ),
+        );
     }
 
     public function uniqueId(): string

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\BuildProviderBoundDocumentContext;
 use App\Application\Documents\RetryDocumentVersionProcessing;
 use App\Application\Documents\ReviewDocumentVersion;
@@ -107,6 +108,10 @@ test(
         app(ReviewDocumentVersion::class)->approve(
             document: $document,
             version: $version,
+            auditContext: AuditContext::user(
+                userId: $user->id,
+                correlationId: 'phase-three-approval-001',
+            ),
         );
 
         $version->refresh();
@@ -205,6 +210,10 @@ test(
         app(ReviewDocumentVersion::class)->approve(
             document: $document,
             version: $successor,
+            auditContext: AuditContext::user(
+                userId: $user->id,
+                correlationId: 'phase-three-approval-002',
+            ),
         );
 
         $version->refresh();
@@ -312,6 +321,10 @@ test(
 
         app(RetryDocumentVersionProcessing::class)->handle(
             $failedReplacement,
+            AuditContext::user(
+                userId: $user->id,
+                correlationId: 'phase-three-retry-001',
+            ),
         );
 
         $failedReplacement->refresh();

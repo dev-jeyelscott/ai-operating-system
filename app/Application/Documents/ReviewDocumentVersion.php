@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Documents;
 
+use App\Application\Audit\Data\AuditContext;
+use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\Document;
 use App\Models\DocumentVersion;
@@ -15,6 +17,10 @@ use LogicException;
  */
 final class ReviewDocumentVersion
 {
+    public function __construct(
+        private RecordDocumentLifecycleEvent $events,
+    ) {}
+
     /**
      * Approve a fully analyzed version.
      *
@@ -24,9 +30,10 @@ final class ReviewDocumentVersion
     public function approve(
         Document $document,
         DocumentVersion $version,
+        AuditContext $auditContext,
     ): void {
         DB::transaction(
-            function () use ($document, $version): void {
+            function () use ($document, $version, $auditContext): void {
                 $lockedDocument = $this->lockedDocument(
                     $document,
                 );
@@ -51,12 +58,48 @@ final class ReviewDocumentVersion
                         candidate: $candidate,
                     );
 
+                    $this->events->version(
+                        version: $candidate,
+                        eventType: AuditEventType::DocumentVersionApproved,
+                        context: $auditContext,
+                        metadata: [
+                            'previous_status' => DocumentStatus::NeedsReview->value,
+                            'new_status' => DocumentStatus::Approved->value,
+                            'supersedes_document_version_id' => null,
+                        ],
+                    );
+
+                    /*
+                     * The initial-version invariant is still checked before
+                     * the state transition.
+                     */
                     return;
                 }
 
-                $this->approveReplacementVersion(
+                $previousApprovedVersion = $this->approveReplacementVersion(
                     document: $lockedDocument,
                     candidate: $candidate,
+                );
+                $approvedEvent = $this->events->version(
+                    version: $candidate,
+                    eventType: AuditEventType::DocumentVersionApproved,
+                    context: $auditContext,
+                    metadata: [
+                        'previous_status' => DocumentStatus::NeedsReview->value,
+                        'new_status' => DocumentStatus::Approved->value,
+                        'supersedes_document_version_id' => $previousApprovedVersion->id,
+                    ],
+                );
+
+                $this->events->version(
+                    version: $previousApprovedVersion,
+                    eventType: AuditEventType::DocumentVersionSuperseded,
+                    context: $auditContext->causedBy($approvedEvent->eventId),
+                    metadata: [
+                        'previous_status' => DocumentStatus::Approved->value,
+                        'new_status' => DocumentStatus::Superseded->value,
+                        'successor_document_version_id' => $candidate->id,
+                    ],
                 );
             },
             attempts: 3,
@@ -69,9 +112,10 @@ final class ReviewDocumentVersion
     public function reject(
         Document $document,
         DocumentVersion $version,
+        AuditContext $auditContext,
     ): void {
         DB::transaction(
-            function () use ($document, $version): void {
+            function () use ($document, $version, $auditContext): void {
                 $lockedDocument = $this->lockedDocument(
                     $document,
                 );
@@ -90,6 +134,16 @@ final class ReviewDocumentVersion
                 $candidate->forceFill([
                     'status' => DocumentStatus::Rejected,
                 ])->save();
+
+                $this->events->version(
+                    version: $candidate,
+                    eventType: AuditEventType::DocumentVersionRejected,
+                    context: $auditContext,
+                    metadata: [
+                        'previous_status' => DocumentStatus::NeedsReview->value,
+                        'new_status' => DocumentStatus::Rejected->value,
+                    ],
+                );
             },
             attempts: 3,
         );
@@ -129,7 +183,7 @@ final class ReviewDocumentVersion
     private function approveReplacementVersion(
         Document $document,
         DocumentVersion $candidate,
-    ): void {
+    ): DocumentVersion {
         $previousApprovedVersion = DocumentVersion::query()
             ->whereKey(
                 $candidate->supersedes_document_version_id,
@@ -182,6 +236,8 @@ final class ReviewDocumentVersion
         $candidate->forceFill([
             'status' => DocumentStatus::Approved,
         ])->save();
+
+        return $previousApprovedVersion;
     }
 
     /**

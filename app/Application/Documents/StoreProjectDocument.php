@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Documents;
 
+use App\Application\Audit\Data\AuditContext;
+use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\ScanDocumentVersionJob;
@@ -23,6 +25,10 @@ use Throwable;
  */
 final class StoreProjectDocument
 {
+    public function __construct(
+        private readonly RecordDocumentLifecycleEvent $events,
+    ) {}
+
     /**
      * @throws Throwable
      */
@@ -32,7 +38,9 @@ final class StoreProjectDocument
         string $title,
         ?string $documentClass,
         UploadedFile $uploadedFile,
+        ?AuditContext $auditContext = null,
     ): Document {
+        $auditContext ??= AuditContext::system(actorId: 'document-upload-command');
         $disk = (string) config('filesystems.artifact');
         $directory = sprintf(
             'documents/organizations/%d/projects/%d',
@@ -66,6 +74,7 @@ final class StoreProjectDocument
                 $disk,
                 $storedPath,
                 $checksum,
+                $auditContext,
             ): Document {
                 $document = Document::query()->create([
                     'project_id' => $project->id,
@@ -86,8 +95,22 @@ final class StoreProjectDocument
                     'classification' => DocumentClassification::Unclassified,
                 ]);
 
+                $uploadedEvent = $this->events->version(
+                    version: $documentVersion,
+                    eventType: AuditEventType::DocumentUploaded,
+                    context: $auditContext,
+                    metadata: [
+                        'source' => 'initial_upload',
+                        'previous_status' => null,
+                        'new_status' => DocumentStatus::Quarantined->value,
+                    ],
+                );
+
                 ScanDocumentVersionJob::dispatch(
-                    $documentVersion->id,
+                    documentVersionId: $documentVersion->id,
+                    correlationId: $auditContext->correlationId,
+                    causationId: $uploadedEvent->eventId,
+                    executionId: $auditContext->executionId,
                 )->afterCommit();
 
                 return $document;

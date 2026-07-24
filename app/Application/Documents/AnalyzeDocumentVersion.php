@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Documents;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\Contracts\DocumentAnalyzer;
+use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\DocumentVersion;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +16,7 @@ final readonly class AnalyzeDocumentVersion
 {
     public function __construct(
         private DocumentAnalyzer $analyzer,
+        private RecordDocumentLifecycleEvent $events,
     ) {}
 
     /**
@@ -22,10 +25,11 @@ final readonly class AnalyzeDocumentVersion
      * Analysis runs outside the database transaction. State acquisition and
      * completion are separately guarded with row locks.
      */
-    public function handle(int $id, int $seed): void
+    public function handle(int $id, int $seed, ?AuditContext $auditContext = null): void
     {
+        $auditContext ??= AuditContext::system(actorId: 'document-analysis-worker');
         $version = DB::transaction(
-            function () use ($id, $seed): ?DocumentVersion {
+            function () use ($id, $seed, $auditContext): ?DocumentVersion {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
                     ->findOrFail($id);
@@ -38,6 +42,19 @@ final readonly class AnalyzeDocumentVersion
                         analyzerName: $this->analyzer->name(),
                         analyzerVersion: $this->analyzer->version(),
                         seed: $seed,
+                    );
+
+                    $this->events->version(
+                        version: $version,
+                        eventType: AuditEventType::DocumentAnalysisStarted,
+                        context: $auditContext,
+                        metadata: [
+                            'previous_status' => DocumentStatus::AnalysisPending->value,
+                            'new_status' => DocumentStatus::Analyzing->value,
+                            'analyzer_name' => $this->analyzer->name(),
+                            'analyzer_version' => $this->analyzer->version(),
+                            'analysis_seed' => $seed,
+                        ],
                     );
 
                     return $version->fresh();
@@ -75,7 +92,7 @@ final readonly class AnalyzeDocumentVersion
         );
 
         $completed = DB::transaction(
-            function () use ($id, $seed, $analysis): bool {
+            function () use ($id, $seed, $analysis, $auditContext): bool {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
                     ->findOrFail($id);
@@ -108,6 +125,22 @@ final readonly class AnalyzeDocumentVersion
                     'failure_message' => null,
                 ])->save();
 
+                $this->events->version(
+                    version: $version,
+                    eventType: AuditEventType::DocumentAnalysisCompleted,
+                    context: $auditContext,
+                    metadata: [
+                        'previous_status' => DocumentStatus::Analyzing->value,
+                        'new_status' => DocumentStatus::NeedsReview->value,
+                        'analyzer_name' => $this->analyzer->name(),
+                        'analyzer_version' => $this->analyzer->version(),
+                        'analysis_seed' => $seed,
+                        'safety_flag_count' => count($flags),
+                        'conflict_count' => count($analysis->conflicts),
+                        'gap_count' => count($analysis->gaps),
+                    ],
+                );
+
                 return true;
             },
         );
@@ -127,20 +160,35 @@ final readonly class AnalyzeDocumentVersion
     /**
      * Record terminal failure after the queue exhausts its attempts.
      */
-    public function markFailed(int $id): void
+    public function markFailed(int $id, ?AuditContext $auditContext = null): void
     {
-        DocumentVersion::query()
-            ->whereKey($id)
-            ->where(
-                'status',
-                DocumentStatus::Analyzing->value,
-            )
-            ->update([
-                'status' => DocumentStatus::AnalysisFailed->value,
+        $auditContext ??= AuditContext::system(actorId: 'document-analysis-worker');
+        DB::transaction(function () use ($id, $auditContext): void {
+            $version = DocumentVersion::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($version->status !== DocumentStatus::Analyzing) {
+                return;
+            }
+
+            $version->forceFill([
+                'status' => DocumentStatus::AnalysisFailed,
                 'analysis_completed_at' => null,
                 'failure_code' => 'analysis_failed',
                 'failure_message' => 'The document analysis could not be completed.',
-                'updated_at' => now(),
-            ]);
+            ])->save();
+
+            $this->events->version(
+                version: $version,
+                eventType: AuditEventType::DocumentAnalysisFailed,
+                context: $auditContext,
+                metadata: [
+                    'previous_status' => DocumentStatus::Analyzing->value,
+                    'new_status' => DocumentStatus::AnalysisFailed->value,
+                    'failure_code' => 'analysis_failed',
+                ],
+            );
+        });
     }
 }

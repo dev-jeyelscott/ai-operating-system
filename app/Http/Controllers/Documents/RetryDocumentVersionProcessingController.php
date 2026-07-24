@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Documents;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\RetryDocumentVersionProcessing;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\RetryDocumentVersionProcessingRequest;
@@ -11,6 +12,7 @@ use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use LogicException;
 
@@ -30,8 +32,18 @@ final class RetryDocumentVersionProcessingController extends Controller
             404,
         );
 
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        $requestId = $request->attributes->get('request_id');
+
         try {
-            $retryProcessing->handle($version);
+            $retryProcessing->handle(
+                version: $version,
+                auditContext: AuditContext::user(
+                    userId: $user->id,
+                    correlationId: is_string($requestId) ? $requestId : null,
+                ),
+            );
         } catch (LogicException $exception) {
             abort(422, $exception->getMessage());
         }

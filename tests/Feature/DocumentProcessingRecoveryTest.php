@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\RetryDocumentVersionProcessing;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
@@ -24,7 +25,7 @@ test(
         $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
-            ->handle($version);
+            ->handle($version, AuditContext::system(actorId: 'feature-test'));
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::Quarantined)
@@ -57,7 +58,7 @@ test(
         $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
-            ->handle($version);
+            ->handle($version, AuditContext::system(actorId: 'feature-test'));
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::ScanApproved)
@@ -92,7 +93,7 @@ test(
         expect(
             fn (): null => app(
                 RetryDocumentVersionProcessing::class,
-            )->handle($version),
+            )->handle($version, AuditContext::system(actorId: 'feature-test')),
         )->toThrow(
             LogicException::class,
             'Permanent parser capability failures cannot be retried.',
@@ -119,7 +120,7 @@ test('completed processing cannot be retried', function (): void {
     expect(
         fn (): null => app(
             RetryDocumentVersionProcessing::class,
-        )->handle($version),
+        )->handle($version, AuditContext::system(actorId: 'feature-test')),
     )->toThrow(
         LogicException::class,
         'Only failed document processing can be retried.',
@@ -145,7 +146,7 @@ test(
         $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
-            ->handle($version);
+            ->handle($version, AuditContext::system(actorId: 'feature-test'));
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::AnalysisPending)
