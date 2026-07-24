@@ -27,6 +27,48 @@ final class ApprovedDocumentSetFingerprint
      */
     public function handle(array $entries): string
     {
+        return hash(
+            'sha256',
+            json_encode(
+                [
+                    'schema_version' => self::SCHEMA_VERSION,
+                    'documents' => $this->canonicalize($entries),
+                ],
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
+            ),
+        );
+    }
+
+    /**
+     * Canonicalize document entries for deterministic hashing and comparison.
+     *
+     * PostgreSQL jsonb does not preserve object-key order. Rebuilding every
+     * entry guarantees that persisted and in-memory representations can be
+     * compared without depending on their original JSON property order.
+     *
+     * @param list<array{
+     *     document_id: int,
+     *     document_version_id: int,
+     *     version: int,
+     *     checksum_sha256: string,
+     *     parsed_content_checksum_sha256: string,
+     *     parsed_content_storage_disk: string,
+     *     parsed_content_storage_path: string,
+     *     analysis_flags: list<string>
+     * }> $entries
+     * @return list<array{
+     *     document_id: int,
+     *     document_version_id: int,
+     *     version: int,
+     *     checksum_sha256: string,
+     *     parsed_content_checksum_sha256: string,
+     *     parsed_content_storage_disk: string,
+     *     parsed_content_storage_path: string,
+     *     analysis_flags: list<string>
+     * }>
+     */
+    public function canonicalize(array $entries): array
+    {
         $canonicalEntries = array_map(
             static fn (array $entry): array => [
                 'document_id' => $entry['document_id'],
@@ -54,15 +96,6 @@ final class ApprovedDocumentSetFingerprint
             ],
         );
 
-        return hash(
-            'sha256',
-            json_encode(
-                [
-                    'schema_version' => self::SCHEMA_VERSION,
-                    'documents' => $canonicalEntries,
-                ],
-                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
-            ),
-        );
+        return $canonicalEntries;
     }
 }

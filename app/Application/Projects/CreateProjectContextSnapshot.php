@@ -102,12 +102,17 @@ final readonly class CreateProjectContextSnapshot
                     instanceof ProjectContextSnapshot
                 ) {
                     /*
-                     * The fingerprint should imply equality. Compare the full
-                     * canonical set as a final fail-closed collision guard.
-                     */
+                    * The fingerprint should imply equality. Compare both complete canonical
+                    * sets as a final fail-closed collision guard without depending on jsonb
+                    * object-key ordering.
+                    */
                     if (
-                        $existingSnapshot->approved_document_versions
-                        !== $approvedDocumentVersions
+                        $this->fingerprint->canonicalize(
+                            $existingSnapshot->approved_document_versions,
+                        )
+                        !== $this->fingerprint->canonicalize(
+                            $approvedDocumentVersions,
+                        )
                     ) {
                         throw DocumentContextIntegrityException::snapshotIdentityConflict(
                             $existingSnapshot->id,
