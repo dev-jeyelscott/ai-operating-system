@@ -31,14 +31,21 @@ export default function DocumentsIndex({ project, documents, urls }: Props) {
 
                 <div className="grid gap-4">
                     {documents.map((document) => (
-                        <article key={document.id} className="rounded-xl border p-4">
+                        <article
+                            key={document.id}
+                            className="rounded-xl border p-4"
+                        >
                             <Link href={document.url} className="font-semibold">
                                 {document.title}
                             </Link>
 
                             {document.versions.map((version) => (
-                                <p key={version.id} className="mt-2 text-sm text-muted-foreground">
-                                    v{version.version} · {version.status} · {version.classification}
+                                <p
+                                    key={version.id}
+                                    className="mt-2 text-sm text-muted-foreground"
+                                >
+                                    v{version.version} · {version.status} ·{' '}
+                                    {version.classification}
                                 </p>
                             ))}
                         </article>

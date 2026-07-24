@@ -27,14 +27,18 @@ export default function DocumentShow({ document, urls }: Props) {
 
                 {document.versions.map((version) => (
                     <section key={version.id} className="rounded-xl border p-4">
-                        <h2 className="font-semibold">Version {version.version}</h2>
+                        <h2 className="font-semibold">
+                            Version {version.version}
+                        </h2>
                         <dl className="mt-3 grid gap-2 text-sm">
                             <div>Status: {version.status}</div>
                             <div>Classification: {version.classification}</div>
                             <div>
                                 Checksum: <code>{version.checksum}</code>
                             </div>
-                            <div>Parser: {version.parserVersion ?? 'Pending'}</div>
+                            <div>
+                                Parser: {version.parserVersion ?? 'Pending'}
+                            </div>
                             <div>Notes: {version.notes ?? 'None'}</div>
                             <div>
                                 Safety flags:{' '}
