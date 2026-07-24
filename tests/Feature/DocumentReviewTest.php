@@ -9,7 +9,7 @@ use App\Models\OrganizationMembership;
 use App\Models\Project;
 use App\Models\User;
 
-test('authorized editors can approve or reject parsed document versions', function (): void {
+test('authorized editors can approve or reject analyzed document versions', function (): void {
     $user = User::factory()->create();
     $project = Project::factory()->create();
     OrganizationMembership::factory()->for($project->organization)->for($user)->create();
@@ -29,7 +29,12 @@ test('authorized editors can approve or reject parsed document versions', functi
         ->post(reviewRoute('reject', $project, $document, $rejected))
         ->assertRedirect();
 
-    expect($approved->fresh()->status)->toBe(DocumentStatus::Approved)
+    expect($approved->fresh()->status)->status->toBe(DocumentStatus::NeedsReview)
+        ->analyzer_name->toBe($approved->analyzer_name)
+        ->analyzer_version->toBe($approved->analyzer_version)
+        ->analysis_seed->toBe($approved->analysis_seed)
+        ->analysis_flags->toBe($approved->analysis_flags)
+        ->toBe(DocumentStatus::Approved)
         ->and($rejected->fresh()->status)->toBe(DocumentStatus::Rejected);
 });
 
@@ -78,6 +83,49 @@ test('review commands are unavailable to viewers and cannot cross document bound
         ->post(reviewRoute('approve', $project, $otherDocument, $version))
         ->assertNotFound();
 });
+
+test(
+    'review rejects missing running failed and legacy analysis states',
+    function (DocumentStatus $status): void {
+        $user = User::factory()->create();
+        $project = Project::factory()->create();
+
+        OrganizationMembership::factory()
+            ->for($project->organization)
+            ->for($user)
+            ->create();
+
+        $document = Document::factory()
+            ->for($project)
+            ->create();
+
+        $version = DocumentVersion::factory()
+            ->classified()
+            ->for($document)
+            ->create([
+                'status' => $status,
+            ]);
+
+        $this
+            ->actingAs($user)
+            ->post(
+                reviewRoute(
+                    'approve',
+                    $project,
+                    $document,
+                    $version,
+                ),
+            )
+            ->assertStatus(422);
+
+        expect($version->fresh()->status)->toBe($status);
+    },
+)->with([
+    'legacy parsed' => DocumentStatus::Parsed,
+    'analysis pending' => DocumentStatus::AnalysisPending,
+    'analysis running' => DocumentStatus::Analyzing,
+    'analysis failed' => DocumentStatus::AnalysisFailed,
+]);
 
 function reviewRoute(string $action, Project $project, Document $document, DocumentVersion $version): string
 {

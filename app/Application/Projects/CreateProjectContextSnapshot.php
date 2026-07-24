@@ -32,17 +32,36 @@ final class CreateProjectContextSnapshot
                 ->firstOrFail();
 
             $approvedDocumentVersions = DocumentVersion::query()
-                ->where('status', DocumentStatus::Approved->value)
-                ->whereHas('document', fn ($query) => $query->where('project_id', $project->id))
+                ->where(
+                    'status',
+                    DocumentStatus::Approved->value,
+                )
+                ->whereNotNull('analyzer_name')
+                ->whereNotNull('analyzer_version')
+                ->whereNotNull('analysis_seed')
+                ->whereNotNull('analysis_completed_at')
+                ->whereNotNull('analysis_summary')
+                ->whereNotNull('analysis_conflicts')
+                ->whereNotNull('analysis_gaps')
+                ->whereNotNull('analysis_flags')
+                ->whereHas(
+                    'document',
+                    fn ($query) => $query->where(
+                        'project_id',
+                        $project->id,
+                    ),
+                )
                 ->orderBy('document_id')
                 ->orderBy('version')
                 ->get()
-                ->map(fn (DocumentVersion $version): array => [
-                    'document_id' => $version->document_id,
-                    'document_version_id' => $version->id,
-                    'version' => $version->version,
-                    'checksum_sha256' => $version->checksum_sha256,
-                ])
+                ->map(
+                    fn (DocumentVersion $version): array => [
+                        'document_id' => $version->document_id,
+                        'document_version_id' => $version->id,
+                        'version' => $version->version,
+                        'checksum_sha256' => $version->checksum_sha256,
+                    ],
+                )
                 ->all();
 
             return ProjectContextSnapshot::query()->create([

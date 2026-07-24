@@ -73,16 +73,31 @@ final class ProjectDocumentController extends Controller
         return [
             'id' => $document->id,
             'title' => $document->title,
-            'versions' => $document->versions->map(fn (DocumentVersion $version): array => [
-                'id' => (int) $version->id,
-                'version' => (int) $version->version,
-                'status' => $version->status->value,
-                'classification' => $version->classification->value,
-                'checksum' => (string) $version->checksum_sha256,
-                'parserVersion' => $version->parser_version,
-                'notes' => $version->analysis_summary,
-                'flags' => $version->analysis_flags ?? [],
-            ])->values()->all(),
+            'versions' => $document->versions
+                ->map(
+                    fn (DocumentVersion $version): array => [
+                        'id' => (int) $version->id,
+                        'version' => (int) $version->version,
+                        'status' => $version->status->value,
+                        'classification' => $version
+                            ->classification
+                            ->value,
+                        'checksum' => (string) $version
+                            ->checksum_sha256,
+                        'parserVersion' => $version->parser_version,
+                        'analyzerName' => $version->analyzer_name,
+                        'analyzerVersion' => $version
+                            ->analyzer_version,
+                        'analysisSeed' => $version->analysis_seed,
+                        'analysisCompletedAt' => $version
+                            ->analysis_completed_at
+                            ?->toIso8601String(),
+                        'notes' => $version->analysis_summary,
+                        'flags' => $version->analysis_flags ?? [],
+                    ],
+                )
+                ->values()
+                ->all(),
         ];
     }
 }

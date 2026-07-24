@@ -5,11 +5,14 @@ declare(strict_types=1);
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\ParseDocumentVersion;
 use App\Domain\Documents\DocumentStatus;
+use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Models\DocumentVersion;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
     Storage::fake('documents');
+    Queue::fake();
 });
 
 dataset('supported document media types', [
@@ -54,11 +57,16 @@ test(
         app(ParseDocumentVersion::class)->handle($version->id);
 
         expect($version->fresh())
-            ->status->toBe(DocumentStatus::Parsed)
+            ->status->toBe(DocumentStatus::AnalysisPending)
             ->parsed_content->toBe($content)
             ->parser_name->toBe('plain-text-mvp')
             ->parser_version->toBe('1.0.0')
             ->parsed_at->not->toBeNull();
+
+        Queue::assertPushed(
+            AnalyzeDocumentVersionJob::class,
+            1,
+        );
     },
 )->with('supported document media types');
 

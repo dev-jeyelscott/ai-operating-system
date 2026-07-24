@@ -550,10 +550,19 @@ final readonly class EvaluateProjectCompleteness
             ->whereIn('document_class', $requiredClasses)
             ->whereHas(
                 'versions',
-                fn ($query) => $query->where(
-                    'status',
-                    DocumentStatus::Approved->value,
-                ),
+                fn ($query) => $query
+                    ->where(
+                        'status',
+                        DocumentStatus::Approved->value,
+                    )
+                    ->whereNotNull('analyzer_name')
+                    ->whereNotNull('analyzer_version')
+                    ->whereNotNull('analysis_seed')
+                    ->whereNotNull('analysis_completed_at')
+                    ->whereNotNull('analysis_summary')
+                    ->whereNotNull('analysis_conflicts')
+                    ->whereNotNull('analysis_gaps')
+                    ->whereNotNull('analysis_flags'),
             )
             ->pluck('document_class')
             ->filter()

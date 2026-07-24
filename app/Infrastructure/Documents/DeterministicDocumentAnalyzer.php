@@ -11,16 +11,50 @@ use App\Models\DocumentVersion;
 
 final class DeterministicDocumentAnalyzer implements DocumentAnalyzer
 {
-    public function analyze(DocumentVersion $version, int $seed): DocumentAnalysis
-    {
-        $content = (string) $version->parsed_content;
-        $classification = str_contains(strtolower($content), 'architecture') ? DocumentClassification::Architecture : DocumentClassification::Specification;
+    private const NAME = 'deterministic-document-analyzer';
 
+    private const VERSION = '1.0.0';
+
+    /**
+     * Return the stable analyzer identifier.
+     */
+    public function name(): string
+    {
+        return self::NAME;
+    }
+
+    /**
+     * Return the deterministic analyzer ruleset version.
+     */
+    public function version(): string
+    {
+        return self::VERSION;
+    }
+
+    /**
+     * Produce repeatable classification, safety, conflict, and gap results.
+     */
+    public function analyze(
+        DocumentVersion $version,
+        int $seed,
+    ): DocumentAnalysis {
+        $content = (string) $version->parsed_content;
         $normalizedContent = strtolower($content);
+
+        $classification = str_contains(
+            $normalizedContent,
+            'architecture',
+        )
+            ? DocumentClassification::Architecture
+            : DocumentClassification::Specification;
+
         $flags = [];
 
         if (
-            str_contains($normalizedContent, 'ignore previous instructions')
+            str_contains(
+                $normalizedContent,
+                'ignore previous instructions',
+            )
             || str_contains($normalizedContent, 'system prompt')
             || str_contains($normalizedContent, 'jailbreak')
         ) {
@@ -36,11 +70,19 @@ final class DeterministicDocumentAnalyzer implements DocumentAnalyzer
         }
 
         return new DocumentAnalysis(
-            "Deterministic summary #{$seed}: ".substr(trim($content), 0, 120),
-            $classification,
-            str_contains($content, '[conflict]') ? ['Conflicting instruction detected.'] : [],
-            str_contains($content, '[gap]') ? ['Required detail is missing.'] : [],
-            $flags,
+            summary: sprintf(
+                'Deterministic summary #%d: %s',
+                $seed,
+                substr(trim($content), 0, 120),
+            ),
+            classification: $classification,
+            conflicts: str_contains($content, '[conflict]')
+                ? ['Conflicting instruction detected.']
+                : [],
+            gaps: str_contains($content, '[gap]')
+                ? ['Required detail is missing.']
+                : [],
+            flags: $flags,
         );
     }
 }

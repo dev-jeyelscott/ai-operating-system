@@ -36,6 +36,31 @@ test('required document classes block preflight until an approved version exists
         ->create(['document_class' => 'operations_runbook']);
     DocumentVersion::factory()->for($document)->approved()->create();
 
+    $legacyApproval = DocumentVersion::factory()
+        ->for($document)
+        ->approved()
+        ->create([
+            'analysis_completed_at' => null,
+        ]);
+
+    $legacyApproval->forceFill([
+        'analysis_completed_at' => now(),
+    ])->save();
+
+    expect(app(EvaluateProjectCompleteness::class)->handle(
+        organizationId: $organization->id,
+        projectId: $project->id,
+    )->missingKeys())->not->toContain(
+        'required_documents.operations_runbook',
+    );
+
+    expect(app(EvaluateProjectCompleteness::class)->handle(
+        organizationId: $organization->id,
+        projectId: $project->id,
+    )->missingKeys())->toContain(
+        'required_documents.operations_runbook',
+    );
+
     expect(app(EvaluateProjectCompleteness::class)->handle(
         organizationId: $organization->id,
         projectId: $project->id,

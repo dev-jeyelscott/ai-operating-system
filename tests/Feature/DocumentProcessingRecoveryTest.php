@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Application\Documents\RetryDocumentVersionProcessing;
 use App\Domain\Documents\DocumentStatus;
+use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Jobs\ParseDocumentVersionJob;
 use App\Jobs\ScanDocumentVersionJob;
 use App\Models\DocumentVersion;
@@ -16,16 +17,29 @@ test(
 
         $version = DocumentVersion::factory()->create([
             'status' => DocumentStatus::ScanFailed,
+            'failure_code' => 'scan_failed',
+            'failure_message' => 'Temporary scanner failure.',
         ]);
+
+        $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
             ->handle($version);
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::Quarantined)
-            ->and(DocumentVersion::query()->count())->toBe(1);
+            ->checksum_sha256->toBe($checksum)
+            ->failure_code->toBeNull()
+            ->failure_message->toBeNull()
+            ->and(DocumentVersion::query()->count())
+            ->toBe(1);
 
-        Queue::assertPushed(ScanDocumentVersionJob::class);
+        Queue::assertPushed(
+            ScanDocumentVersionJob::class,
+            fn (
+                ScanDocumentVersionJob $job,
+            ): bool => $job->documentVersionId === $version->id,
+        );
     },
 );
 
@@ -49,9 +63,16 @@ test(
             ->status->toBe(DocumentStatus::ScanApproved)
             ->checksum_sha256->toBe($checksum)
             ->failure_code->toBeNull()
-            ->and(DocumentVersion::query()->count())->toBe(1);
+            ->failure_message->toBeNull()
+            ->and(DocumentVersion::query()->count())
+            ->toBe(1);
 
-        Queue::assertPushed(ParseDocumentVersionJob::class);
+        Queue::assertPushed(
+            ParseDocumentVersionJob::class,
+            fn (
+                ParseDocumentVersionJob $job,
+            ): bool => $job->documentVersionId === $version->id,
+        );
     },
 );
 
@@ -79,7 +100,10 @@ test(
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::ParseFailed)
-            ->failure_code->toBe('unsupported_media_type');
+            ->failure_code->toBe('unsupported_media_type')
+            ->failure_message->toBe(
+                'No parser is registered for application/pdf.',
+            );
 
         Queue::assertNothingPushed();
     },
@@ -88,9 +112,9 @@ test(
 test('completed processing cannot be retried', function (): void {
     Queue::fake();
 
-    $version = DocumentVersion::factory()->create([
-        'status' => DocumentStatus::Parsed,
-    ]);
+    $version = DocumentVersion::factory()
+        ->classified()
+        ->create();
 
     expect(
         fn (): null => app(
@@ -101,5 +125,44 @@ test('completed processing cannot be retried', function (): void {
         'Only failed document processing can be retried.',
     );
 
+    expect($version->fresh()->status)
+        ->toBe(DocumentStatus::NeedsReview);
+
     Queue::assertNothingPushed();
 });
+
+test(
+    'failed analysis can be requeued without losing safety flags',
+    function (): void {
+        Queue::fake();
+
+        $version = DocumentVersion::factory()
+            ->analysisFailed()
+            ->create([
+                'analysis_flags' => ['prompt_injection'],
+            ]);
+
+        $checksum = $version->checksum_sha256;
+
+        app(RetryDocumentVersionProcessing::class)
+            ->handle($version);
+
+        expect($version->fresh())
+            ->status->toBe(DocumentStatus::AnalysisPending)
+            ->checksum_sha256->toBe($checksum)
+            ->analysis_flags->toBe(['prompt_injection'])
+            ->analysis_started_at->toBeNull()
+            ->analysis_completed_at->toBeNull()
+            ->failure_code->toBeNull()
+            ->failure_message->toBeNull()
+            ->and(DocumentVersion::query()->count())
+            ->toBe(1);
+
+        Queue::assertPushed(
+            AnalyzeDocumentVersionJob::class,
+            fn (
+                AnalyzeDocumentVersionJob $job,
+            ): bool => $job->documentVersionId === $version->id,
+        );
+    },
+);
