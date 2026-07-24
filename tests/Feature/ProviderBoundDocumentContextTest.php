@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Application\Documents\BuildProviderBoundDocumentContext;
 use App\Application\Documents\Exceptions\DocumentContextIntegrityException;
+use App\Application\Documents\Exceptions\ProviderBoundRedactionException;
+use App\Application\Documents\RedactProviderBoundDocumentContext;
 use App\Application\Projects\CreateProject;
 use App\Application\Projects\CreateProjectContextSnapshot;
 use App\Domain\Projects\ProjectType;
@@ -13,6 +15,7 @@ use App\Models\Organization;
 use App\Models\ProjectContextSnapshot;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
@@ -222,5 +225,260 @@ test(
                 $version->id,
             ),
         );
+    },
+);
+
+test(
+    'the approved provider-bound secret corpus is redacted',
+    function (string $secret): void {
+        $result = app(
+            RedactProviderBoundDocumentContext::class,
+        )->handle($secret);
+
+        expect($result)
+            ->toContain('[REDACTED]')
+            ->not->toContain($secret);
+    },
+)->with([
+    'GitHub classic token' => [
+        'ghp_abcdefghijklmnopqrstuvwxyz1234567890',
+    ],
+    'GitHub fine-grained token' => [
+        'github_pat_11AA22BB33CC44DD55EE66FF77GG88HH',
+    ],
+    'OpenAI project token' => [
+        'sk-proj-abcdefghijklmnopqrstuvwxyz123456',
+    ],
+    'AWS temporary access key' => [
+        'ASIAABCDEFGHIJKLMNOP',
+    ],
+    'bearer credential' => [
+        'Bearer abcdefghijklmnopqrstuvwxyz123456',
+    ],
+    'JSON web token' => [
+        'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature123',
+    ],
+    'credentialed PostgreSQL URL' => [
+        'postgresql://application:database-secret@db.example.com/app',
+    ],
+    'private key block' => [
+        <<<'KEY'
+-----BEGIN PRIVATE KEY-----
+super-sensitive-private-key-material
+-----END PRIVATE KEY-----
+KEY,
+    ],
+    'named token assignment' => [
+        'token=super-secret-provider-value',
+    ],
+]);
+
+test(
+    'non-secret lookalikes remain unchanged',
+    function (string $content): void {
+        $result = app(
+            RedactProviderBoundDocumentContext::class,
+        )->handle($content);
+
+        expect($result)->toBe($content);
+    },
+)->with([
+    'short GitHub value' => [
+        'ghp_short',
+    ],
+    'short fine-grained value' => [
+        'github_pat_short',
+    ],
+    'non-credential bearer text' => [
+        'Bearer public',
+    ],
+    'database URL without credentials' => [
+        'postgresql://db.example.com/app',
+    ],
+    'public key block' => [
+        <<<'KEY'
+-----BEGIN PUBLIC KEY-----
+public-material
+-----END PUBLIC KEY-----
+KEY,
+    ],
+]);
+
+test(
+    'approved custom patterns participate in atomic redaction',
+    function (): void {
+        config()->set(
+            'document-context-redaction.custom_patterns',
+            [
+                [
+                    'id' => 'organization_internal_credential',
+                    'expression' => '/\bACME-CREDENTIAL-[A-Z0-9]{12}\b/',
+                ],
+            ],
+        );
+
+        $result = app(
+            RedactProviderBoundDocumentContext::class,
+        )->handle(
+            'ACME-CREDENTIAL-ABCDEF123456',
+        );
+
+        expect($result)->toBe('[REDACTED]');
+    },
+);
+
+test(
+    'invalid redaction configuration blocks the outbound boundary before a gateway can be called',
+    function (): void {
+        [
+            'snapshot' => $snapshot,
+        ] = providerBoundContextFixture();
+
+        config()->set(
+            'document-context-redaction.patterns',
+            [
+                [
+                    'id' => 'invalid_regex',
+                    'expression' => '/[unterminated/',
+                ],
+            ],
+        );
+
+        config()->set(
+            'document-context-redaction.custom_patterns',
+            [],
+        );
+
+        Log::spy();
+
+        $gatewayCalled = false;
+
+        try {
+            $context = app(
+                BuildProviderBoundDocumentContext::class,
+            )->handle($snapshot);
+
+            /*
+             * This assignment represents the next outbound gateway operation.
+             * It must remain unreachable after redaction failure.
+             */
+            $gatewayCalled = true;
+
+            unset($context);
+
+            $this->fail(
+                'Expected provider-bound context generation to fail.',
+            );
+        } catch (ProviderBoundRedactionException $exception) {
+            expect($exception->errorCode())
+                ->toBe(
+                    ProviderBoundRedactionException::INVALID_CONFIGURATION,
+                )
+                ->and($exception->patternId())
+                ->toBe('invalid_regex')
+                ->and($exception->getMessage())
+                ->not->toContain('super-secret')
+                ->not->toContain('/[unterminated/');
+        }
+
+        expect($gatewayCalled)->toBeFalse();
+
+        Log::shouldHaveReceived('critical')
+            ->once()
+            ->withArgs(
+                function (
+                    string $message,
+                    array $context,
+                ): bool {
+                    $serializedContext = json_encode(
+                        $context,
+                        JSON_THROW_ON_ERROR,
+                    );
+
+                    return $message
+                        === 'document.provider_context_redaction_blocked'
+                        && $context['error_code']
+                        === ProviderBoundRedactionException::INVALID_CONFIGURATION
+                        && $context['pattern_id'] === 'invalid_regex'
+                        && ! str_contains(
+                            $serializedContext,
+                            'super-secret',
+                        )
+                        && ! str_contains(
+                            $serializedContext,
+                            '/[unterminated/',
+                        );
+                },
+            );
+    },
+);
+
+test(
+    'runtime PCRE failure blocks redaction without logging source content',
+    function (): void {
+        config()->set(
+            'document-context-redaction.patterns',
+            [
+                [
+                    'id' => 'utf8_runtime_failure',
+                    'expression' => '/secret/u',
+                ],
+            ],
+        );
+
+        config()->set(
+            'document-context-redaction.custom_patterns',
+            [],
+        );
+
+        Log::spy();
+
+        $invalidUtf8Content = "secret-\xB1";
+
+        try {
+            app(
+                RedactProviderBoundDocumentContext::class,
+            )->handle($invalidUtf8Content);
+
+            $this->fail(
+                'Expected runtime PCRE redaction to fail.',
+            );
+        } catch (ProviderBoundRedactionException $exception) {
+            expect($exception->errorCode())
+                ->toBe(
+                    ProviderBoundRedactionException::EXECUTION_FAILED,
+                )
+                ->and($exception->patternId())
+                ->toBe('utf8_runtime_failure')
+                ->and($exception->pcreErrorCode())
+                ->not->toBe(PREG_NO_ERROR)
+                ->and($exception->getMessage())
+                ->not->toContain('secret');
+        }
+
+        Log::shouldHaveReceived('critical')
+            ->once()
+            ->withArgs(
+                function (
+                    string $message,
+                    array $context,
+                ): bool {
+                    $serializedContext = json_encode(
+                        $context,
+                        JSON_THROW_ON_ERROR,
+                    );
+
+                    return $message
+                        === 'document.provider_context_redaction_blocked'
+                        && $context['error_code']
+                        === ProviderBoundRedactionException::EXECUTION_FAILED
+                        && $context['pattern_id']
+                        === 'utf8_runtime_failure'
+                        && ! str_contains(
+                            $serializedContext,
+                            'secret',
+                        );
+                },
+            );
     },
 );
