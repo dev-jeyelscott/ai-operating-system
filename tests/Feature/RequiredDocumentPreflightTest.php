@@ -56,12 +56,19 @@ test('required document classes block preflight until an approved version exists
     );
 
     /*
-     * Completing the final missing analysis field makes the approved version
-     * eligible to satisfy the required-document preflight gate.
-     */
-    $incompleteApproval->forceFill([
-        'analysis_completed_at' => now(),
-    ])->save();
+    * Completed analysis evidence is immutable. Add a separate document with a
+    * valid approved version instead of rewriting historical evidence.
+    */
+    $completeDocument = Document::factory()
+        ->for($project)
+        ->create([
+            'document_class' => 'operations_runbook',
+        ]);
+
+    DocumentVersion::factory()
+        ->for($completeDocument)
+        ->approved()
+        ->create();
 
     expect(app(EvaluateProjectCompleteness::class)->handle(
         organizationId: $organization->id,

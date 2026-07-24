@@ -33,11 +33,7 @@ type Props = {
 /**
  * Display immutable document revisions and replacement controls.
  */
-export default function DocumentShow({
-    document,
-    permissions,
-    urls,
-}: Props) {
+export default function DocumentShow({ document, permissions, urls }: Props) {
     return (
         <>
             <Head title={document.title} />
@@ -46,9 +42,7 @@ export default function DocumentShow({
                 <Link href={urls.index}>Back to documents</Link>
 
                 <div>
-                    <h1 className="text-2xl font-semibold">
-                        {document.title}
-                    </h1>
+                    <h1 className="text-2xl font-semibold">{document.title}</h1>
 
                     <p className="mt-2 text-sm text-muted-foreground">
                         Replacement uploads create a new quarantined revision.
@@ -81,13 +75,11 @@ export default function DocumentShow({
                                 </div>
 
                                 <div className="break-all">
-                                    Checksum:{' '}
-                                    <code>{version.checksum}</code>
+                                    Checksum: <code>{version.checksum}</code>
                                 </div>
 
                                 <div>
-                                    Parser:{' '}
-                                    {version.parserVersion ?? 'Pending'}
+                                    Parser: {version.parserVersion ?? 'Pending'}
                                 </div>
 
                                 <div>
@@ -112,9 +104,7 @@ export default function DocumentShow({
                                         : 'Pending'}
                                 </div>
 
-                                <div>
-                                    Notes: {version.notes ?? 'None'}
-                                </div>
+                                <div>Notes: {version.notes ?? 'None'}</div>
 
                                 <div>
                                     Safety flags:{' '}
