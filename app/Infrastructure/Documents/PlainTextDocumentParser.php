@@ -12,16 +12,71 @@ use RuntimeException;
 
 final class PlainTextDocumentParser implements DocumentParser
 {
+    /** @var list<string> */
+    private const SUPPORTED_MEDIA_TYPES = [
+        'text/markdown',
+        'text/plain',
+    ];
+
+    private const NAME = 'plain-text-mvp';
+
+    private const VERSION = '1.0.0';
+
+    /**
+     * Return the media types handled by the MVP text parser.
+     *
+     * @return list<string>
+     */
+    public function supportedMediaTypes(): array
+    {
+        return self::SUPPORTED_MEDIA_TYPES;
+    }
+
+    /**
+     * Determine whether the supplied media type can be parsed.
+     */
+    public function supports(string $mediaType): bool
+    {
+        return in_array(
+            strtolower(trim($mediaType)),
+            self::SUPPORTED_MEDIA_TYPES,
+            true,
+        );
+    }
+
+    /**
+     * Return the stable parser name used in document evidence.
+     */
+    public function name(): string
+    {
+        return self::NAME;
+    }
+
+    /**
+     * Return the active parser implementation version.
+     */
+    public function version(): string
+    {
+        return self::VERSION;
+    }
+
+    /**
+     * Read a supported Markdown or plain-text document from private storage.
+     */
     public function parse(DocumentVersion $documentVersion): ParsedDocument
     {
-        if (! in_array($documentVersion->media_type, ['text/markdown', 'text/plain'], true)) {
-            throw new RuntimeException('The uploaded media type is not supported by the MVP parser.');
+        if (! $this->supports($documentVersion->media_type)) {
+            throw new RuntimeException(sprintf(
+                'No parser is registered for media type "%s".',
+                $documentVersion->media_type,
+            ));
         }
 
         return new ParsedDocument(
-            Storage::disk($documentVersion->storage_disk)->get($documentVersion->storage_path),
-            'plain-text-mvp',
-            '1.0.0',
+            content: Storage::disk($documentVersion->storage_disk)
+                ->get($documentVersion->storage_path),
+            parserName: $this->name(),
+            parserVersion: $this->version(),
         );
     }
 }

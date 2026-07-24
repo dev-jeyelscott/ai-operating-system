@@ -17,17 +17,24 @@ final class DocumentVersionFactory extends Factory
     /** @var class-string<DocumentVersion> */
     protected $model = DocumentVersion::class;
 
-    /** @return array<string, mixed> */
+    /**
+     * Define a valid parser-supported document version.
+     *
+     * @return array<string, mixed>
+     */
     public function definition(): array
     {
         return [
             'document_id' => Document::factory(),
             'version' => 1,
-            'original_filename' => fake()->bothify('document-####.pdf'),
-            'media_type' => 'application/pdf',
+            'original_filename' => fake()->bothify('document-####.txt'),
+            'media_type' => 'text/plain',
             'byte_size' => fake()->numberBetween(1_024, 1_048_576),
             'storage_disk' => 'documents',
-            'storage_path' => sprintf('documents/%s', Str::ulid()),
+            'storage_path' => sprintf(
+                'documents/%s',
+                Str::ulid(),
+            ),
             'checksum_sha256' => hash('sha256', fake()->uuid()),
             'status' => DocumentStatus::Uploaded,
             'classification' => DocumentClassification::Unclassified,
@@ -41,6 +48,9 @@ final class DocumentVersionFactory extends Factory
         ];
     }
 
+    /**
+     * Mark a document version as actively parsing.
+     */
     public function processing(): static
     {
         return $this->state(fn (): array => [
@@ -51,8 +61,13 @@ final class DocumentVersionFactory extends Factory
         ]);
     }
 
-    public function classified(DocumentClassification $classification = DocumentClassification::Specification): static
-    {
+    /**
+     * Mark a document as parsed and classified.
+     */
+    public function classified(
+        DocumentClassification $classification =
+            DocumentClassification::Specification,
+    ): static {
         return $this->state(fn (): array => [
             'status' => DocumentStatus::Parsed,
             'classification' => $classification,
@@ -62,13 +77,24 @@ final class DocumentVersionFactory extends Factory
         ]);
     }
 
+    /**
+     * Mark the document version as approved.
+     */
     public function approved(): static
     {
-        return $this->state(fn (): array => ['status' => DocumentStatus::Approved]);
+        return $this->state(
+            fn (): array => [
+                'status' => DocumentStatus::Approved,
+            ],
+        );
     }
 
-    public function superseding(DocumentVersion $documentVersion): static
-    {
+    /**
+     * Create a version linked to the version it supersedes.
+     */
+    public function superseding(
+        DocumentVersion $documentVersion,
+    ): static {
         return $this->state(fn (): array => [
             'document_id' => $documentVersion->document_id,
             'version' => $documentVersion->version + 1,

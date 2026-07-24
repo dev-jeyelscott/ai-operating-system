@@ -22,13 +22,17 @@ beforeEach(function (): void {
 });
 
 /**
+ * Create an organization owner and project for upload tests.
+ *
  * @return array{organization: Organization, project: Project, user: User}
  */
 function documentUploadOwner(): array
 {
     $user = User::factory()->create();
     $organization = Organization::factory()->create();
-    $project = Project::factory()->for($organization)->create();
+    $project = Project::factory()
+        ->for($organization)
+        ->create();
 
     OrganizationMembership::factory()
         ->owner()
@@ -39,157 +43,284 @@ function documentUploadOwner(): array
     return compact('organization', 'project', 'user');
 }
 
-test('an authorized member stores a private project-scoped document with a computed checksum', function (): void {
-    ['organization' => $organization, 'project' => $project, 'user' => $user]
-        = documentUploadOwner();
-    $upload = UploadedFile::fake()->create('architecture.pdf', 128, 'application/pdf');
-    Queue::fake();
-
-    $this
-        ->actingAs($user)
-        ->post(route('organizations.projects.documents.store', [
+test(
+    'an authorized member stores a private parser-supported document',
+    function (): void {
+        [
             'organization' => $organization,
             'project' => $project,
-        ]), [
-            'title' => 'Architecture baseline',
-            'document' => $upload,
-        ])
-        ->assertRedirect(route('organizations.projects.show', [
-            'organization' => $organization,
-            'project' => $project,
-        ]))
-        ->assertSessionHas('status', 'document-uploaded');
+            'user' => $user,
+        ] = documentUploadOwner();
 
-    $document = Document::query()->sole();
-    $version = $document->latestVersion;
+        $upload = UploadedFile::fake()->create(
+            'architecture.md',
+            128,
+            'text/markdown',
+        );
 
-    expect($document)
-        ->project_id->toBe($project->id)
-        ->title->toBe('Architecture baseline')
-        ->and($version)
-        ->not->toBeNull()
-        ->storage_disk->toBe('documents')
-        ->storage_path->toStartWith(
-            "documents/organizations/{$organization->id}/projects/{$project->id}/",
-        )
-        ->checksum_sha256->toBe(hash_file('sha256', $upload->getRealPath()))
-        ->status->toBe(DocumentStatus::Quarantined)
-        ->classification->toBe(DocumentClassification::Unclassified);
+        Queue::fake();
 
-    Storage::disk('documents')->assertExists($version->storage_path);
-    Queue::assertPushed(
-        ScanDocumentVersionJob::class,
-        fn (ScanDocumentVersionJob $job): bool => $job->documentVersionId === $version->id,
-    );
-});
-
-test('uploads reject unsupported file types and oversized files before storage', function (): void {
-    ['organization' => $organization, 'project' => $project, 'user' => $user]
-        = documentUploadOwner();
-
-    foreach ([
-        UploadedFile::fake()->create('malware.exe', 10, 'application/x-msdownload'),
-        UploadedFile::fake()->create('large.pdf', 20_481, 'application/pdf'),
-    ] as $upload) {
         $this
             ->actingAs($user)
-            ->from(route('organizations.projects.show', [
-                'organization' => $organization,
-                'project' => $project,
-            ]))
-            ->post(route('organizations.projects.documents.store', [
-                'organization' => $organization,
-                'project' => $project,
-            ]), [
-                'title' => 'Rejected document',
-                'document' => $upload,
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                [
+                    'title' => 'Architecture baseline',
+                    'document' => $upload,
+                ],
+            )
+            ->assertRedirect(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->assertSessionHas('status', 'document-uploaded');
+
+        $document = Document::query()->sole();
+        $version = $document->latestVersion;
+
+        expect($document)
+            ->project_id->toBe($project->id)
+            ->title->toBe('Architecture baseline')
+            ->and($version)
+            ->not->toBeNull()
+            ->media_type->toBeIn([
+                'text/markdown',
+                'text/plain',
             ])
-            ->assertRedirect(route('organizations.projects.show', [
-                'organization' => $organization,
-                'project' => $project,
-            ]))
+            ->storage_disk->toBe('documents')
+            ->storage_path->toStartWith(
+                "documents/organizations/{$organization->id}/projects/{$project->id}/",
+            )
+            ->checksum_sha256->toBe(
+                hash_file('sha256', $upload->getRealPath()),
+            )
+            ->status->toBe(DocumentStatus::Quarantined)
+            ->classification->toBe(
+                DocumentClassification::Unclassified,
+            );
+
+        Storage::disk('documents')
+            ->assertExists($version->storage_path);
+
+        Queue::assertPushed(
+            ScanDocumentVersionJob::class,
+            fn (ScanDocumentVersionJob $job): bool => $job->documentVersionId === $version->id,
+        );
+    },
+);
+
+test(
+    'unsupported media is rejected before storage or queue dispatch',
+    function (): void {
+        [
+            'organization' => $organization,
+            'project' => $project,
+            'user' => $user,
+        ] = documentUploadOwner();
+
+        Queue::fake();
+
+        $this
+            ->actingAs($user)
+            ->from(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                [
+                    'title' => 'Unsupported PDF',
+                    'document' => UploadedFile::fake()->create(
+                        'architecture.pdf',
+                        128,
+                        'application/pdf',
+                    ),
+                ],
+            )
+            ->assertRedirect(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->assertSessionHasErrors([
+                'document' => 'The document format is not supported. Supported media types: text/markdown, text/plain.',
+            ]);
+
+        expect(Document::query()->count())->toBe(0);
+
+        Storage::disk('documents')
+            ->assertDirectoryEmpty('/');
+
+        Queue::assertNothingPushed();
+    },
+);
+
+test(
+    'oversized supported documents are rejected before storage',
+    function (): void {
+        [
+            'organization' => $organization,
+            'project' => $project,
+            'user' => $user,
+        ] = documentUploadOwner();
+
+        Queue::fake();
+
+        $this
+            ->actingAs($user)
+            ->from(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                [
+                    'title' => 'Oversized document',
+                    'document' => UploadedFile::fake()->create(
+                        'large.txt',
+                        20_481,
+                        'text/plain',
+                    ),
+                ],
+            )
+            ->assertRedirect()
             ->assertSessionHasErrors('document');
-    }
 
-    expect(Document::query()->count())->toBe(0);
-    Storage::disk('documents')->assertDirectoryEmpty('/');
-});
+        expect(Document::query()->count())->toBe(0);
 
-test('uploads cannot address a project outside the route organization', function (): void {
-    ['organization' => $organization, 'user' => $user]
-        = documentUploadOwner();
-    $foreignProject = Project::factory()->create();
+        Storage::disk('documents')
+            ->assertDirectoryEmpty('/');
 
-    $this
-        ->actingAs($user)
-        ->post(route('organizations.projects.documents.store', [
+        Queue::assertNothingPushed();
+    },
+);
+
+test(
+    'uploads cannot address a project outside the route organization',
+    function (): void {
+        [
             'organization' => $organization,
-            'project' => $foreignProject,
-        ]), [
-            'title' => 'Foreign document',
-            'document' => UploadedFile::fake()->create(
-                'architecture.pdf',
-                128,
-                'application/pdf',
-            ),
-        ])
-        ->assertNotFound();
+            'user' => $user,
+        ] = documentUploadOwner();
 
-    expect(Document::query()->count())->toBe(0);
-});
+        $foreignProject = Project::factory()->create();
 
-test('uploads are rate limited per actor and organization before persistence', function (): void {
-    config()->set('rate-limits.project_commands.upload.per_minute', 1);
-    config()->set('rate-limits.project_commands.upload.per_hour', 20);
-    Queue::fake();
+        $this
+            ->actingAs($user)
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $foreignProject,
+                ]),
+                [
+                    'title' => 'Foreign document',
+                    'document' => UploadedFile::fake()->create(
+                        'architecture.txt',
+                        128,
+                        'text/plain',
+                    ),
+                ],
+            )
+            ->assertNotFound();
 
-    ['organization' => $organization, 'project' => $project, 'user' => $user]
-        = documentUploadOwner();
+        expect(Document::query()->count())->toBe(0);
+    },
+);
 
-    $firstResponse = $this
-        ->actingAs($user)
-        ->from(route('organizations.projects.show', [
-            'organization' => $organization,
-            'project' => $project,
-        ]))
-        ->post(route('organizations.projects.documents.store', [
-            'organization' => $organization,
-            'project' => $project,
-        ]), [
-            'title' => 'First',
-            'document' => UploadedFile::fake()->create(
-                'first.pdf',
-                128,
-                'application/pdf',
-            ),
-        ]);
+test(
+    'uploads are rate limited per actor and organization',
+    function (): void {
+        config()->set(
+            'rate-limits.project_commands.upload.per_minute',
+            1,
+        );
+        config()->set(
+            'rate-limits.project_commands.upload.per_hour',
+            20,
+        );
 
-    $blockedResponse = $this
-        ->actingAs($user)
-        ->from(route('organizations.projects.show', [
-            'organization' => $organization,
-            'project' => $project,
-        ]))
-        ->post(route('organizations.projects.documents.store', [
+        Queue::fake();
+
+        [
             'organization' => $organization,
             'project' => $project,
-        ]), [
-            'title' => 'Blocked',
-            'document' => UploadedFile::fake()->create(
-                'blocked.pdf',
-                128,
-                'application/pdf',
-            ),
-        ]);
+            'user' => $user,
+        ] = documentUploadOwner();
 
-    $firstResponse->assertRedirect();
-    $blockedResponse
-        ->assertRedirect(route('organizations.projects.show', [
-            'organization' => $organization,
-            'project' => $project,
-        ]))
-        ->assertHeader('Retry-After')
-        ->assertSessionHasErrors('rate_limit');
+        $firstResponse = $this
+            ->actingAs($user)
+            ->from(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                [
+                    'title' => 'First',
+                    'document' => UploadedFile::fake()->create(
+                        'first.txt',
+                        128,
+                        'text/plain',
+                    ),
+                ],
+            );
 
-    expect(Document::query()->count())->toBe(1);
-});
+        $blockedResponse = $this
+            ->actingAs($user)
+            ->from(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                [
+                    'title' => 'Blocked',
+                    'document' => UploadedFile::fake()->create(
+                        'blocked.txt',
+                        128,
+                        'text/plain',
+                    ),
+                ],
+            );
+
+        $firstResponse->assertRedirect();
+
+        $blockedResponse
+            ->assertRedirect(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->assertHeader('Retry-After')
+            ->assertSessionHasErrors('rate_limit');
+
+        expect(Document::query()->count())->toBe(1);
+    },
+);

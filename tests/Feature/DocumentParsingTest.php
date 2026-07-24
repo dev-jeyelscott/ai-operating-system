@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\ParseDocumentVersion;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\DocumentVersion;
@@ -11,37 +12,103 @@ beforeEach(function (): void {
     Storage::fake('documents');
 });
 
-test('a scan-approved text document is parsed idempotently', function (): void {
-    $version = DocumentVersion::factory()->create([
-        'media_type' => 'text/plain', 'storage_disk' => 'documents',
-        'storage_path' => 'documents/requirements.txt', 'status' => DocumentStatus::ScanApproved,
-    ]);
-    Storage::disk('documents')->put($version->storage_path, 'Build the document center.');
+dataset('supported document media types', [
+    'plain text' => [
+        'text/plain',
+        'requirements.txt',
+        'Build the document center.',
+    ],
+    'markdown' => [
+        'text/markdown',
+        'architecture.md',
+        '# Architecture baseline',
+    ],
+]);
 
-    app(ParseDocumentVersion::class)->handle($version->id);
+test(
+    'every advertised media type reaches parsed idempotently',
+    function (
+        string $mediaType,
+        string $filename,
+        string $content,
+    ): void {
+        $parser = app(DocumentParser::class);
+
+        expect($parser->supportedMediaTypes())
+            ->toContain($mediaType);
+
+        $version = DocumentVersion::factory()->create([
+            'original_filename' => $filename,
+            'media_type' => $mediaType,
+            'storage_disk' => 'documents',
+            'storage_path' => "documents/{$filename}",
+            'status' => DocumentStatus::ScanApproved,
+        ]);
+
+        Storage::disk('documents')->put(
+            $version->storage_path,
+            $content,
+        );
+
+        app(ParseDocumentVersion::class)->handle($version->id);
+        app(ParseDocumentVersion::class)->handle($version->id);
+
+        expect($version->fresh())
+            ->status->toBe(DocumentStatus::Parsed)
+            ->parsed_content->toBe($content)
+            ->parser_name->toBe('plain-text-mvp')
+            ->parser_version->toBe('1.0.0')
+            ->parsed_at->not->toBeNull();
+    },
+)->with('supported document media types');
+
+test('a quarantined document cannot enter parsing', function (): void {
+    $version = DocumentVersion::factory()->create([
+        'status' => DocumentStatus::Quarantined,
+    ]);
+
     app(ParseDocumentVersion::class)->handle($version->id);
 
     expect($version->fresh())
-        ->status->toBe(DocumentStatus::Parsed)
-        ->parsed_content->toBe('Build the document center.')
-        ->parser_name->toBe('plain-text-mvp')
-        ->parser_version->toBe('1.0.0')
-        ->parsed_at->not->toBeNull();
+        ->status->toBe(DocumentStatus::Quarantined);
 });
 
-test('a quarantined document cannot enter parsing', function (): void {
-    $version = DocumentVersion::factory()->create(['status' => DocumentStatus::Quarantined]);
-    app(ParseDocumentVersion::class)->handle($version->id);
-    expect($version->fresh())->status->toBe(DocumentStatus::Quarantined);
-});
+test(
+    'unsupported media is recorded as a permanent failure without throwing',
+    function (): void {
+        $version = DocumentVersion::factory()->create([
+            'original_filename' => 'architecture.pdf',
+            'media_type' => 'application/pdf',
+            'status' => DocumentStatus::ScanApproved,
+        ]);
 
-test('a failed parser stays parsing for retry then records terminal failure', function (): void {
-    $version = DocumentVersion::factory()->create([
-        'media_type' => 'application/pdf', 'status' => DocumentStatus::ScanApproved,
-    ]);
-    expect(fn (): null => app(ParseDocumentVersion::class)->handle($version->id))
-        ->toThrow(RuntimeException::class);
-    expect($version->fresh()->status)->toBe(DocumentStatus::Parsing);
-    app(ParseDocumentVersion::class)->markFailed($version->id);
-    expect($version->fresh())->status->toBe(DocumentStatus::ParseFailed)->failure_code->toBe('parse_failed');
-});
+        app(ParseDocumentVersion::class)->handle($version->id);
+
+        expect($version->fresh())
+            ->status->toBe(DocumentStatus::ParseFailed)
+            ->failure_code->toBe('unsupported_media_type')
+            ->failure_message->toContain('application/pdf')
+            ->failure_message->toContain('text/markdown')
+            ->failure_message->toContain('text/plain')
+            ->parser_name->toBeNull()
+            ->parser_version->toBeNull();
+    },
+);
+
+test(
+    'an exhausted transient parser failure records terminal failure',
+    function (): void {
+        $version = DocumentVersion::factory()
+            ->processing()
+            ->create([
+                'media_type' => 'text/plain',
+            ]);
+
+        app(ParseDocumentVersion::class)
+            ->markFailed($version->id);
+
+        expect($version->fresh())
+            ->status->toBe(DocumentStatus::ParseFailed)
+            ->failure_code->toBe('parse_failed');
+    },
+);
