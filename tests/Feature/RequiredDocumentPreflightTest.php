@@ -33,26 +33,20 @@ test('required document classes block preflight until an approved version exists
 
     $document = Document::factory()
         ->for($project)
-        ->create(['document_class' => 'operations_runbook']);
-    DocumentVersion::factory()->for($document)->approved()->create();
+        ->create([
+            'document_class' => 'operations_runbook',
+        ]);
 
-    $legacyApproval = DocumentVersion::factory()
+    /*
+     * An approved status alone is insufficient. Preflight requires complete
+     * analysis provenance before the version can satisfy a required class.
+     */
+    $incompleteApproval = DocumentVersion::factory()
         ->for($document)
         ->approved()
         ->create([
             'analysis_completed_at' => null,
         ]);
-
-    $legacyApproval->forceFill([
-        'analysis_completed_at' => now(),
-    ])->save();
-
-    expect(app(EvaluateProjectCompleteness::class)->handle(
-        organizationId: $organization->id,
-        projectId: $project->id,
-    )->missingKeys())->not->toContain(
-        'required_documents.operations_runbook',
-    );
 
     expect(app(EvaluateProjectCompleteness::class)->handle(
         organizationId: $organization->id,
@@ -60,6 +54,14 @@ test('required document classes block preflight until an approved version exists
     )->missingKeys())->toContain(
         'required_documents.operations_runbook',
     );
+
+    /*
+     * Completing the final missing analysis field makes the approved version
+     * eligible to satisfy the required-document preflight gate.
+     */
+    $incompleteApproval->forceFill([
+        'analysis_completed_at' => now(),
+    ])->save();
 
     expect(app(EvaluateProjectCompleteness::class)->handle(
         organizationId: $organization->id,

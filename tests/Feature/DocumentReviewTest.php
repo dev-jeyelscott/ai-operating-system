@@ -29,13 +29,21 @@ test('authorized editors can approve or reject analyzed document versions', func
         ->post(reviewRoute('reject', $project, $document, $rejected))
         ->assertRedirect();
 
-    expect($approved->fresh()->status)->status->toBe(DocumentStatus::NeedsReview)
-        ->analyzer_name->toBe($approved->analyzer_name)
-        ->analyzer_version->toBe($approved->analyzer_version)
-        ->analysis_seed->toBe($approved->analysis_seed)
-        ->analysis_flags->toBe($approved->analysis_flags)
+    $approvedAfterReview = $approved->fresh();
+    $rejectedAfterReview = $rejected->fresh();
+
+    expect($approvedAfterReview->status)
         ->toBe(DocumentStatus::Approved)
-        ->and($rejected->fresh()->status)->toBe(DocumentStatus::Rejected);
+        ->and($approvedAfterReview->analyzer_name)
+        ->toBe($approved->analyzer_name)
+        ->and($approvedAfterReview->analyzer_version)
+        ->toBe($approved->analyzer_version)
+        ->and($approvedAfterReview->analysis_seed)
+        ->toBe($approved->analysis_seed)
+        ->and($approvedAfterReview->analysis_flags)
+        ->toBe($approved->analysis_flags)
+        ->and($rejectedAfterReview->status)
+        ->toBe(DocumentStatus::Rejected);
 });
 
 test('superseding an approved version preserves it and creates an unapproved successor', function (): void {
@@ -59,7 +67,7 @@ test('superseding an approved version preserves it and creates an unapproved suc
     expect($approved->fresh()->status)->toBe(DocumentStatus::Superseded)
         ->and($successor)
         ->version->toBe(2)
-        ->status->toBe(DocumentStatus::Parsed)
+        ->status->toBe(DocumentStatus::NeedsReview)
         ->checksum_sha256->toBe($approved->checksum_sha256)
         ->parsed_content->toBe('Approved architecture.');
 });

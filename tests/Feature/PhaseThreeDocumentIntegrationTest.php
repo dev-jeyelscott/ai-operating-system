@@ -34,7 +34,7 @@ test(
         $user = User::factory()->create();
 
         $project = app(CreateProject::class)->handle(
-            userId: $user->id,
+            actorUserId: $user->id,
             organizationId: $organization->id,
             name: 'Phase 3 integration project',
             description: null,
