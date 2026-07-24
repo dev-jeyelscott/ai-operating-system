@@ -195,8 +195,7 @@ final readonly class StoreReplacementDocumentVersion
                         'analysis_flags' => null,
                         'failure_code' => null,
                         'failure_message' => null,
-                        'supersedes_document_version_id' =>
-                            $lockedApprovedVersion->id,
+                        'supersedes_document_version_id' => $lockedApprovedVersion->id,
                     ]);
 
                     /*

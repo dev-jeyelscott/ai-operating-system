@@ -22,7 +22,7 @@ final class DocumentReplacementConcurrencyTest extends TestCase
 {
     use DatabaseMigrations;
 
-    public function testConcurrentUploadsAllocateUniqueMonotonicVersions(): void
+    public function test_concurrent_uploads_allocate_unique_monotonic_versions(): void
     {
         $organization = Organization::factory()->create();
 
@@ -76,8 +76,7 @@ final class DocumentReplacementConcurrencyTest extends TestCase
                 ->orderBy('version')
                 ->pluck('version')
                 ->map(
-                    static fn (mixed $version): int =>
-                        (int) $version,
+                    static fn (mixed $version): int => (int) $version,
                 )
                 ->all(),
         );

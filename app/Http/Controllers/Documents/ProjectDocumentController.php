@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Documents;
 
+use App\Domain\Documents\DocumentStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use App\Domain\Documents\DocumentStatus;
-use Illuminate\Http\Request;
 
 final class ProjectDocumentController extends Controller
 {
@@ -72,8 +72,7 @@ final class ProjectDocumentController extends Controller
 
                     return [
                         ...$version,
-                        'replacementUrl' =>
-                            $canReceiveReplacement
+                        'replacementUrl' => $canReceiveReplacement
                                 ? route(
                                     'organizations.projects.documents.versions.replacement.store',
                                     [
