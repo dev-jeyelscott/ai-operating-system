@@ -12,18 +12,15 @@ use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\ProjectContextSnapshot;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Storage;
-use Tests\TestCase;
+use Tests\ProcessDatabaseTestCase;
 
 /**
  * Verifies snapshot idempotency using real PostgreSQL row locking.
  */
-final class ProjectContextSnapshotConcurrencyTest extends TestCase
+final class ProjectContextSnapshotConcurrencyTest extends ProcessDatabaseTestCase
 {
-    use DatabaseMigrations;
-
     /**
      * Concurrent identical requests must resolve to one persisted snapshot.
      */

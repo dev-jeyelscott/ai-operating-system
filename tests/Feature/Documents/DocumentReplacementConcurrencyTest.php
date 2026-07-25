@@ -9,21 +9,24 @@ use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Storage;
-use Tests\TestCase;
+use RuntimeException;
+use Tests\ProcessDatabaseTestCase;
 
 /**
- * Verifies replacement allocation against the real PostgreSQL lock behavior.
+ * Verifies replacement allocation against real PostgreSQL lock behavior.
  */
-final class DocumentReplacementConcurrencyTest extends TestCase
+final class DocumentReplacementConcurrencyTest extends ProcessDatabaseTestCase
 {
-    use DatabaseMigrations;
-
+    /**
+     * Ensure concurrent replacement uploads receive unique, monotonic versions.
+     */
     public function test_concurrent_uploads_allocate_unique_monotonic_versions(): void
     {
+        config()->set('filesystems.artifact', 'local');
+
         $organization = Organization::factory()->create();
 
         $project = Project::factory()
@@ -41,81 +44,80 @@ final class DocumentReplacementConcurrencyTest extends TestCase
                 'version' => 1,
             ]);
 
-        $allocatedVersions = Concurrency::driver(
-            'process',
-        )->run([
-            static fn (): int => self::storeReplacement(
-                organizationId: $organization->id,
-                projectId: $project->id,
-                documentId: $document->id,
-                approvedVersionId: $approved->id,
-                filename: 'replacement-a.txt',
-                contents: 'Replacement A',
-            ),
-            static fn (): int => self::storeReplacement(
-                organizationId: $organization->id,
-                projectId: $project->id,
-                documentId: $document->id,
-                approvedVersionId: $approved->id,
-                filename: 'replacement-b.txt',
-                contents: 'Replacement B',
-            ),
-        ]);
+        try {
+            $allocatedVersions = Concurrency::driver('process')->run([
+                static fn (): int => self::storeReplacement(
+                    organizationId: $organization->id,
+                    projectId: $project->id,
+                    documentId: $document->id,
+                    approvedVersionId: $approved->id,
+                    filename: 'replacement-a.txt',
+                    contents: 'Replacement A',
+                ),
+                static fn (): int => self::storeReplacement(
+                    organizationId: $organization->id,
+                    projectId: $project->id,
+                    documentId: $document->id,
+                    approvedVersionId: $approved->id,
+                    filename: 'replacement-b.txt',
+                    contents: 'Replacement B',
+                ),
+            ]);
 
-        sort($allocatedVersions);
+            sort($allocatedVersions);
 
-        self::assertSame(
-            [2, 3],
-            $allocatedVersions,
-        );
-
-        self::assertSame(
-            [1, 2, 3],
-            $document
-                ->versions()
-                ->orderBy('version')
-                ->pluck('version')
-                ->map(
-                    static fn (mixed $version): int => (int) $version,
-                )
-                ->all(),
-        );
-
-        self::assertSame(
-            3,
-            $document
-                ->versions()
-                ->distinct()
-                ->count('storage_path'),
-        );
-
-        self::assertSame(
-            1,
-            $document
-                ->versions()
-                ->where('status', 'approved')
-                ->count(),
-        );
-
-        $document
-            ->versions()
-            ->where('id', '<>', $approved->id)
-            ->get()
-            ->each(
-                static function (
-                    DocumentVersion $version,
-                ): void {
-                    Storage::disk(
-                        $version->storage_disk,
-                    )->delete(
-                        $version->storage_path,
-                    );
-                },
+            self::assertSame(
+                [2, 3],
+                $allocatedVersions,
             );
+
+            self::assertSame(
+                [1, 2, 3],
+                $document
+                    ->versions()
+                    ->orderBy('version')
+                    ->pluck('version')
+                    ->map(
+                        static fn (mixed $version): int => (int) $version,
+                    )
+                    ->all(),
+            );
+
+            self::assertSame(
+                3,
+                $document
+                    ->versions()
+                    ->distinct()
+                    ->count('storage_path'),
+            );
+
+            self::assertSame(
+                1,
+                $document
+                    ->versions()
+                    ->where('status', 'approved')
+                    ->count(),
+            );
+        } finally {
+            /*
+             * Remove replacement artifacts even when an assertion or child
+             * process fails, preventing local storage leakage between tests.
+             */
+            $document
+                ->versions()
+                ->where('id', '<>', $approved->id)
+                ->get()
+                ->each(
+                    static function (DocumentVersion $version): void {
+                        Storage::disk($version->storage_disk)
+                            ->delete($version->storage_path);
+                    },
+                );
+        }
     }
 
     /**
-     * Store one replacement from an isolated process.
+     * Store one replacement document version from an isolated process.
      */
     private static function storeReplacement(
         int $organizationId,
@@ -125,10 +127,7 @@ final class DocumentReplacementConcurrencyTest extends TestCase
         string $filename,
         string $contents,
     ): int {
-        config()->set(
-            'filesystems.artifact',
-            'local',
-        );
+        config()->set('filesystems.artifact', 'local');
 
         $temporaryPath = tempnam(
             sys_get_temp_dir(),
@@ -136,7 +135,7 @@ final class DocumentReplacementConcurrencyTest extends TestCase
         );
 
         if (! is_string($temporaryPath)) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'Unable to create a temporary replacement file.',
             );
         }
