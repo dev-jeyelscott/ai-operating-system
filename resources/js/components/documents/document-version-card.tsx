@@ -190,7 +190,7 @@ function LifecycleActionForm({
         <Form<ActionRequest>
             action={url}
             method="post"
-            preserveScroll
+            options={{ preserveScroll: true }}
             onBefore={
                 confirmation ? () => window.confirm(confirmation) : undefined
             }
@@ -205,7 +205,7 @@ function LifecycleActionForm({
                         disabled={processing}
                         aria-label={`${label} version ${versionNumber}`}
                     >
-                        {processing ? <Spinner /> : icon}
+                        {processing ? <Spinner aria-hidden="true" /> : icon}
                         {processing ? processingLabel : label}
                     </Button>
 
@@ -237,7 +237,7 @@ function ReplacementForm({
             action={url}
             method="post"
             resetOnSuccess={['document']}
-            preserveScroll
+            options={{ preserveScroll: true }}
             onError={() => focusErrorSummary(errorSummaryRef)}
             onSuccess={focusFlashStatus}
             className="space-y-4 rounded-lg border bg-muted/30 p-4"
@@ -302,7 +302,11 @@ function ReplacementForm({
                         variant="outline"
                         disabled={processing}
                     >
-                        {processing ? <Spinner /> : <Upload aria-hidden />}
+                        {processing ? (
+                            <Spinner aria-hidden="true" />
+                        ) : (
+                            <Upload aria-hidden />
+                        )}
                         {processing
                             ? 'Uploading replacement...'
                             : 'Upload replacement'}

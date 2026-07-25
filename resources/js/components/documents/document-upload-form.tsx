@@ -81,7 +81,7 @@ export default function DocumentUploadForm({ storeUrl }: Props) {
                 action={storeUrl}
                 method="post"
                 resetOnSuccess={['title', 'document_class', 'document']}
-                preserveScroll
+                options={{ preserveScroll: true }}
                 onError={() => focusErrorSummary(errorSummaryRef)}
                 onSuccess={focusFlashStatus}
                 className="mt-5 space-y-5"
@@ -223,7 +223,7 @@ export default function DocumentUploadForm({ storeUrl }: Props) {
                             )}
 
                             <Button type="submit" disabled={processing}>
-                                {processing && <Spinner />}
+                                {processing && <Spinner aria-hidden="true" />}
                                 {processing
                                     ? 'Uploading document...'
                                     : 'Upload document'}
