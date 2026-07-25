@@ -31,7 +31,7 @@ final readonly class RecordAuditEvent
     ) {}
 
     /**
-     * Create and append a validated audit event.
+     * Create and append a validated authoritative event.
      *
      * @param  array<string, mixed>  $metadata
      */
@@ -45,6 +45,10 @@ final readonly class RecordAuditEvent
         string $subjectId,
         ?string $correlationId = null,
         array $metadata = [],
+        ?string $causationId = null,
+        ?string $executionId = null,
+        int $schemaVersion = 1,
+        ?string $deduplicationKey = null,
     ): AuditEventData {
         if ($organizationId < 1) {
             throw new InvalidArgumentException(
@@ -58,6 +62,12 @@ final readonly class RecordAuditEvent
             );
         }
 
+        if ($schemaVersion < 1) {
+            throw new InvalidArgumentException(
+                'The audit schema version must be positive.',
+            );
+        }
+
         $event = new AuditEventData(
             eventId: (string) Str::ulid(),
             organizationId: $organizationId,
@@ -67,7 +77,22 @@ final readonly class RecordAuditEvent
             eventType: $eventType,
             subjectType: $subjectType,
             subjectId: $this->normalizeIdentifier($subjectId, 'subject'),
-            correlationId: $this->normalizeCorrelationId($correlationId),
+            correlationId: $this->normalizeTraceId(
+                $correlationId,
+                'correlation',
+            ),
+            causationId: $this->normalizeTraceId(
+                $causationId,
+                'causation',
+            ),
+            executionId: $this->normalizeTraceId(
+                $executionId,
+                'execution',
+            ),
+            schemaVersion: $schemaVersion,
+            deduplicationKey: $this->normalizeDeduplicationKey(
+                $deduplicationKey,
+            ),
             metadata: $this->validateMetadata($metadata),
             occurredAt: CarbonImmutable::now(),
         );
@@ -95,7 +120,7 @@ final readonly class RecordAuditEvent
         if (mb_strlen($normalized) > self::MAX_IDENTIFIER_LENGTH) {
             throw new InvalidArgumentException(
                 "The audit {$name} identifier may not exceed "
-                .self::MAX_IDENTIFIER_LENGTH.' characters.',
+                    .self::MAX_IDENTIFIER_LENGTH.' characters.',
             );
         }
 
@@ -103,15 +128,17 @@ final readonly class RecordAuditEvent
     }
 
     /**
-     * Validate correlation identifiers from HTTP, queue, or console callers.
+     * Validate correlation, causation, and execution identifiers.
      */
-    private function normalizeCorrelationId(?string $correlationId): ?string
-    {
-        if ($correlationId === null) {
+    private function normalizeTraceId(
+        ?string $identifier,
+        string $name,
+    ): ?string {
+        if ($identifier === null) {
             return null;
         }
 
-        $normalized = trim($correlationId);
+        $normalized = trim($identifier);
 
         if ($normalized === '') {
             return null;
@@ -124,7 +151,7 @@ final readonly class RecordAuditEvent
             ) !== 1
         ) {
             throw new InvalidArgumentException(
-                'The audit correlation identifier is invalid.',
+                "The audit {$name} identifier is invalid.",
             );
         }
 
@@ -158,5 +185,35 @@ final readonly class RecordAuditEvent
         }
 
         return $metadata;
+    }
+
+    /**
+     * Validate the optional tenant-scoped duplicate-prevention key.
+     */
+    private function normalizeDeduplicationKey(
+        ?string $deduplicationKey,
+    ): ?string {
+        if ($deduplicationKey === null) {
+            return null;
+        }
+
+        $normalized = trim($deduplicationKey);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (
+            preg_match(
+                '/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,190}\z/',
+                $normalized,
+            ) !== 1
+        ) {
+            throw new InvalidArgumentException(
+                'The audit deduplication key is invalid.',
+            );
+        }
+
+        return $normalized;
     }
 }

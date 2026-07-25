@@ -24,8 +24,21 @@ write directly to the Audit module table.
 10. Sequence values are monotonic but may contain gaps after rolled-back
     transactions.
 
+## Document lifecycle events
+
+Phase 3 document lifecycle transitions use `audit_events` as the authoritative
+append-only event stream. Events include organization and project identifiers,
+an authenticated user or system-worker actor, correlation/causation and
+optional execution identifiers, schema version, a tenant-scoped deduplication
+key, safe document identifiers, and bounded transition metadata.
+
+Document bodies, parsed content, analysis summaries, conflicts, gaps, prompts,
+storage paths, original filenames, credentials, secrets, and raw provider
+failure messages are prohibited from audit metadata. State mutation and
+mandatory audit evidence are written in the same database transaction; audit
+failure rolls back the authoritative transition.
+
 ## Deferred capabilities
 
-Audit timeline queries, projections, exports, retention, event schema
-versioning, causation IDs, execution IDs, and outbox delivery are implemented
-by later tickets.
+Audit timeline projections, exports, retention policy, transactional outbox
+delivery, and real-time publication are implemented by later tickets.

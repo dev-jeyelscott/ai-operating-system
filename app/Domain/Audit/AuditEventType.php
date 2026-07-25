@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Domain\Audit;
 
 /**
- * Defines stable event names produced by currently implemented privileged
- * organization, membership, project, and integration commands.
+ * Defines stable, versioned names for authoritative application events.
+ *
+ * Event values are long-lived contracts. Rename an event only through an
+ * explicit schema-versioned migration and compatibility plan.
  */
 enum AuditEventType: string
 {
@@ -30,4 +32,29 @@ enum AuditEventType: string
 
     case NotionConnectionTestFailed =
         'integration.notion.connection_test.failed';
+
+    case DocumentUploaded = 'document.uploaded';
+    case DocumentReplacementUploaded = 'document.replacement.uploaded';
+
+    case DocumentScanStarted = 'document.scan.started';
+    case DocumentScanCompleted = 'document.scan.completed';
+    case DocumentScanFailed = 'document.scan.failed';
+
+    case DocumentParseStarted = 'document.parse.started';
+    case DocumentParseCompleted = 'document.parse.completed';
+    case DocumentParseFailed = 'document.parse.failed';
+
+    case DocumentAnalysisStarted = 'document.analysis.started';
+    case DocumentAnalysisCompleted = 'document.analysis.completed';
+    case DocumentAnalysisFailed = 'document.analysis.failed';
+
+    case DocumentVersionApproved = 'document.version.approved';
+    case DocumentVersionRejected = 'document.version.rejected';
+    case DocumentVersionSuperseded = 'document.version.superseded';
+
+    case DocumentProcessingRetryRequested =
+        'document.processing.retry_requested';
+
+    case ProjectContextSnapshotCreated =
+        'project.context_snapshot.created';
 }

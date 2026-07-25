@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Projects\ProjectSetupStep;
+use App\Models\Document;
+use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Project;
@@ -260,6 +262,17 @@ function projectConfigurationScreensFixture(
         ->complete()
         ->for($project)
         ->create();
+
+    foreach (['product_charter', 'requirements', 'architecture'] as $documentClass) {
+        $document = Document::factory()
+            ->for($project)
+            ->create(['document_class' => $documentClass]);
+
+        DocumentVersion::factory()
+            ->for($document)
+            ->approved()
+            ->create();
+    }
 
     ProjectSetupProgress::query()->create([
         'project_id' => $project->id,

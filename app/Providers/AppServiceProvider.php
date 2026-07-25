@@ -2,7 +2,13 @@
 
 namespace App\Providers;
 
+use App\Application\Documents\Contracts\DocumentAnalyzer;
+use App\Application\Documents\Contracts\DocumentParser;
+use App\Application\Documents\Contracts\MalwareScanner;
 use App\Application\Shared\Contracts\TransactionManager;
+use App\Infrastructure\Documents\DeterministicDocumentAnalyzer;
+use App\Infrastructure\Documents\DeterministicMalwareScanner;
+use App\Infrastructure\Documents\PlainTextDocumentParser;
 use App\Infrastructure\Persistence\EloquentTransactionManager;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -17,6 +23,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(DocumentAnalyzer::class, DeterministicDocumentAnalyzer::class);
+        $this->app->bind(
+            MalwareScanner::class,
+            DeterministicMalwareScanner::class,
+        );
+        $this->app->bind(DocumentParser::class, PlainTextDocumentParser::class);
+
         $this->app->bind(
             TransactionManager::class,
             EloquentTransactionManager::class,

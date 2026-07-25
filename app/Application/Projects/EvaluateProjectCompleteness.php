@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Projects;
 
+use App\Domain\Documents\DocumentStatus;
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Projects\Configuration\Exceptions\InvalidValidationCommand;
@@ -15,6 +16,7 @@ use App\Domain\Projects\Configuration\ProjectPolicyConfiguration;
 use App\Domain\Projects\Configuration\ProviderPolicy;
 use App\Domain\Projects\Configuration\ValidationCommand;
 use App\Domain\Projects\ProjectSetupStep;
+use App\Models\Document;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
 use App\Models\ProjectIntegration;
@@ -136,6 +138,7 @@ final readonly class EvaluateProjectCompleteness
             ),
             ...$this->validationCommandIssues($configuration),
             ...$this->policyIssues($configuration),
+            ...$this->requiredDocumentIssues($project, $configuration),
             ...$this->reviewIssues($progress),
         ];
 
@@ -522,6 +525,61 @@ final readonly class EvaluateProjectCompleteness
         }
 
         return $this->uniqueIssues($issues);
+    }
+
+    /**
+     * Block preflight until every configured document class has an approved version.
+     *
+     * @return list<ProjectCompletenessIssue>
+     */
+    private function requiredDocumentIssues(
+        Project $project,
+        ProjectConfiguration $configuration,
+    ): array {
+        $requiredClasses = array_values(array_filter(
+            $configuration->required_documents,
+            fn (mixed $documentClass): bool => $this->isNonEmptyString($documentClass),
+        ));
+
+        if ($requiredClasses === []) {
+            return [];
+        }
+
+        $approvedClasses = Document::query()
+            ->where('project_id', $project->id)
+            ->whereIn('document_class', $requiredClasses)
+            ->whereHas(
+                'versions',
+                fn ($query) => $query
+                    ->where(
+                        'status',
+                        DocumentStatus::Approved->value,
+                    )
+                    ->whereNotNull('analyzer_name')
+                    ->whereNotNull('analyzer_version')
+                    ->whereNotNull('analysis_seed')
+                    ->whereNotNull('analysis_completed_at')
+                    ->whereNotNull('analysis_summary')
+                    ->whereNotNull('analysis_conflicts')
+                    ->whereNotNull('analysis_gaps')
+                    ->whereNotNull('analysis_flags'),
+            )
+            ->pluck('document_class')
+            ->filter()
+            ->all();
+
+        return array_map(
+            fn (string $documentClass): ProjectCompletenessIssue => $this->issue(
+                key: "required_documents.{$documentClass}",
+                step: ProjectSetupStep::Policies,
+                message: sprintf(
+                    'The required "%s" document class has no approved version.',
+                    $documentClass,
+                ),
+                remediation: 'Upload the required document, complete processing, and explicitly approve its version before project preflight.',
+            ),
+            array_values(array_diff($requiredClasses, $approvedClasses)),
+        );
     }
 
     /**

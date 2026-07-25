@@ -21,7 +21,6 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 test('organization creation appends organization and owner membership audit events', function () {
     $user = User::factory()->create();
@@ -417,6 +416,55 @@ test('repeated restore commands append only one factual audit event', function (
         ->toHaveCount(1)
         ->and($events->sole()->correlation_id)
         ->toBe('audit-project-restore-first');
+});
+
+test('audit events persist schema and trace identifiers', function (): void {
+    $organization = Organization::factory()->create();
+
+    $event = app(RecordAuditEvent::class)->record(
+        organizationId: $organization->id,
+        projectId: null,
+        actorType: AuditActorType::System,
+        actorId: 'trace-test',
+        eventType: AuditEventType::OrganizationCreated,
+        subjectType: AuditSubjectType::Organization,
+        subjectId: (string) $organization->id,
+        correlationId: 'correlation-001',
+        causationId: 'causation-001',
+        executionId: 'execution-001',
+        schemaVersion: 1,
+        deduplicationKey: 'trace-test:organization-created',
+    );
+
+    $persisted = AuditEvent::query()
+        ->where('event_id', $event->eventId)
+        ->sole();
+
+    expect($persisted)
+        ->correlation_id->toBe('correlation-001')
+        ->causation_id->toBe('causation-001')
+        ->execution_id->toBe('execution-001')
+        ->schema_version->toBe(1)
+        ->deduplication_key->toBe('trace-test:organization-created');
+});
+
+test('tenant scoped deduplication keys reject duplicate events', function (): void {
+    $organization = Organization::factory()->create();
+
+    $record = fn () => app(RecordAuditEvent::class)->record(
+        organizationId: $organization->id,
+        projectId: null,
+        actorType: AuditActorType::System,
+        actorId: 'dedupe-test',
+        eventType: AuditEventType::OrganizationCreated,
+        subjectType: AuditSubjectType::Organization,
+        subjectId: (string) $organization->id,
+        deduplicationKey: 'organization:created:dedupe-test',
+    );
+
+    $record();
+
+    expect($record)->toThrow(QueryException::class);
 });
 
 test('an update with identical normalized values appends no audit event', function () {

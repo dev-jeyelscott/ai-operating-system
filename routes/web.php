@@ -3,6 +3,11 @@
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Documents\ProjectDocumentController;
+use App\Http\Controllers\Documents\RetryDocumentVersionProcessingController;
+use App\Http\Controllers\Documents\ReviewDocumentVersionController;
+use App\Http\Controllers\Documents\StoreProjectDocumentController;
+use App\Http\Controllers\Documents\StoreReplacementDocumentVersionController;
 use App\Http\Controllers\Health\HealthController;
 use App\Http\Controllers\Health\ReadinessController;
 use App\Http\Controllers\Integrations\StoreProjectIntegrationCredentialController;
@@ -72,6 +77,45 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                         ->middleware('throttle:project-commands')
                         ->can('manageIntegrations', 'project')
                         ->name('integrations.notion.test');
+
+                    Route::post(
+                        '/{project}/documents',
+                        StoreProjectDocumentController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.store');
+
+                    Route::get('/{project}/documents', [ProjectDocumentController::class, 'index'])
+                        ->can('view', 'project')->name('documents.index');
+                    Route::get('/{project}/documents/{document}', [ProjectDocumentController::class, 'show'])
+                        ->can('view', 'project')->name('documents.show');
+
+                    Route::controller(ReviewDocumentVersionController::class)
+                        ->prefix('/{project}/documents/{document}/versions/{version}')
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.versions.')
+                        ->group(function (): void {
+                            Route::post('/approve', 'approve')->name('approve');
+                            Route::post('/reject', 'reject')->name('reject');
+                        });
+
+                    Route::post(
+                        '/{project}/documents/{document}/versions/{version}/replacement',
+                        StoreReplacementDocumentVersionController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.versions.replacement.store');
+
+                    Route::post(
+                        '/{project}/documents/{document}/versions/{version}/retry',
+                        RetryDocumentVersionProcessingController::class,
+                    )
+                        ->middleware('throttle:project-commands')
+                        ->can('update', 'project')
+                        ->name('documents.versions.retry');
 
                     /*
                      * Store or rotate an encrypted provider credential.

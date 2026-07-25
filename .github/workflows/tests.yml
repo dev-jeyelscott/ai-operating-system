@@ -160,12 +160,22 @@ jobs:
         run: composer ci:check
 
       - name: Audit frontend dependencies
-        run: pnpm audit --audit-level=high
+        run: |
+          # Production dependencies remain fully blocking.
+          pnpm audit --prod --audit-level=high
+
+          # Temporary dev-only exception for the ESLint 9 dependency chain:
+          # minimatch 3 -> brace-expansion 1.x.
+          # Remove when upstream provides a compatible patched dependency.
+          pnpm audit             --dev             --audit-level=high             --ignore GHSA-mh99-v99m-4gvg
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Start application
+        env:
+          # Browser authentication spans multiple HTTP requests.
+          SESSION_DRIVER: database
         run: |
           php artisan serve \
             --host=127.0.0.1 \
@@ -176,6 +186,9 @@ jobs:
             'until curl --fail --silent http://127.0.0.1:8000/up > /dev/null; do sleep 2; done'
 
       - name: Run browser tests
+        env:
+          # Keep Artisan commands executed by Playwright aligned with the server.
+          SESSION_DRIVER: database
         run: pnpm test:e2e
 
       - name: Upload browser artifacts on failure

@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Support\Environment\ProductionConfigurationValidator;
 use App\Support\Health\ArtifactStorageProbe;
+use App\Support\Security\ProviderBoundRedactionPatterns;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -23,6 +24,7 @@ final class CheckEnvironmentCommand extends Command
     public function __construct(
         private readonly ProductionConfigurationValidator $productionConfigurationValidator,
         private readonly ArtifactStorageProbe $artifactStorageProbe,
+        private readonly ProviderBoundRedactionPatterns $providerBoundRedactionPatterns,
     ) {
         parent::__construct();
     }
@@ -39,6 +41,7 @@ final class CheckEnvironmentCommand extends Command
                 'APP_KEY is missing.',
             ),
             'Required PHP extensions' => fn (): true => $this->checkExtensions(),
+            'Provider-bound redaction configuration' => fn (): true => $this->checkProviderBoundRedaction(),
             'Database connection' => fn (): true => $this->checkDatabase(),
             'Redis connection' => fn (): true => $this->checkRedis(),
             'Artifact storage' => fn (): true => $this->checkArtifactStorage(),
@@ -84,6 +87,16 @@ final class CheckEnvironmentCommand extends Command
                 sprintf('PHP extension %s is missing.', $extension),
             );
         }
+
+        return true;
+    }
+
+    /**
+     * Validate every provider-bound redaction pattern before dispatch is allowed.
+     */
+    private function checkProviderBoundRedaction(): true
+    {
+        $this->providerBoundRedactionPatterns->validate();
 
         return true;
     }
