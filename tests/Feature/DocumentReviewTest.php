@@ -98,7 +98,16 @@ test(
                     $version,
                 ),
             )
-            ->assertStatus(422);
+            ->assertRedirect(
+                route('organizations.projects.documents.show', [
+                    'organization' => $project->organization,
+                    'project' => $project,
+                    'document' => $document,
+                ]),
+            )
+            ->assertSessionHasErrors([
+                'action' => 'Only a successfully analyzed document version can be approved.',
+            ]);
 
         expect($version->fresh()->status)->toBe($status);
     },

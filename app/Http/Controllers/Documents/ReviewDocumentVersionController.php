@@ -14,7 +14,6 @@ use App\Models\Organization;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Validation\ValidationException;
 use LogicException;
 
 /**
@@ -46,7 +45,11 @@ final class ReviewDocumentVersionController extends Controller
                 ),
             );
         } catch (LogicException $exception) {
-            throw ValidationException::withMessages([
+            return $this->redirectToDocument(
+                organization: $organization,
+                project: $project,
+                document: $document,
+            )->withErrors([
                 'action' => $exception->getMessage(),
             ]);
         }
@@ -79,7 +82,11 @@ final class ReviewDocumentVersionController extends Controller
                 ),
             );
         } catch (LogicException $exception) {
-            throw ValidationException::withMessages([
+            return $this->redirectToDocument(
+                organization: $organization,
+                project: $project,
+                document: $document,
+            )->withErrors([
                 'action' => $exception->getMessage(),
             ]);
         }

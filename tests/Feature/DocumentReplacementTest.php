@@ -245,7 +245,16 @@ test(
                         ),
                 ],
             )
-            ->assertStatus(422);
+            ->assertRedirect(
+                route('organizations.projects.documents.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                    'document' => $document,
+                ]),
+            )
+            ->assertSessionHasErrors([
+                'action' => 'Only the current approved document version can be replaced.',
+            ]);
 
         $replacementCount = DocumentVersion::query()
             ->where(
@@ -425,7 +434,16 @@ test(
                     $second,
                 ),
             )
-            ->assertStatus(422);
+            ->assertRedirect(
+                route('organizations.projects.documents.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                    'document' => $document,
+                ]),
+            )
+            ->assertSessionHasErrors([
+                'action' => 'The replacement predecessor is no longer the approved version.',
+            ]);
 
         $approved->refresh();
         $first->refresh();

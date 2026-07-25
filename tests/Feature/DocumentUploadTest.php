@@ -73,7 +73,7 @@ test(
                 ],
             )
             ->assertRedirect(
-                route('organizations.projects.show', [
+                route('organizations.projects.documents.index', [
                     'organization' => $organization,
                     'project' => $project,
                 ]),

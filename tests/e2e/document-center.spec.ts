@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test  } from '@playwright/test';
+import type {Page} from '@playwright/test';
 
 const repositoryRoot = fileURLToPath(
     new URL('../..', import.meta.url),

@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { vi } from 'vitest';
-import DocumentVersionCard from './document-version-card';
 import type { DocumentVersion } from '@/types/documents';
+import DocumentVersionCard from './document-version-card';
 
 vi.mock('@inertiajs/react', () => ({
     Form: ({

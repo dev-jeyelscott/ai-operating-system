@@ -1,5 +1,6 @@
 import { Form } from '@inertiajs/react';
-import { useRef, type RefObject } from 'react';
+import { useRef } from 'react';
+import type { RefObject } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
