@@ -173,6 +173,9 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Start application
+        env:
+          # Browser authentication spans multiple HTTP requests.
+          SESSION_DRIVER: database
         run: |
           php artisan serve \
             --host=127.0.0.1 \
@@ -183,6 +186,9 @@ jobs:
             'until curl --fail --silent http://127.0.0.1:8000/up > /dev/null; do sleep 2; done'
 
       - name: Run browser tests
+        env:
+          # Keep Artisan commands executed by Playwright aligned with the server.
+          SESSION_DRIVER: database
         run: pnpm test:e2e
 
       - name: Upload browser artifacts on failure
