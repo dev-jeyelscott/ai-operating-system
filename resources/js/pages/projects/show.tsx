@@ -2,6 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 import {
     Archive,
     ArrowLeft,
+    FileText,
     Pencil,
     Plug,
     RotateCcw,
@@ -25,6 +26,7 @@ type Props = {
     organization: OrganizationSummary;
     project: ProjectSummary;
     permissions: ProjectPermissions;
+    documentsUrl: string;
     setupUrl: string;
     configurationUrls: {
         settings: string;
@@ -39,6 +41,7 @@ export default function ShowProject({
     organization,
     project,
     permissions,
+    documentsUrl,
     setupUrl,
     configurationUrls,
 }: Props) {
@@ -84,6 +87,13 @@ export default function ShowProject({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        <Button asChild variant="outline">
+                            <Link href={documentsUrl}>
+                                <FileText aria-hidden="true" />
+                                Documents
+                            </Link>
+                        </Button>
+
                         <Button asChild variant="outline">
                             <Link href={configurationUrls.settings}>
                                 <SlidersHorizontal aria-hidden="true" />

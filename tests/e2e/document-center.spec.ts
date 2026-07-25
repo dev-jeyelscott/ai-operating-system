@@ -57,6 +57,57 @@ async function login(page: Page): Promise<void> {
     await page.waitForURL(/\/dashboard$/);
 }
 
+/**
+ * Open the project document center through the same visible navigation
+ * available to an authenticated user.
+ */
+async function openDocumentCenterFromProjectNavigation(
+    page: Page,
+): Promise<void> {
+    await page
+        .getByRole('link', {
+            name: 'Projects',
+            exact: true,
+        })
+        .click();
+
+    await expect(
+        page.getByRole('heading', {
+            name: 'Projects',
+            exact: true,
+        }),
+    ).toBeVisible();
+
+    await page
+        .getByRole('link', {
+            name: /Document Workflow Project/,
+        })
+        .click();
+
+    await expect(
+        page.getByRole('heading', {
+            name: 'Document Workflow Project',
+            exact: true,
+        }),
+    ).toBeVisible();
+
+    await page
+        .getByRole('link', {
+            name: 'Documents',
+            exact: true,
+        })
+        .click();
+
+    await expect(page).toHaveURL(documentsUrl);
+
+    await expect(
+        page.getByRole('heading', {
+            name: 'Document center',
+            exact: true,
+        }),
+    ).toBeVisible();
+}
+
 test.describe.serial('document center workflow', () => {
     test.beforeAll(() => {
         artisan(
@@ -73,7 +124,7 @@ test.describe.serial('document center workflow', () => {
     test('uploads, processes, and approves a document through visible controls', async ({
         page,
     }) => {
-        await page.goto(documentsUrl);
+        await openDocumentCenterFromProjectNavigation(page);
 
         await page
             .getByLabel('Document title')

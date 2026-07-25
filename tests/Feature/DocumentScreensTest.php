@@ -24,6 +24,32 @@ function documentScreenOwner(Project $project): User
     return $user;
 }
 
+test('project overview exposes document center navigation', function (): void {
+    $project = Project::factory()->create();
+    $user = documentScreenOwner($project);
+
+    $documentsUrl = route(
+        'organizations.projects.documents.index',
+        [
+            'organization' => $project->organization,
+            'project' => $project,
+        ],
+    );
+
+    $this->actingAs($user)
+        ->get(route(
+            'organizations.projects.show',
+            [
+                'organization' => $project->organization,
+                'project' => $project,
+            ],
+        ))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('projects/show')
+            ->where('documentsUrl', $documentsUrl));
+});
+
 test('authorized members receive document upload capability', function (): void {
     $project = Project::factory()->create();
     $user = documentScreenOwner($project);
