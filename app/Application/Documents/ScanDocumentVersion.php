@@ -6,22 +6,26 @@ namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\Contracts\MalwareScanner;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Domain\Documents\MalwareScanResult;
 use App\Jobs\ParseDocumentVersionJob;
 use App\Models\DocumentVersion;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Moves one quarantined document through the malware scan gate.
  */
 final readonly class ScanDocumentVersion
 {
+    /**
+     * Create the malware-scanning application service.
+     */
     public function __construct(
         private MalwareScanner $malwareScanner,
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -35,7 +39,7 @@ final readonly class ScanDocumentVersion
         ?AuditContext $auditContext = null,
     ): void {
         $auditContext ??= AuditContext::system(actorId: 'document-scan-worker');
-        $documentVersion = DB::transaction(function () use (
+        $documentVersion = $this->transactions->run(function () use (
             $documentVersionId,
             $auditContext,
         ): ?DocumentVersion {
@@ -89,7 +93,7 @@ final readonly class ScanDocumentVersion
      */
         $result = $this->malwareScanner->scan($documentVersion);
 
-        DB::transaction(function () use (
+        $this->transactions->run(function () use (
             $documentVersionId,
             $result,
             $auditContext,
@@ -150,7 +154,7 @@ final readonly class ScanDocumentVersion
         ?AuditContext $auditContext = null,
     ): void {
         $auditContext ??= AuditContext::system(actorId: 'document-scan-worker');
-        DB::transaction(function () use (
+        $this->transactions->run(function () use (
             $documentVersionId,
             $auditContext,
         ): void {
