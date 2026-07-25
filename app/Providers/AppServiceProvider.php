@@ -6,10 +6,12 @@ use App\Application\Documents\Contracts\DocumentAnalyzer;
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\Contracts\MalwareScanner;
 use App\Application\Shared\Contracts\TransactionManager;
+use App\Application\Workflows\Contracts\WorkflowTransitionGuardEvaluator;
 use App\Infrastructure\Documents\DeterministicDocumentAnalyzer;
 use App\Infrastructure\Documents\DeterministicMalwareScanner;
 use App\Infrastructure\Documents\PlainTextDocumentParser;
 use App\Infrastructure\Persistence\EloquentTransactionManager;
+use App\Infrastructure\Workflows\DenyAllWorkflowTransitionGuardEvaluator;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -23,30 +25,44 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(DocumentAnalyzer::class, DeterministicDocumentAnalyzer::class);
+        $this->app->bind(
+            DocumentAnalyzer::class,
+            DeterministicDocumentAnalyzer::class,
+        );
+
         $this->app->bind(
             MalwareScanner::class,
             DeterministicMalwareScanner::class,
         );
-        $this->app->bind(DocumentParser::class, PlainTextDocumentParser::class);
+
+        $this->app->bind(
+            DocumentParser::class,
+            PlainTextDocumentParser::class,
+        );
 
         $this->app->bind(
             TransactionManager::class,
             EloquentTransactionManager::class,
         );
+
+        /*
+         * Guarded workflow transitions fail closed until an approved
+         * deterministic evaluator replaces this default implementation.
+         */
+        $this->app->bind(
+            WorkflowTransitionGuardEvaluator::class,
+            DenyAllWorkflowTransitionGuardEvaluator::class,
+        );
     }
 
     /**
-     * Bootstrap any application services.
+     * Bootstrap application services.
      */
     public function boot(): void
     {
         $this->configureDefaults();
     }
 
-    /**
-     * Configure default behaviors for production-ready applications.
-     */
     /**
      * Configure secure application defaults.
      */
@@ -62,11 +78,11 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Configure the password policy used by registration, reset, and update flows.
+     * Configure the password policy used by authentication flows.
      *
-     * A 15-character minimum supports secure passphrases without forcing arbitrary
-     * uppercase, numeric, or symbol composition rules. Production additionally
-     * checks the password against known compromised-password datasets.
+     * A 15-character minimum supports secure passphrases without forcing
+     * arbitrary uppercase, numeric, or symbol composition rules. Production
+     * additionally checks against known compromised-password datasets.
      */
     private function configurePasswordPolicy(): void
     {
