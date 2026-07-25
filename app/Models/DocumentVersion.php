@@ -235,7 +235,7 @@ final class DocumentVersion extends Model
     {
         return $this->status === DocumentStatus::NeedsReview
             && $this->classification
-                !== DocumentClassification::Unclassified
+            !== DocumentClassification::Unclassified
             && is_string($this->analyzer_name)
             && trim($this->analyzer_name) !== ''
             && is_string($this->analyzer_version)
@@ -246,6 +246,25 @@ final class DocumentVersion extends Model
             && is_array($this->analysis_conflicts)
             && is_array($this->analysis_gaps)
             && is_array($this->analysis_flags);
+    }
+
+    /**
+     * Determine whether this failed processing stage may be safely retried.
+     *
+     * Permanent parser capability failures require a replacement upload instead
+     * of repeatedly dispatching work that can never succeed.
+     */
+    public function canRetryProcessing(): bool
+    {
+        return match ($this->status) {
+            DocumentStatus::ScanFailed,
+            DocumentStatus::AnalysisFailed => true,
+
+            DocumentStatus::ParseFailed => $this->failure_code
+                !== 'unsupported_media_type',
+
+            default => false,
+        };
     }
 
     /**

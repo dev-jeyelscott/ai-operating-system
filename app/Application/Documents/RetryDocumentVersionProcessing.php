@@ -39,6 +39,12 @@ final class RetryDocumentVersionProcessing
                 $previousStatus = $lockedVersion->status;
                 $previousFailureCode = $lockedVersion->failure_code;
 
+                if (! $lockedVersion->canRetryProcessing()) {
+                    throw new LogicException(
+                        'Only transient failed document processing can be retried.',
+                    );
+                }
+
                 $stage = match ($lockedVersion->status) {
                     DocumentStatus::ScanFailed => $this->retryScan(
                         $lockedVersion,

@@ -1,184 +1,100 @@
-import { Form, Head, Link } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
+import DocumentVersionCard from '@/components/documents/document-version-card';
 import { Button } from '@/components/ui/button';
-
-type DocumentVersion = {
-    id: number;
-    version: number;
-    status: string;
-    classification: string;
-    checksum: string;
-    parserVersion: string | null;
-    analyzerName: string | null;
-    analyzerVersion: string | null;
-    analysisSeed: number | null;
-    analysisCompletedAt: string | null;
-    notes: string | null;
-    flags: string[];
-    replacementUrl: string | null;
-};
+import type { DocumentFlash, ProjectDocument } from '@/types/documents';
 
 type Props = {
-    document: {
-        title: string;
-        versions: DocumentVersion[];
-    };
-    permissions: {
-        replace: boolean;
-    };
+    document: ProjectDocument;
     urls: {
         index: string;
     };
+    flash: DocumentFlash;
 };
 
 /**
- * Display immutable document revisions and replacement controls.
+ * Translate lifecycle flash codes into accessible confirmation messages.
  */
-export default function DocumentShow({ document, permissions, urls }: Props) {
+function flashMessage(status: string): string {
+    const messages: Record<string, string> = {
+        'document-uploaded': 'Document uploaded. Processing has been queued.',
+        'document-version-approved': 'Document version approved.',
+        'document-version-rejected': 'Document version rejected.',
+        'document-replacement-uploaded':
+            'Replacement version uploaded. The previous approved version remains authoritative until review completes.',
+        'document-processing-retried':
+            'Document processing was queued for retry.',
+    };
+
+    return messages[status] ?? status.replaceAll('-', ' ').replaceAll('_', ' ');
+}
+
+/**
+ * Display every immutable revision and its server-authorized actions.
+ */
+export default function DocumentShow({ document, urls, flash }: Props) {
     return (
         <>
             <Head title={document.title} />
 
-            <main className="space-y-6 p-6">
-                <Link href={urls.index}>Back to documents</Link>
+            <main className="space-y-6 p-4 md:p-6">
+                <Button asChild variant="ghost" size="sm">
+                    <Link href={urls.index}>Back to documents</Link>
+                </Button>
 
-                <div>
-                    <h1 className="text-2xl font-semibold">{document.title}</h1>
+                <header>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <h1 className="text-2xl font-semibold">
+                            {document.title}
+                        </h1>
 
-                    <p className="mt-2 text-sm text-muted-foreground">
-                        Replacement uploads create a new quarantined revision.
-                        The currently approved version remains authoritative
-                        until the replacement is reviewed and approved.
+                        {document.documentClass && (
+                            <span className="rounded-full border px-2.5 py-1 text-xs font-medium">
+                                {document.documentClass}
+                            </span>
+                        )}
+                    </div>
+
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                        Versions are immutable. Replacement uploads create a new
+                        quarantined revision. An approved predecessor remains
+                        authoritative until its replacement finishes analysis
+                        and receives explicit approval.
                     </p>
-                </div>
+                </header>
 
-                {document.versions.map((version) => {
-                    const fileInputId = `replacement-${version.id}`;
+                {flash.status && (
+                    <div
+                        data-document-flash
+                        role="status"
+                        aria-live="polite"
+                        tabIndex={-1}
+                        className="rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+                    >
+                        {flashMessage(flash.status)}
+                    </div>
+                )}
 
-                    return (
-                        <section
-                            key={version.id}
-                            className="rounded-xl border p-4"
-                        >
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <h2 className="font-semibold">
-                                    Version {version.version}
-                                </h2>
-
-                                <span className="rounded-full border px-2.5 py-1 text-xs font-medium">
-                                    {version.status}
-                                </span>
-                            </div>
-
-                            <dl className="mt-3 grid gap-2 text-sm">
-                                <div>
-                                    Classification: {version.classification}
-                                </div>
-
-                                <div className="break-all">
-                                    Checksum: <code>{version.checksum}</code>
-                                </div>
-
-                                <div>
-                                    Parser: {version.parserVersion ?? 'Pending'}
-                                </div>
-
-                                <div>
-                                    Analyzer:{' '}
-                                    {version.analyzerName &&
-                                    version.analyzerVersion
-                                        ? `${version.analyzerName}@${version.analyzerVersion}`
-                                        : 'Pending'}
-                                </div>
-
-                                <div>
-                                    Analysis seed:{' '}
-                                    {version.analysisSeed ?? 'Pending'}
-                                </div>
-
-                                <div>
-                                    Analysis completed:{' '}
-                                    {version.analysisCompletedAt
-                                        ? new Date(
-                                              version.analysisCompletedAt,
-                                          ).toLocaleString()
-                                        : 'Pending'}
-                                </div>
-
-                                <div>Notes: {version.notes ?? 'None'}</div>
-
-                                <div>
-                                    Safety flags:{' '}
-                                    {version.flags.length > 0
-                                        ? version.flags.join(', ')
-                                        : 'None'}
-                                </div>
-                            </dl>
-
-                            {permissions.replace &&
-                                version.status === 'approved' &&
-                                version.replacementUrl && (
-                                    <Form
-                                        action={version.replacementUrl}
-                                        method="post"
-                                        className="mt-5 space-y-3 rounded-lg border bg-muted/30 p-4"
-                                    >
-                                        {({ errors, processing }) => (
-                                            <>
-                                                <div>
-                                                    <label
-                                                        htmlFor={fileInputId}
-                                                        className="text-sm font-medium"
-                                                    >
-                                                        Replacement file for
-                                                        version{' '}
-                                                        {version.version}
-                                                    </label>
-
-                                                    <input
-                                                        id={fileInputId}
-                                                        name="document"
-                                                        type="file"
-                                                        accept=".md,.txt,text/markdown,text/plain"
-                                                        required
-                                                        className="mt-2 block w-full text-sm"
-                                                        aria-describedby={
-                                                            errors.document
-                                                                ? `${fileInputId}-error`
-                                                                : undefined
-                                                        }
-                                                    />
-
-                                                    {errors.document && (
-                                                        <p
-                                                            id={`${fileInputId}-error`}
-                                                            className="mt-2 text-sm text-destructive"
-                                                        >
-                                                            {errors.document}
-                                                        </p>
-                                                    )}
-                                                </div>
-
-                                                <p className="text-xs text-muted-foreground">
-                                                    The existing approved
-                                                    revision will not be
-                                                    superseded by this upload.
-                                                </p>
-
-                                                <Button
-                                                    type="submit"
-                                                    disabled={processing}
-                                                >
-                                                    {processing
-                                                        ? 'Uploading replacement...'
-                                                        : 'Upload replacement'}
-                                                </Button>
-                                            </>
-                                        )}
-                                    </Form>
-                                )}
-                        </section>
-                    );
-                })}
+                {document.versions.length === 0 ? (
+                    <section className="rounded-xl border border-dashed p-8 text-center">
+                        <h2 className="font-medium">No document versions</h2>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            This document does not currently contain an uploaded
+                            revision.
+                        </p>
+                    </section>
+                ) : (
+                    <section
+                        aria-label="Document versions"
+                        className="space-y-5"
+                    >
+                        {document.versions.map((version) => (
+                            <DocumentVersionCard
+                                key={version.id}
+                                version={version}
+                            />
+                        ))}
+                    </section>
+                )}
             </main>
         </>
     );

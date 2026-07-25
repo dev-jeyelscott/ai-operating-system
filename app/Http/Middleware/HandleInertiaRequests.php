@@ -45,6 +45,8 @@ final class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $status = $request->session()->get('status');
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -56,6 +58,9 @@ final class HandleInertiaRequests extends Middleware
             ),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state')
                 || $request->cookie('sidebar_state') === 'true',
+            'flash' => [
+                'status' => is_string($status) ? $status : null,
+            ],
         ];
     }
 
@@ -89,12 +94,12 @@ final class HandleInertiaRequests extends Middleware
 
         $preferredOrganizationId =
             $routeOrganization instanceof Organization
-                ? $routeOrganization->id
-                : (
-                    is_int($sessionOrganizationId)
-                        ? $sessionOrganizationId
-                        : null
-                );
+            ? $routeOrganization->id
+            : (
+                is_int($sessionOrganizationId)
+                ? $sessionOrganizationId
+                : null
+            );
 
         $context = $this->resolveOrganizationContext->handle(
             userId: $user->id,

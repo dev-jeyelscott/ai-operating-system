@@ -44,9 +44,12 @@ final class StoreProjectDocumentController extends Controller
             ),
         );
 
-        return to_route('organizations.projects.show', [
-            'organization' => $organization,
-            'project' => $project,
-        ])->with('status', 'document-uploaded');
+        return to_route(
+            'organizations.projects.documents.index',
+            [
+                'organization' => $organization,
+                'project' => $project,
+            ],
+        )->with('status', 'document-uploaded');
     }
 }

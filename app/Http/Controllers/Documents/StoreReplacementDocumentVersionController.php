@@ -15,6 +15,7 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use LogicException;
 
 /**
@@ -59,7 +60,9 @@ final class StoreReplacementDocumentVersionController extends Controller
                 ),
             );
         } catch (LogicException $exception) {
-            abort(422, $exception->getMessage());
+            throw ValidationException::withMessages([
+                'action' => $exception->getMessage(),
+            ]);
         }
 
         return to_route(
