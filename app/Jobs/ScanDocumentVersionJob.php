@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\ScanDocumentVersion;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,10 +30,13 @@ final class ScanDocumentVersionJob implements ShouldQueue
     public array $backoff = [5, 30, 120];
 
     /**
-     * Store only the immutable document-version identifier in the payload.
+     * Store the immutable document-version ID and distributed trace values.
      */
     public function __construct(
         public int $documentVersionId,
+        public ?string $correlationId = null,
+        public ?string $causationId = null,
+        public ?string $executionId = null,
     ) {}
 
     /**
@@ -42,7 +46,8 @@ final class ScanDocumentVersionJob implements ShouldQueue
         ScanDocumentVersion $scanDocumentVersion,
     ): void {
         $scanDocumentVersion->handle(
-            $this->documentVersionId,
+            documentVersionId: $this->documentVersionId,
+            auditContext: $this->auditContext(),
         );
     }
 
@@ -51,7 +56,22 @@ final class ScanDocumentVersionJob implements ShouldQueue
      */
     public function failed(?Throwable $exception): void
     {
-        app(ScanDocumentVersion::class)
-            ->markFailed($this->documentVersionId);
+        app(ScanDocumentVersion::class)->markFailed(
+            documentVersionId: $this->documentVersionId,
+            auditContext: $this->auditContext(),
+        );
+    }
+
+    /**
+     * Rebuild the authoritative worker audit context from the queued payload.
+     */
+    private function auditContext(): AuditContext
+    {
+        return AuditContext::system(
+            actorId: 'document-scan-worker',
+            correlationId: $this->correlationId,
+            causationId: $this->causationId,
+            executionId: $this->executionId,
+        );
     }
 }
