@@ -413,7 +413,7 @@ final readonly class ExecutionResilienceManager
                     $lockedExecution->status
                     === ExecutionStatus::Cancelled
                 ) {
-                    return false;
+                    return true;
                 }
 
                 if ($lockedExecution->status->isTerminal()) {
@@ -542,7 +542,7 @@ final readonly class ExecutionResilienceManager
                     if (
                         $execution === null
                         || $execution->status
-                            !== ExecutionStatus::RetryScheduled
+                        !== ExecutionStatus::RetryScheduled
                         || $execution->next_attempt_at === null
                         || $execution->next_attempt_at->isAfter(
                             $releaseAt,
@@ -693,7 +693,7 @@ final readonly class ExecutionResilienceManager
                  */
                 $canRetry = $retryable
                     && $lockedExecution->attempt_count
-                        <= $lockedExecution->retry_limit;
+                    <= $lockedExecution->retry_limit;
 
                 if (! $canRetry) {
                     $lockedExecution->forceFill([
@@ -861,7 +861,7 @@ final readonly class ExecutionResilienceManager
         if (
             $execution->status !== ExecutionStatus::Running
             || $attempt->status
-                !== ExecutionAttemptStatus::Running
+            !== ExecutionAttemptStatus::Running
         ) {
             throw new ExecutionLifecycleConflict(sprintf(
                 'Execution %s and attempt %d are not both running.',

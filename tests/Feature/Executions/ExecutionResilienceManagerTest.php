@@ -98,7 +98,7 @@ it('rejects a second start from stale execution state', function (): void {
     );
 
     expect(
-        fn() => $manager->startAttempt(
+        fn () => $manager->startAttempt(
             execution: $staleReference,
             context: aios055AttemptContext(),
         ),
