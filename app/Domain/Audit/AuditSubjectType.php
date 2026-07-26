@@ -23,4 +23,5 @@ enum AuditSubjectType: string
     case ProjectIntegration = 'project_integration';
 
     case Approval = 'approval';
+    case Execution = 'execution';
 }

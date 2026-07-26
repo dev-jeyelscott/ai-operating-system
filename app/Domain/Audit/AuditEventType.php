@@ -21,6 +21,7 @@ enum AuditEventType: string
     case ProjectArchived = 'project.archived';
     case ProjectRestored = 'project.restored';
     case ProjectSetupUpdated = 'project.setup.updated';
+
     case ProjectConfigurationVersionCreated =
         'project.configuration.version.created';
 
@@ -62,4 +63,18 @@ enum AuditEventType: string
     case ApprovalGranted = 'approval.granted';
     case ApprovalRejected = 'approval.rejected';
     case ApprovalExpired = 'approval.expired';
+
+    case ExecutionAttemptStarted = 'execution.attempt.started';
+    case ExecutionAttemptCompleted = 'execution.attempt.completed';
+    case ExecutionAttemptFailed = 'execution.attempt.failed';
+    case ExecutionAttemptTimedOut = 'execution.attempt.timed_out';
+
+    case ExecutionRetryScheduled = 'execution.retry_scheduled';
+    case ExecutionRetryReleased = 'execution.retry_released';
+
+    case ExecutionCancellationRequested =
+        'execution.cancellation_requested';
+
+    case ExecutionCancelled = 'execution.cancelled';
+    case ExecutionFailed = 'execution.failed';
 }

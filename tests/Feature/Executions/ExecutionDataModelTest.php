@@ -194,7 +194,7 @@ it('protects immutable execution identity and history', function (): void {
     expect(fn () => $execution->save())
         ->toThrow(
             LogicException::class,
-            'Execution identity and request context are immutable.',
+            'Execution identity, request context, and resilience policy are immutable.',
         );
 
     $execution->refresh();

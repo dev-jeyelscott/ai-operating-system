@@ -43,6 +43,10 @@ final class ExecutionAttemptFactory extends Factory
             'cost_currency' => null,
             'error_code' => null,
             'error_message' => null,
+            'retryable' => null,
+            'retry_delay_seconds' => null,
+            'deadline_at' => null,
+            'heartbeat_at' => null,
             'started_at' => null,
             'finished_at' => null,
         ];
@@ -53,11 +57,17 @@ final class ExecutionAttemptFactory extends Factory
      */
     public function running(): static
     {
-        return $this->state(fn (): array => [
-            'status' => ExecutionAttemptStatus::Running,
-            'started_at' => now(),
-            'finished_at' => null,
-        ]);
+        return $this->state(function (): array {
+            $startedAt = now();
+
+            return [
+                'status' => ExecutionAttemptStatus::Running,
+                'started_at' => $startedAt,
+                'heartbeat_at' => $startedAt,
+                'deadline_at' => $startedAt->addMinutes(15),
+                'finished_at' => null,
+            ];
+        });
     }
 
     /**
@@ -75,6 +85,8 @@ final class ExecutionAttemptFactory extends Factory
                 'actual_state' => 'unverified',
                 'confidence' => '0.9000',
                 'started_at' => $startedAt,
+                'heartbeat_at' => now(),
+                'deadline_at' => $startedAt->addMinutes(15),
                 'finished_at' => now(),
             ];
         });
@@ -92,7 +104,10 @@ final class ExecutionAttemptFactory extends Factory
                 'status' => ExecutionAttemptStatus::Failed,
                 'error_code' => 'provider.failed',
                 'error_message' => 'The provider attempt failed.',
+                'retryable' => true,
                 'started_at' => $startedAt,
+                'heartbeat_at' => now(),
+                'deadline_at' => $startedAt->addMinutes(15),
                 'finished_at' => now(),
             ];
         });

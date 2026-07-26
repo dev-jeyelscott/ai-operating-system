@@ -27,3 +27,12 @@ Schedule::command('approvals:expire')
     ->everyMinute()
     ->withoutOverlapping(2)
     ->onOneServer();
+
+/*
+ * Execution and attempt row locks provide lifecycle correctness. Scheduler
+ * locks only reduce unnecessary duplicate recovery scans.
+ */
+Schedule::command('executions:recover')
+    ->everyMinute()
+    ->withoutOverlapping(2)
+    ->onOneServer();

@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 use Database\Factories\ExecutionAttemptFactory;
 use Illuminate\Database\Eloquent\Attributes\DateFormat;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -42,6 +43,10 @@ use LogicException;
  * @property string|null $cost_currency
  * @property string|null $error_code
  * @property string|null $error_message
+ * @property bool|null $retryable
+ * @property int|null $retry_delay_seconds
+ * @property CarbonImmutable|null $deadline_at
+ * @property CarbonImmutable|null $heartbeat_at
  * @property CarbonImmutable|null $started_at
  * @property CarbonImmutable|null $finished_at
  * @property CarbonImmutable|null $created_at
@@ -121,6 +126,22 @@ final class ExecutionAttempt extends Model
     }
 
     /**
+     * Scope a query to active attempts whose deadline has elapsed.
+     *
+     * @param  Builder<ExecutionAttempt>  $query
+     * @return Builder<ExecutionAttempt>
+     */
+    public function scopeExpiredRunning(
+        Builder $query,
+        CarbonImmutable $at,
+    ): Builder {
+        return $query
+            ->where('status', ExecutionAttemptStatus::Running)
+            ->whereNotNull('deadline_at')
+            ->where('deadline_at', '<=', $at);
+    }
+
+    /**
      * Cast persisted values to stable domain, decimal, and date types.
      *
      * @return array<string, string>
@@ -135,6 +156,10 @@ final class ExecutionAttempt extends Model
             'confidence' => 'decimal:4',
             'estimated_cost' => 'decimal:8',
             'actual_cost' => 'decimal:8',
+            'retryable' => 'boolean',
+            'retry_delay_seconds' => 'integer',
+            'deadline_at' => 'immutable_datetime',
+            'heartbeat_at' => 'immutable_datetime',
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
         ];

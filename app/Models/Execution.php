@@ -33,8 +33,17 @@ use LogicException;
  * @property ExecutionStatus $status
  * @property ReasoningLevel $requested_reasoning_level
  * @property int $attempt_count
+ * @property int $retry_limit
+ * @property int $timeout_seconds
+ * @property int $retry_base_delay_seconds
+ * @property int $retry_max_delay_seconds
+ * @property int $retry_jitter_percent
  * @property string $correlation_id
  * @property string $idempotency_key
+ * @property CarbonImmutable|null $next_attempt_at
+ * @property CarbonImmutable|null $cancel_requested_at
+ * @property CarbonImmutable|null $cancelled_at
+ * @property string|null $cancellation_reason
  * @property CarbonImmutable|null $started_at
  * @property CarbonImmutable|null $finished_at
  * @property CarbonImmutable|null $created_at
@@ -50,6 +59,11 @@ use LogicException;
     'capability',
     'logical_role',
     'requested_reasoning_level',
+    'retry_limit',
+    'timeout_seconds',
+    'retry_base_delay_seconds',
+    'retry_max_delay_seconds',
+    'retry_jitter_percent',
     'correlation_id',
     'idempotency_key',
 ])]
@@ -68,10 +82,15 @@ final class Execution extends Model
     protected $attributes = [
         'status' => 'queued',
         'attempt_count' => 0,
+        'retry_limit' => 3,
+        'timeout_seconds' => 900,
+        'retry_base_delay_seconds' => 30,
+        'retry_max_delay_seconds' => 900,
+        'retry_jitter_percent' => 20,
     ];
 
     /**
-     * Protect execution identity and immutable request context.
+     * Protect execution identity, request context, and resilience policy.
      */
     protected static function booted(): void
     {
@@ -83,13 +102,18 @@ final class Execution extends Model
                     'capability',
                     'logical_role',
                     'requested_reasoning_level',
+                    'retry_limit',
+                    'timeout_seconds',
+                    'retry_base_delay_seconds',
+                    'retry_max_delay_seconds',
+                    'retry_jitter_percent',
                     'correlation_id',
                     'idempotency_key',
                 ] as $attribute
             ) {
                 if ($execution->isDirty($attribute)) {
                     throw new LogicException(
-                        'Execution identity and request context are immutable.',
+                        'Execution identity, request context, and resilience policy are immutable.',
                     );
                 }
             }
@@ -150,6 +174,22 @@ final class Execution extends Model
     }
 
     /**
+     * Scope a query to retry-scheduled executions whose delay has elapsed.
+     *
+     * @param  Builder<Execution>  $query
+     * @return Builder<Execution>
+     */
+    public function scopeDueRetry(
+        Builder $query,
+        CarbonImmutable $at,
+    ): Builder {
+        return $query
+            ->where('status', ExecutionStatus::RetryScheduled)
+            ->whereNotNull('next_attempt_at')
+            ->where('next_attempt_at', '<=', $at);
+    }
+
+    /**
      * Cast persisted values to stable domain and date types.
      *
      * @return array<string, string>
@@ -160,6 +200,14 @@ final class Execution extends Model
             'status' => ExecutionStatus::class,
             'requested_reasoning_level' => ReasoningLevel::class,
             'attempt_count' => 'integer',
+            'retry_limit' => 'integer',
+            'timeout_seconds' => 'integer',
+            'retry_base_delay_seconds' => 'integer',
+            'retry_max_delay_seconds' => 'integer',
+            'retry_jitter_percent' => 'integer',
+            'next_attempt_at' => 'immutable_datetime',
+            'cancel_requested_at' => 'immutable_datetime',
+            'cancelled_at' => 'immutable_datetime',
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
         ];
