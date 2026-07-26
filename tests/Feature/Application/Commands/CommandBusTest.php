@@ -10,6 +10,7 @@ use App\Application\Shared\Commands\CommandResult;
 use App\Application\Shared\Commands\CommandResultStatus;
 use App\Application\Shared\Exceptions\ConflictException;
 use App\Application\Shared\Exceptions\RetryableOperationException;
+use App\Infrastructure\Bus\IdempotentCommandBus;
 use App\Infrastructure\Bus\LaravelCommandBus;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -22,12 +23,12 @@ use Tests\TestCase;
 final class CommandBusTest extends TestCase
 {
     /**
-     * The application container exposes the configured command-bus contract.
+     * The application container exposes the idempotency-decorated command bus.
      */
-    public function test_provider_registers_the_command_bus(): void
+    public function test_provider_registers_the_idempotent_command_bus(): void
     {
         self::assertInstanceOf(
-            LaravelCommandBus::class,
+            IdempotentCommandBus::class,
             $this->app->make(CommandBus::class),
         );
     }
