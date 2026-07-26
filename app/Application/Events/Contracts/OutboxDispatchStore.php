@@ -8,7 +8,7 @@ use App\Application\Events\Data\ClaimedOutboxMessage;
 use Carbon\CarbonImmutable;
 
 /**
- * Persists dispatcher claims and delivery outcomes.
+ * Persists dispatcher claims, delivery outcomes, and terminal failures.
  */
 interface OutboxDispatchStore
 {
@@ -36,6 +36,15 @@ interface OutboxDispatchStore
     public function release(
         ClaimedOutboxMessage $message,
         CarbonImmutable $availableAt,
+        string $error,
+    ): bool;
+
+    /**
+     * Mark one exhausted message as requiring manual recovery.
+     */
+    public function markDeadLettered(
+        ClaimedOutboxMessage $message,
+        CarbonImmutable $deadLetteredAt,
         string $error,
     ): bool;
 }

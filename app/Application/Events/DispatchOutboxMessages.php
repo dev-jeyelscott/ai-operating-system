@@ -35,7 +35,8 @@ final readonly class DispatchOutboxMessages
      * @return array{
      *     claimed: int,
      *     published: int,
-     *     failed: int
+     *     failed: int,
+     *     dead_lettered: int
      * }
      */
     public function handle(
@@ -61,6 +62,7 @@ final readonly class DispatchOutboxMessages
 
         $published = 0;
         $failed = 0;
+        $deadLettered = 0;
 
         foreach ($messages as $message) {
             try {
@@ -77,20 +79,38 @@ final readonly class DispatchOutboxMessages
             } catch (Throwable $exception) {
                 $failed++;
 
+                $failedAt = CarbonImmutable::now();
+                $error = sprintf(
+                    '%s: %s',
+                    $exception::class,
+                    $exception->getMessage(),
+                );
+
+                if (
+                    $message->dispatchAttempt
+                    >= $maximumAttempts
+                ) {
+                    $this->store->markDeadLettered(
+                        message: $message,
+                        deadLetteredAt: $failedAt,
+                        error: $error,
+                    );
+
+                    $deadLettered++;
+
+                    continue;
+                }
+
                 $this->store->release(
                     message: $message,
-                    availableAt: CarbonImmutable::now()->addSeconds(
+                    availableAt: $failedAt->addSeconds(
                         $this->backoffSeconds(
                             attempt: $message->dispatchAttempt,
                             baseSeconds: $baseBackoffSeconds,
                             maximumSeconds: $maximumBackoffSeconds,
                         ),
                     ),
-                    error: sprintf(
-                        '%s: %s',
-                        $exception::class,
-                        $exception->getMessage(),
-                    ),
+                    error: $error,
                 );
             }
         }
@@ -99,6 +119,7 @@ final readonly class DispatchOutboxMessages
             'claimed' => count($messages),
             'published' => $published,
             'failed' => $failed,
+            'dead_lettered' => $deadLettered,
         ];
     }
 

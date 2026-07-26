@@ -40,6 +40,7 @@ final class EloquentOutboxDispatchStore implements OutboxDispatchStore
 
                 $messages = OutboxMessage::query()
                     ->whereNull('published_at')
+                    ->whereNull('dead_lettered_at')
                     ->where(
                         'dispatch_attempts',
                         '<',
@@ -104,6 +105,7 @@ final class EloquentOutboxDispatchStore implements OutboxDispatchStore
                 $message->reservationToken,
             )
             ->whereNull('published_at')
+            ->whereNull('dead_lettered_at')
             ->update([
                 'published_at' => CarbonImmutable::now(),
                 'reservation_token' => null,
@@ -127,11 +129,37 @@ final class EloquentOutboxDispatchStore implements OutboxDispatchStore
                 $message->reservationToken,
             )
             ->whereNull('published_at')
+            ->whereNull('dead_lettered_at')
             ->update([
                 'available_at' => $availableAt,
                 'reservation_token' => null,
                 'reserved_until' => null,
                 'last_error' => mb_substr($error, 0, 4000),
+            ]) === 1;
+    }
+
+    /**
+     * Move one exhausted reservation into explicit dead-letter state.
+     */
+    public function markDeadLettered(
+        ClaimedOutboxMessage $message,
+        CarbonImmutable $deadLetteredAt,
+        string $error,
+    ): bool {
+        return OutboxMessage::query()
+            ->whereKey($message->sequence)
+            ->where(
+                'reservation_token',
+                $message->reservationToken,
+            )
+            ->whereNull('published_at')
+            ->whereNull('dead_lettered_at')
+            ->update([
+                'available_at' => $deadLetteredAt,
+                'reservation_token' => null,
+                'reserved_until' => null,
+                'last_error' => mb_substr($error, 0, 4000),
+                'dead_lettered_at' => $deadLetteredAt,
             ]) === 1;
     }
 }

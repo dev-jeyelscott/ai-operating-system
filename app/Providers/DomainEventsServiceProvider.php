@@ -10,17 +10,21 @@ use App\Application\Events\Contracts\DomainEventOutbox;
 use App\Application\Events\Contracts\OutboxDispatchStore;
 use App\Application\Events\Contracts\OutboxTransport;
 use App\Console\Commands\DispatchOutboxMessagesCommand;
+use App\Console\Commands\ListDeadLettersCommand;
+use App\Console\Commands\ReplayDeadLetterCommand;
 use App\Infrastructure\Events\ConfiguredDomainEventConsumerRegistry;
 use App\Infrastructure\Events\EloquentDomainEventConsumptionStore;
 use App\Infrastructure\Events\EloquentOutboxDispatchStore;
 use App\Infrastructure\Events\LaravelOutboxTransport;
 use App\Infrastructure\Persistence\Repositories\Events\EloquentDomainEventOutbox as EventsEloquentDomainEventOutbox;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Queue\Failed\FailedJobProviderInterface;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
 /**
- * Registers domain-event persistence, dispatch, and consumer infrastructure.
+ * Registers domain-event persistence, dispatch, consumer, and recovery
+ * infrastructure.
  */
 final class DomainEventsServiceProvider extends ServiceProvider
 {
@@ -79,8 +83,19 @@ final class DomainEventsServiceProvider extends ServiceProvider
             },
         );
 
+        /*
+         * AIOS-056 reuses Laravel's configured durable failed-job provider
+         * instead of introducing a second failed queue-job repository.
+         */
+        $this->app->alias(
+            'queue.failer',
+            FailedJobProviderInterface::class,
+        );
+
         $this->commands([
             DispatchOutboxMessagesCommand::class,
+            ListDeadLettersCommand::class,
+            ReplayDeadLetterCommand::class,
         ]);
     }
 }

@@ -24,4 +24,7 @@ enum AuditSubjectType: string
 
     case Approval = 'approval';
     case Execution = 'execution';
+
+    case OutboxMessage = 'outbox_message';
+    case FailedQueueJob = 'failed_queue_job';
 }

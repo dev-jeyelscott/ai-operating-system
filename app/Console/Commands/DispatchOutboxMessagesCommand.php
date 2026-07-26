@@ -70,10 +70,11 @@ final class DispatchOutboxMessagesCommand extends Command
         );
 
         $this->line(sprintf(
-            'Claimed: %d; published: %d; failed: %d.',
+            'Claimed: %d; published: %d; failed: %d; dead-lettered: %d.',
             $result['claimed'],
             $result['published'],
             $result['failed'],
+            $result['dead_lettered'],
         ));
 
         return $result['failed'] === 0

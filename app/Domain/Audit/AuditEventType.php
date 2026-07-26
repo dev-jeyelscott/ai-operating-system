@@ -22,17 +22,14 @@ enum AuditEventType: string
     case ProjectRestored = 'project.restored';
     case ProjectSetupUpdated = 'project.setup.updated';
 
-    case ProjectConfigurationVersionCreated =
-        'project.configuration.version.created';
+    case ProjectConfigurationVersionCreated = 'project.configuration.version.created';
 
     case IntegrationCredentialStored = 'integration.credential.stored';
     case IntegrationCredentialRotated = 'integration.credential.rotated';
 
-    case NotionConnectionTestSucceeded =
-        'integration.notion.connection_test.succeeded';
+    case NotionConnectionTestSucceeded = 'integration.notion.connection_test.succeeded';
 
-    case NotionConnectionTestFailed =
-        'integration.notion.connection_test.failed';
+    case NotionConnectionTestFailed = 'integration.notion.connection_test.failed';
 
     case DocumentUploaded = 'document.uploaded';
     case DocumentReplacementUploaded = 'document.replacement.uploaded';
@@ -53,11 +50,9 @@ enum AuditEventType: string
     case DocumentVersionRejected = 'document.version.rejected';
     case DocumentVersionSuperseded = 'document.version.superseded';
 
-    case DocumentProcessingRetryRequested =
-        'document.processing.retry_requested';
+    case DocumentProcessingRetryRequested = 'document.processing.retry_requested';
 
-    case ProjectContextSnapshotCreated =
-        'project.context_snapshot.created';
+    case ProjectContextSnapshotCreated = 'project.context_snapshot.created';
 
     case ApprovalRequested = 'approval.requested';
     case ApprovalGranted = 'approval.granted';
@@ -72,9 +67,10 @@ enum AuditEventType: string
     case ExecutionRetryScheduled = 'execution.retry_scheduled';
     case ExecutionRetryReleased = 'execution.retry_released';
 
-    case ExecutionCancellationRequested =
-        'execution.cancellation_requested';
+    case ExecutionCancellationRequested = 'execution.cancellation_requested';
 
     case ExecutionCancelled = 'execution.cancelled';
     case ExecutionFailed = 'execution.failed';
+
+    case DeadLetterReplayRequested = 'dead_letter.replay_requested';
 }

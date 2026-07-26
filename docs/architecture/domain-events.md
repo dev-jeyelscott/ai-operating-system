@@ -151,4 +151,3 @@ AIOS-051 will dispatch outbox records and implement deduplicated consumers.
 
 Do not dispatch these envelopes directly through Laravel events before the
 transactional outbox exists.
-

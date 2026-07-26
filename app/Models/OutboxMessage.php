@@ -10,7 +10,8 @@ use Illuminate\Database\Eloquent\Model;
  * Stores one immutable domain-event envelope awaiting asynchronous delivery.
  *
  * Event identity and envelope fields are immutable after insertion. Dispatcher
- * fields may change only while reserving, publishing, or releasing a message.
+ * and recovery fields may change only while reserving, publishing, failing, or
+ * manually replaying a message.
  */
 final class OutboxMessage extends Model
 {
@@ -35,7 +36,7 @@ final class OutboxMessage extends Model
     public $timestamps = false;
 
     /**
-     * Attributes allowed during event persistence and dispatcher updates.
+     * Attributes allowed during event persistence, dispatch, and recovery.
      *
      * @var list<string>
      */
@@ -58,11 +59,15 @@ final class OutboxMessage extends Model
         'reservation_token',
         'dispatch_attempts',
         'last_error',
+        'dead_lettered_at',
+        'replay_count',
+        'last_replayed_at',
         'created_at',
     ];
 
     /**
-     * Define strict persistence casts for event and dispatcher metadata.
+     * Define strict persistence casts for event, dispatcher, and recovery
+     * metadata.
      *
      * @return array<string, string>
      */
@@ -74,11 +79,14 @@ final class OutboxMessage extends Model
             'project_id' => 'integer',
             'schema_version' => 'integer',
             'dispatch_attempts' => 'integer',
+            'replay_count' => 'integer',
             'envelope' => 'array',
             'occurred_at' => 'immutable_datetime',
             'published_at' => 'immutable_datetime',
             'available_at' => 'immutable_datetime',
             'reserved_until' => 'immutable_datetime',
+            'dead_lettered_at' => 'immutable_datetime',
+            'last_replayed_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
         ];
     }
