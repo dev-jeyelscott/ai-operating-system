@@ -15,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeInterface;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -82,16 +83,29 @@ final readonly class DatabaseIdempotencyKeyService implements IdempotencyKeyServ
         );
 
         /*
-         * Never place the raw key in Redis, logs, exceptions, or persistence.
-         */
+     * Never place the raw key in Redis, logs, exceptions, or persistence.
+     */
         $lockName = 'idempotency:'.hash(
             'sha256',
             $scope.'|'.$keyHash,
         );
 
+        /*
+     * The cache repository contract does not expose atomic locking directly.
+     * Resolve its underlying store and require the explicit lock contract.
+     */
+        $lockProvider = $this->cache
+            ->store($this->cacheStore)
+            ->getStore();
+
+        if (! $lockProvider instanceof LockProvider) {
+            throw new LogicException(
+                'The configured idempotency cache store does not support atomic locks.',
+            );
+        }
+
         try {
-            $result = $this->cache
-                ->store($this->cacheStore)
+            $result = $lockProvider
                 ->lock($lockName, $this->processingTtlSeconds)
                 ->block(
                     $this->lockWaitSeconds,
@@ -248,14 +262,14 @@ final readonly class DatabaseIdempotencyKeyService implements IdempotencyKeyServ
                     ->firstOrFail();
 
                 $completedIsActive = $record->status
-                        === IdempotencyKeyStatus::Completed
+                    === IdempotencyKeyStatus::Completed
                     && (
                         $record->expires_at === null
                         || $record->expires_at->isFuture()
                     );
 
                 $processingIsActive = $record->status
-                        === IdempotencyKeyStatus::Processing
+                    === IdempotencyKeyStatus::Processing
                     && $record->lock_expires_at?->isFuture() === true;
 
                 /*
@@ -267,7 +281,7 @@ final readonly class DatabaseIdempotencyKeyService implements IdempotencyKeyServ
                     && (
                         $record->command_class !== $commandClass
                         || $record->request_fingerprint
-                            !== $requestFingerprint
+                        !== $requestFingerprint
                     )
                 ) {
                     return [
@@ -359,28 +373,16 @@ final readonly class DatabaseIdempotencyKeyService implements IdempotencyKeyServ
                     );
                 }
 
+                /*
+             * CommandResult is immutable and owns a strongly typed status enum.
+             * Persist that authoritative value instead of reparsing its payload.
+             */
                 $payload = $result->toArray();
-                $statusValue = $payload['status'] ?? null;
-
-                if (! is_string($statusValue)) {
-                    throw new LogicException(
-                        'The command result did not contain a valid status.',
-                    );
-                }
-
-                $resultStatus = CommandResultStatus::tryFrom($statusValue);
-
-                if ($resultStatus === null) {
-                    throw new LogicException(
-                        'The command result contained an unknown status.',
-                    );
-                }
-
                 $now = CarbonImmutable::now();
 
                 $record->forceFill([
                     'status' => IdempotencyKeyStatus::Completed,
-                    'result_status' => $resultStatus,
+                    'result_status' => $result->status,
                     'result_payload' => $payload,
                     'lock_owner' => null,
                     'lock_expires_at' => null,
