@@ -18,3 +18,12 @@ Schedule::command('outbox:dispatch')
     ->everyMinute()
     ->withoutOverlapping(2)
     ->onOneServer();
+
+/*
+ * Row locking and pending-state checks provide approval-expiry correctness.
+ * The scheduler lock avoids unnecessary concurrent batch scans.
+ */
+Schedule::command('approvals:expire')
+    ->everyMinute()
+    ->withoutOverlapping(2)
+    ->onOneServer();

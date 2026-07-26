@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Application\Approvals\Commands\DecideApproval;
+use App\Application\Approvals\Commands\RequestApproval;
+use App\Application\Approvals\Handlers\DecideApprovalHandler;
+use App\Application\Approvals\Handlers\RequestApprovalHandler;
+
 return [
 
     /*
@@ -15,6 +20,9 @@ return [
     |
     */
 
-    'handlers' => [],
+    'handlers' => [
+        RequestApproval::class => RequestApprovalHandler::class,
+        DecideApproval::class => DecideApprovalHandler::class,
+    ],
 
 ];
