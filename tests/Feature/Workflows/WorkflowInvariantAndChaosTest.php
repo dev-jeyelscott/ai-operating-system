@@ -273,6 +273,7 @@ it('recovers an outbox batch after one transport publication fails', function ()
 
     expect($firstPass)
         ->toBe([
+            'expired_dead_lettered' => 0,
             'claimed' => 2,
             'published' => 1,
             'failed' => 1,
@@ -310,6 +311,7 @@ it('recovers an outbox batch after one transport publication fails', function ()
 
     expect($secondPass)
         ->toBe([
+            'expired_dead_lettered' => 0,
             'claimed' => 1,
             'published' => 1,
             'failed' => 0,
