@@ -36,6 +36,7 @@ final class ProjectPermissionMatrix
             ),
 
             ProjectPermission::Approve,
+            ProjectPermission::Start,
             ProjectPermission::ManageIntegrations,
             ProjectPermission::Archive,
             ProjectPermission::Restore => in_array(

@@ -7,6 +7,7 @@ namespace App\Application\Events;
 use App\Application\Audit\RecordAuditEvent;
 use App\Application\Events\Contracts\OutboxTransport;
 use App\Application\Events\Data\DeadLetterRecord;
+use App\Application\Security\RedactSensitiveData;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
@@ -42,6 +43,7 @@ final readonly class DeadLetterManager
         private FailedJobProviderInterface $failedJobs,
         private OutboxTransport $transport,
         private RecordAuditEvent $audit,
+        private RedactSensitiveData $redactor,
     ) {}
 
     /**
@@ -311,7 +313,7 @@ final readonly class DeadLetterManager
                     correlationId: $message->correlation_id,
                     metadata: [
                         'source' => DeadLetterSource::Outbox->value,
-                        'reason' => $reason,
+                        'reason' => $this->redactor->message($reason),
                         'previous_dispatch_attempts' => $previousAttempts,
                         'replay_count' => $replayCount,
                         'previous_error_type' => $errorType,
@@ -392,7 +394,7 @@ final readonly class DeadLetterManager
             correlationId: $message->correlation_id,
             metadata: [
                 'source' => DeadLetterSource::Queue->value,
-                'reason' => $reason,
+                'reason' => $this->redactor->message($reason),
                 'event_id' => $job->eventId,
                 'previous_error_type' => $errorType,
             ],
@@ -565,6 +567,17 @@ final readonly class DeadLetterManager
      */
     private function errorType(?string $error): string
     {
+        if (is_string($error)) {
+            $structuredError = json_decode($error, true);
+
+            if (
+                is_array($structuredError)
+                && is_string($structuredError['exception_type'] ?? null)
+            ) {
+                return $structuredError['exception_type'];
+            }
+        }
+
         $normalized = trim((string) $error);
 
         if ($normalized === '') {

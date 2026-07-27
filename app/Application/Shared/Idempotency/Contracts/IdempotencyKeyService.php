@@ -9,6 +9,9 @@ use Closure;
 
 /**
  * Coordinates durable execution and replay for idempotent commands.
+ *
+ * Handlers remain responsible for durable business-result reconciliation when
+ * completion is interrupted after their business transaction commits.
  */
 interface IdempotencyKeyService
 {

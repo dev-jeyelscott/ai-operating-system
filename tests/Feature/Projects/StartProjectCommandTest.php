@@ -2,13 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Application\Audit\Data\AuditContext;
+use App\Application\Documents\ReviewDocumentVersion;
 use App\Application\Events\Contracts\DomainEventOutbox;
 use App\Application\Projects\BuildStartProjectCommand;
 use App\Application\Projects\Commands\StartProject;
+use App\Application\Projects\Handlers\StartProjectHandler;
 use App\Application\Shared\Commands\CommandBus;
 use App\Application\Shared\Commands\CommandResultStatus;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Events\DomainEventEnvelope;
+use App\Domain\Idempotency\IdempotencyKeyStatus;
 use App\Domain\Identity\OrganizationRole;
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
@@ -18,6 +22,7 @@ use App\Models\AuditEvent;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Execution;
+use App\Models\IdempotencyKey;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Project;
@@ -230,6 +235,120 @@ test(
             'notification_events',
             0,
         );
+    },
+);
+
+test(
+    'it conflicts when an approved document is replaced after StartProject is prepared',
+    function (): void {
+        $fixture = startProjectCommandFixture();
+
+        $command = app(BuildStartProjectCommand::class)->handle(
+            organizationId: $fixture['organization']->id,
+            projectId: $fixture['project']->id,
+            requestedByUserId: $fixture['owner']->id,
+            idempotencyKey: 'start-project-stale-document-context',
+            correlationId: (string) Str::ulid(),
+        );
+
+        $approved = DocumentVersion::query()
+            ->whereHas(
+                'document',
+                fn ($query) => $query->where(
+                    'project_id',
+                    $fixture['project']->id,
+                ),
+            )
+            ->where('status', 'approved')
+            ->firstOrFail();
+
+        $replacement = DocumentVersion::factory()
+            ->for($approved->document)
+            ->classified()
+            ->create([
+                'version' => $approved->version + 1,
+                'supersedes_document_version_id' => $approved->id,
+            ]);
+
+        app(ReviewDocumentVersion::class)->approve(
+            document: $approved->document,
+            version: $replacement,
+            auditContext: AuditContext::user(
+                userId: $fixture['owner']->id,
+                correlationId: (string) Str::ulid(),
+            ),
+        );
+
+        $result = app(CommandBus::class)->dispatch($command);
+
+        expect($result->status)
+            ->toBe(CommandResultStatus::Conflict)
+            ->and($result->details['reason'])
+            ->toBe('project_context_changed');
+
+        $this->assertDatabaseCount('workflow_instances', 0);
+        $this->assertDatabaseCount('executions', 0);
+        $this->assertDatabaseCount('project_context_snapshots', 0);
+        $this->assertDatabaseCount('notification_events', 0);
+        $this->assertDatabaseCount('notification_recipients', 0);
+    },
+);
+
+test(
+    'it reconciles a committed StartProject result after idempotency completion is interrupted',
+    function (): void {
+        $fixture = startProjectCommandFixture();
+
+        $command = app(BuildStartProjectCommand::class)->handle(
+            organizationId: $fixture['organization']->id,
+            projectId: $fixture['project']->id,
+            requestedByUserId: $fixture['owner']->id,
+            idempotencyKey: 'start-project-interrupted-idempotency-completion',
+            correlationId: (string) Str::ulid(),
+        );
+
+        $committed = app(StartProjectHandler::class)->handle($command);
+
+        /*
+         * Simulate the durable claim left behind when the process dies after
+         * the business transaction commits and before result completion.
+         */
+        IdempotencyKey::query()->create([
+            'scope' => $command->idempotencyScope(),
+            'key_hash' => hash('sha256', $command->idempotencyKey()),
+            'command_class' => $command::class,
+            'request_fingerprint' => hash(
+                'sha256',
+                json_encode([
+                    'context_fingerprint' => $command->contextFingerprint,
+                    'organization_id' => $command->organizationId,
+                    'project_id' => $command->projectId,
+                    'requested_by_user_id' => $command->requestedByUserId,
+                ], JSON_THROW_ON_ERROR),
+            ),
+            'status' => IdempotencyKeyStatus::Processing,
+            'result_status' => null,
+            'result_payload' => null,
+            'lock_owner' => (string) Str::uuid(),
+            'lock_expires_at' => now()->subSecond(),
+            'completed_at' => null,
+            'expires_at' => null,
+        ]);
+
+        $retried = app(CommandBus::class)->dispatch($command);
+
+        expect($committed->isSuccessful())
+            ->toBeTrue()
+            ->and($retried->toArray())
+            ->toBe($committed->toArray());
+
+        $this->assertDatabaseCount('workflow_instances', 1);
+        $this->assertDatabaseCount('executions', 1);
+        $this->assertDatabaseCount('project_context_snapshots', 1);
+        $this->assertDatabaseCount('notification_events', 1);
+        $this->assertDatabaseCount('notification_recipients', 1);
+        expect(IdempotencyKey::query()->sole()->status)
+            ->toBe(IdempotencyKeyStatus::Completed);
     },
 );
 

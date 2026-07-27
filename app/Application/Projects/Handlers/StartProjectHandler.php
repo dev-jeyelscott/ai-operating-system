@@ -33,7 +33,6 @@ use App\Models\User;
 use App\Models\WorkflowInstance;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Gate;
-use LogicException;
 
 /**
  * Starts one project planning workflow for one immutable project context.
@@ -82,7 +81,7 @@ final readonly class StartProjectHandler
                 );
 
                 Gate::forUser($requester)->authorize(
-                    'approve',
+                    'start',
                     $project,
                 );
 
@@ -171,8 +170,12 @@ final readonly class StartProjectHandler
                         ),
                     )
                 ) {
-                    throw new LogicException(
-                        'The created project context snapshot does not match the authorized StartProject context.',
+                    return CommandResult::conflict(
+                        message: 'The project context changed while StartProject was being created.',
+                        details: [
+                            'reason' => 'project_context_changed_during_start',
+                            'project_id' => $project->id,
+                        ],
                     );
                 }
 
@@ -286,7 +289,7 @@ final readonly class StartProjectHandler
             ! $snapshot instanceof ProjectContextSnapshot
             || ! $workflow instanceof WorkflowInstance
         ) {
-            throw new LogicException(
+            throw new \LogicException(
                 'An existing StartProject execution is missing immutable workflow context.',
             );
         }

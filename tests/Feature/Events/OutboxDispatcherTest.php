@@ -130,6 +130,35 @@ test('an already published event is not dispatched again', function (): void {
         ->toBe(1);
 });
 
+test('it persists only sanitized details when an outbox transport fails', function (): void {
+    $organization = Organization::factory()->create();
+    $message = createDispatchableOutboxMessage($organization);
+
+    app()->instance(
+        OutboxTransport::class,
+        new class implements OutboxTransport
+        {
+            public function publish(string $eventId): void
+            {
+                throw new RuntimeException(
+                    'https://operator:fake-secret@example.test/hook Authorization: Bearer fake-secret request_body={"token":"fake-secret"}',
+                );
+            }
+        },
+    );
+
+    $this->artisan('outbox:dispatch')->assertSuccessful();
+
+    $storedError = $message->fresh()?->last_error;
+
+    expect($storedError)
+        ->toBeString()
+        ->not->toContain('fake-secret')
+        ->toContain('outbox.transport_failed')
+        ->toContain('RuntimeException')
+        ->toContain('[redacted-url]');
+});
+
 test('an expired exhausted reservation is dead-lettered and can be replayed safely', function (): void {
     Queue::fake();
 

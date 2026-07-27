@@ -15,9 +15,10 @@ Artisan::command('inspire', function (): void {
  * Scheduler locks reduce unnecessary duplicate scheduler invocations.
  */
 Schedule::command('outbox:dispatch')
-    ->everyMinute()
+    ->everyTenSeconds()
     ->withoutOverlapping(2)
-    ->onOneServer();
+    ->onOneServer()
+    ->runInBackground();
 
 /*
  * Row locking and pending-state checks provide approval-expiry correctness.

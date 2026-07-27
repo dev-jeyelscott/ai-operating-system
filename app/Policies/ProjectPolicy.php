@@ -61,6 +61,18 @@ final readonly class ProjectPolicy
     }
 
     /**
+     * Allow only owners and administrators to start project delivery.
+     */
+    public function start(User $user, Project $project): Response
+    {
+        return $this->authorizePermission(
+            user: $user,
+            project: $project,
+            permission: ProjectPermission::Start,
+        );
+    }
+
+    /**
      * Allow only owners and administrators to manage integration credentials.
      */
     public function manageIntegrations(

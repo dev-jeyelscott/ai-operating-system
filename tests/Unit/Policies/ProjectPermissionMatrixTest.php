@@ -34,6 +34,11 @@ function projectPermissionMatrixCases(): array
             ProjectPermission::Approve,
             true,
         ],
+        'owner may start project operations' => [
+            OrganizationRole::Owner,
+            ProjectPermission::Start,
+            true,
+        ],
         'owner may manage project integrations' => [
             OrganizationRole::Owner,
             ProjectPermission::ManageIntegrations,
@@ -68,6 +73,11 @@ function projectPermissionMatrixCases(): array
         'administrator may approve project operations' => [
             OrganizationRole::Administrator,
             ProjectPermission::Approve,
+            true,
+        ],
+        'administrator may start project operations' => [
+            OrganizationRole::Administrator,
+            ProjectPermission::Start,
             true,
         ],
         'administrator may manage project integrations' => [
@@ -106,6 +116,11 @@ function projectPermissionMatrixCases(): array
             ProjectPermission::Approve,
             false,
         ],
+        'member may not start project operations' => [
+            OrganizationRole::Member,
+            ProjectPermission::Start,
+            false,
+        ],
         'member may not manage project integrations' => [
             OrganizationRole::Member,
             ProjectPermission::ManageIntegrations,
@@ -140,6 +155,11 @@ function projectPermissionMatrixCases(): array
         'viewer may not approve project operations' => [
             OrganizationRole::Viewer,
             ProjectPermission::Approve,
+            false,
+        ],
+        'viewer may not start project operations' => [
+            OrganizationRole::Viewer,
+            ProjectPermission::Start,
             false,
         ],
         'viewer may not manage project integrations' => [

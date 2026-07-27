@@ -37,7 +37,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | A processing claim older than this may be reclaimed. Synchronous
-    | application commands must complete inside this window.
+    | application commands must complete inside this window. Commands that can
+    | exceed it must use a safely larger command-specific TTL or refresh their
+    | owned atomic lock while they run.
     |
     */
     'processing_ttl_seconds' => (int) env(

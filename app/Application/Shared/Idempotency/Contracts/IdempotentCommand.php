@@ -8,6 +8,11 @@ use App\Application\Shared\Commands\Command;
 
 /**
  * Marks an application command as requiring durable replay protection.
+ *
+ * Cache locks and result replay coordinate concurrent callers, but are not a
+ * business uniqueness guarantee. Each state-changing handler must persist a
+ * unique business identity and reconcile an already committed result before
+ * creating any new side effect.
  */
 interface IdempotentCommand extends Command
 {

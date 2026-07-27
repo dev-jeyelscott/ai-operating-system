@@ -6,6 +6,7 @@ use App\Application\Events\Contracts\OutboxTransport;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Audit\AuditSubjectType;
 use App\Jobs\ConsumeOutboxMessage;
+use App\Models\AuditEvent;
 use App\Models\Organization;
 use App\Models\OutboxMessage;
 use Carbon\CarbonImmutable;
@@ -197,7 +198,7 @@ test('an operator can inspect and reset an outbox dead letter', function (): voi
             'source' => 'outbox',
             'id' => $message->event_id,
             '--actor' => 'test-operator',
-            '--reason' => 'Redis health has been verified.',
+            '--reason' => 'Authorization: Bearer fake-secret request_body={"token":"fake-secret"}',
             '--yes' => true,
         ],
     );
@@ -229,6 +230,15 @@ test('an operator can inspect and reset an outbox dead letter', function (): voi
         'subject_id' => $message->event_id,
         'actor_id' => 'test-operator',
     ]);
+
+    $auditEvent = AuditEvent::query()
+        ->where('subject_id', $message->event_id)
+        ->where('event_type', AuditEventType::DeadLetterReplayRequested)
+        ->sole();
+
+    expect(json_encode($auditEvent->metadata))
+        ->not->toContain('fake-secret')
+        ->toContain('[redacted-authorization]');
 });
 
 test('an operator can replay one failed event consumer job', function (): void {

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Documents\RecordDocumentLifecycleEvent;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\Document;
 use App\Models\DocumentVersion;
+use App\Models\Project;
 use LogicException;
 
 /**
@@ -38,6 +40,8 @@ final class ReviewDocumentVersion
     ): void {
         $this->transactions->run(
             function () use ($document, $version, $auditContext): void {
+                $this->lockedProject($document);
+
                 $lockedDocument = $this->lockedDocument(
                     $document,
                 );
@@ -107,6 +111,18 @@ final class ReviewDocumentVersion
                 );
             },
         );
+    }
+
+    /**
+     * Lock the owning project before the document aggregate so StartProject
+     * and authority-changing document reviews share one lock order.
+     */
+    private function lockedProject(Document $document): Project
+    {
+        return Project::query()
+            ->whereKey($document->project_id)
+            ->lockForUpdate()
+            ->firstOrFail();
     }
 
     /**

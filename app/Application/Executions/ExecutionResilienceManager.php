@@ -6,6 +6,7 @@ namespace App\Application\Executions;
 
 use App\Application\Executions\Data\ExecutionAttemptContext;
 use App\Application\Executions\Data\RetryDecision;
+use App\Application\Security\RedactSensitiveData;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Executions\Exceptions\ExecutionLifecycleConflict;
@@ -30,6 +31,7 @@ final readonly class ExecutionResilienceManager
         private TransactionManager $transactions,
         private DeterministicRetryDelay $retryDelay,
         private RecordExecutionLifecycleEvent $events,
+        private RedactSensitiveData $redactor,
     ) {}
 
     /**
@@ -290,7 +292,9 @@ final readonly class ExecutionResilienceManager
             attempt: $attempt,
             attemptStatus: ExecutionAttemptStatus::Failed,
             errorCode: $this->normalizeErrorCode($errorCode),
-            errorMessage: $this->normalizeMessage($errorMessage),
+            errorMessage: $this->normalizeMessage(
+                $this->redactor->message($errorMessage),
+            ),
             retryable: $retryable,
             finishedAt: $at ?? CarbonImmutable::now(),
             causationId: $causationId,

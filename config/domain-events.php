@@ -64,8 +64,8 @@ return [
     | Registered consumers
     |--------------------------------------------------------------------------
     |
-    | Add application consumers here as later tickets introduce projections,
-    | notifications, audit timelines, or office read models.
+    | Phase 4 establishes the replaceable real-time event-stream contract.
+    | Projection and domain-event publishing consumers remain Phase 9 scope.
     |
     | Example:
     |

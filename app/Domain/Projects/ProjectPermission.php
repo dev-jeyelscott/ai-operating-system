@@ -13,6 +13,7 @@ enum ProjectPermission: string
     case Create = 'create';
     case Update = 'update';
     case Approve = 'approve';
+    case Start = 'start';
     case ManageIntegrations = 'manage_integrations';
     case Archive = 'archive';
     case Restore = 'restore';

@@ -218,6 +218,29 @@ it('fails after the automatic retry limit is exhausted', function (): void {
         ->not->toBeNull();
 });
 
+it('redacts secrets before persisting an execution attempt failure', function (): void {
+    $execution = Execution::factory()->create([
+        'retry_limit' => 0,
+        'retry_jitter_percent' => 0,
+    ]);
+
+    $attempt = app(ExecutionResilienceManager::class)->startAttempt(
+        execution: $execution,
+        context: aios055AttemptContext(),
+    );
+
+    app(ExecutionResilienceManager::class)->failAttempt(
+        attempt: $attempt,
+        errorCode: 'provider.failed',
+        errorMessage: 'Authorization: Bearer fake-secret request_body={"token":"fake-secret"}',
+        retryable: false,
+    );
+
+    expect($attempt->fresh()?->error_message)
+        ->not->toContain('fake-secret')
+        ->toContain('[redacted-authorization]');
+});
+
 it('times out expired attempts and schedules retry', function (): void {
     $manager = app(ExecutionResilienceManager::class);
 

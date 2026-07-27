@@ -7,6 +7,7 @@ namespace App\Application\Events;
 use App\Application\Events\Contracts\OutboxDispatchStore;
 use App\Application\Events\Contracts\OutboxTransport;
 use App\Application\Events\Data\ClaimedOutboxMessage;
+use App\Application\Security\RedactSensitiveData;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -26,6 +27,7 @@ final readonly class DispatchOutboxMessages
     public function __construct(
         private OutboxDispatchStore $store,
         private OutboxTransport $transport,
+        private RedactSensitiveData $redactor,
     ) {}
 
     /**
@@ -88,10 +90,9 @@ final readonly class DispatchOutboxMessages
                 $failed++;
 
                 $failedAt = CarbonImmutable::now();
-                $error = sprintf(
-                    '%s: %s',
-                    $exception::class,
-                    $exception->getMessage(),
+                $error = $this->redactor->infrastructureError(
+                    errorCode: 'outbox.transport_failed',
+                    exception: $exception,
                 );
 
                 if (
