@@ -2,6 +2,7 @@
 
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
+use App\Http\Controllers\Audit\ProjectAuditTimelineController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Documents\ProjectDocumentController;
 use App\Http\Controllers\Documents\RetryDocumentVersionProcessingController;
@@ -65,7 +66,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->can('createProject', 'organization')
                                 ->name('store');
                         });
-
                     /*
                      * Validate a Notion token, workspace, and database through
                      * the dedicated integration connection-test action.
@@ -183,6 +183,13 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->can('view', 'project')
                                 ->name('integrations.index');
                         });
+
+                    Route::get(
+                        '/{project}/audit',
+                        ProjectAuditTimelineController::class,
+                    )
+                        ->can('view', 'project')
+                        ->name('audit.index');
 
                     Route::controller(ProjectController::class)
                         ->group(function (): void {
