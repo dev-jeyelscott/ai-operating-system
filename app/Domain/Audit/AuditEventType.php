@@ -67,6 +67,8 @@ enum AuditEventType: string
 
     case ProjectStartRequested = 'project.start_requested';
 
+    case WorkflowTransitioned = 'workflow.transitioned';
+
     case ApprovalRequested = 'approval.requested';
     case ApprovalGranted = 'approval.granted';
     case ApprovalRejected = 'approval.rejected';

@@ -22,6 +22,8 @@ enum AuditSubjectType: string
     case ProviderCredential = 'provider_credential';
     case ProjectIntegration = 'project_integration';
 
+    case WorkflowInstance = 'workflow_instance';
+
     case Approval = 'approval';
     case Execution = 'execution';
 

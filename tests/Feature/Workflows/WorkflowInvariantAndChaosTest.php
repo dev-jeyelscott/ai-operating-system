@@ -278,6 +278,7 @@ it('recovers an outbox batch after one transport publication fails', function ()
             'published' => 1,
             'failed' => 1,
             'dead_lettered' => 0,
+            'reservation_conflicts' => 0,
         ])
         ->and($first->published_at)
         ->not->toBeNull()
@@ -316,6 +317,7 @@ it('recovers an outbox batch after one transport publication fails', function ()
             'published' => 1,
             'failed' => 0,
             'dead_lettered' => 0,
+            'reservation_conflicts' => 0,
         ])
         ->and($first->dispatch_attempts)
         ->toBe(1)

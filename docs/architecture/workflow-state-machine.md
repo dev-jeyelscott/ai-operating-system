@@ -14,17 +14,40 @@ A transition is committed only after the application:
 
 1. Opens a database transaction.
 2. Locks the workflow-instance row with `FOR UPDATE`.
-3. Loads the bound immutable definition.
+3. Loads the bound immutable definition and owning project.
 4. Confirms the current state belongs to the definition.
 5. Rejects transitions from terminal states.
 6. Resolves the requested transition by its stable name.
 7. Confirms the transition starts at the persisted current state.
 8. Evaluates its deterministic guard when one is declared.
 9. Appends a `workflow_transitions` record.
-10. Updates the instance's current state and sequence.
-11. Commits both writes atomically.
+10. Updates the instance's materialized current state and sequence.
+11. Appends `workflow.transitioned` to the transactional outbox.
+12. Records the matching authoritative audit event.
+13. Commits all writes atomically.
 
-Any exception rolls back both the state update and transition record.
+An exception from history persistence, state persistence, outbox persistence, or
+audit persistence rolls back the complete transition.
+
+## Transition context
+
+Every transition receives an immutable context containing:
+
+- Actor type
+- Actor identifier
+- Correlation identifier
+- Causation identifier
+- Execution identifier
+- Deterministic guard context
+
+New callers should pass guard inputs through `WorkflowTransitionContext`.
+
+Raw guard context is evaluated in memory and is not automatically persisted.
+The event and audit records contain the stable guard identifier only. This
+prevents arbitrary guard inputs from entering durable event or audit metadata.
+
+When no explicit context is supplied by a legacy caller, the transition service
+uses the stable system actor `workflow-transition-service`.
 
 ## Guard policy
 
@@ -57,19 +80,43 @@ database boundary against duplicate transition ordering.
 boundaries. Rejected transition attempts are not stored as successful
 transitions.
 
-AIOS-049 and later audit/event work will record attempted commands, actors,
-correlation identifiers, causation identifiers, and event schema versions.
+The transition table intentionally retains the compact transition facts needed
+for deterministic state reconstruction:
+
+- Workflow instance
+- Sequence
+- Transition name
+- From state
+- To state
+- Guard identifier
+- Creation time
+
+Actor identity, correlation, causation, execution identity, schema version, and
+event payload are retained by the transactional outbox and append-only audit
+store. These records allow every successfully committed workflow transition to
+be reconstructed without duplicating trace metadata in
+`workflow_transitions`.
+
+## Failure behavior
+
+A failed outbox append or failed audit append prevents the transition from
+committing.
+
+After failure:
+
+- No workflow transition row exists.
+- The workflow instance remains in its previous state.
+- The transition sequence is unchanged.
+- No matching outbox event exists.
+- No matching audit event exists.
 
 ## Exclusions
 
-AIOS-047 does not implement:
+This transition operation does not:
 
-- Application command bus
-- Domain event envelope
-- Transactional outbox
-- Execution or execution-attempt models
-- Approvals
-- Retry, timeout, or cancellation policy
-- General idempotency service
-- StartProject orchestration
-- HTTP controllers or frontend workflow controls
+- Publish the outbox message synchronously.
+- Execute provider work.
+- Store raw guard input in transition history.
+- Modify immutable workflow definitions.
+- Bypass authorization or application command policy.
+- Add query-specific columns to `workflow_transitions`.
