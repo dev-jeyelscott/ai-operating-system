@@ -6,6 +6,8 @@ use App\Application\Approvals\Commands\DecideApproval;
 use App\Application\Approvals\Commands\RequestApproval;
 use App\Application\Approvals\Handlers\DecideApprovalHandler;
 use App\Application\Approvals\Handlers\RequestApprovalHandler;
+use App\Application\Projects\Commands\StartProject;
+use App\Application\Projects\Handlers\StartProjectHandler;
 
 return [
 
@@ -22,7 +24,10 @@ return [
 
     'handlers' => [
         RequestApproval::class => RequestApprovalHandler::class,
+
         DecideApproval::class => DecideApprovalHandler::class,
+
+        StartProject::class => StartProjectHandler::class,
     ],
 
 ];

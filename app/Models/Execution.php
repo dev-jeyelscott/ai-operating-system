@@ -28,6 +28,7 @@ use LogicException;
  * @property string $id
  * @property int $project_id
  * @property int|null $workflow_instance_id
+ * @property int|null $project_context_snapshot_id
  * @property string $capability
  * @property string|null $logical_role
  * @property ExecutionStatus $status
@@ -50,12 +51,14 @@ use LogicException;
  * @property CarbonImmutable|null $updated_at
  * @property-read Project $project
  * @property-read WorkflowInstance|null $workflowInstance
+ * @property-read ProjectContextSnapshot|null $projectContextSnapshot
  * @property-read Collection<int, ExecutionAttempt> $attempts
  */
 #[DateFormat('Y-m-d H:i:s.u')]
 #[Fillable([
     'project_id',
     'workflow_instance_id',
+    'project_context_snapshot_id',
     'capability',
     'logical_role',
     'requested_reasoning_level',
@@ -99,6 +102,7 @@ final class Execution extends Model
                 [
                     'project_id',
                     'workflow_instance_id',
+                    'project_context_snapshot_id',
                     'capability',
                     'logical_role',
                     'requested_reasoning_level',
@@ -144,6 +148,18 @@ final class Execution extends Model
     public function workflowInstance(): BelongsTo
     {
         return $this->belongsTo(WorkflowInstance::class);
+    }
+
+    /**
+     * Return the immutable project context used by this execution.
+     *
+     * @return BelongsTo<ProjectContextSnapshot, $this>
+     */
+    public function projectContextSnapshot(): BelongsTo
+    {
+        return $this->belongsTo(
+            ProjectContextSnapshot::class,
+        );
     }
 
     /**
@@ -197,6 +213,9 @@ final class Execution extends Model
     protected function casts(): array
     {
         return [
+            'project_id' => 'integer',
+            'workflow_instance_id' => 'integer',
+            'project_context_snapshot_id' => 'integer',
             'status' => ExecutionStatus::class,
             'requested_reasoning_level' => ReasoningLevel::class,
             'attempt_count' => 'integer',
