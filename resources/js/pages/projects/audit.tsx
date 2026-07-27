@@ -9,6 +9,7 @@ import {
     FileStack,
     RefreshCw,
 } from 'lucide-react';
+import type { ComponentType, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 
 type SelectOption = {
@@ -169,9 +170,9 @@ type Props = {
 };
 
 /**
- * Render the project-scoped execution inspector and audit history.
+ * Render the project-scoped execution inspector and authoritative audit history.
  */
-export default function ProjectAudit({
+export default function ProjectAuditPage({
     organization,
     project,
     auditUrl,
@@ -209,7 +210,7 @@ export default function ProjectAudit({
                         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
                             Inspect authoritative transitions, provider
                             attempts, retry history, safe error details,
-                            immutable artifacts, and execution cost estimates
+                            immutable artifact summaries, and execution costs
                             for {project.name}.
                         </p>
                     </div>
@@ -222,149 +223,14 @@ export default function ProjectAudit({
                     </div>
                 </header>
 
-                <section
-                    aria-labelledby="audit-filters-heading"
-                    className="rounded-xl border bg-card p-5 shadow-sm"
-                >
-                    <h2 id="audit-filters-heading" className="font-semibold">
-                        Timeline filters
-                    </h2>
+                <AuditFilters
+                    auditUrl={auditUrl}
+                    executions={executions}
+                    filters={filters}
+                    filterOptions={filterOptions}
+                />
 
-                    <Form
-                        action={auditUrl}
-                        method="get"
-                        className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
-                    >
-                        <FilterField label="Execution">
-                            <select
-                                name="execution"
-                                defaultValue={filters.execution ?? ''}
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            >
-                                <option value="">All executions</option>
-
-                                {executions.map((execution) => (
-                                    <option
-                                        key={execution.id}
-                                        value={execution.id}
-                                    >
-                                        {humanize(execution.capability)} ·{' '}
-                                        {execution.id.slice(-8)}
-                                    </option>
-                                ))}
-                            </select>
-                        </FilterField>
-
-                        <FilterField label="Event type">
-                            <select
-                                name="event_type"
-                                defaultValue={filters.eventType ?? ''}
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            >
-                                <option value="">All event types</option>
-
-                                {filterOptions.eventTypes.map((option) => (
-                                    <option
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </FilterField>
-
-                        <FilterField label="Subject type">
-                            <select
-                                name="subject_type"
-                                defaultValue={filters.subjectType ?? ''}
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            >
-                                <option value="">All subject types</option>
-
-                                {filterOptions.subjectTypes.map((option) => (
-                                    <option
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </FilterField>
-
-                        <FilterField label="Subject identifier">
-                            <input
-                                name="subject_id"
-                                defaultValue={filters.subjectId ?? ''}
-                                maxLength={191}
-                                placeholder="Optional subject ID"
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            />
-                        </FilterField>
-
-                        <FilterField label="Correlation identifier">
-                            <input
-                                name="correlation_id"
-                                defaultValue={filters.correlationId ?? ''}
-                                maxLength={128}
-                                placeholder="Trace one request"
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            />
-                        </FilterField>
-
-                        <FilterField label="Causation identifier">
-                            <input
-                                name="causation_id"
-                                defaultValue={filters.causationId ?? ''}
-                                maxLength={128}
-                                placeholder="Trace one cause"
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            />
-                        </FilterField>
-
-                        <FilterField label="Order">
-                            <select
-                                name="order"
-                                defaultValue={filters.order}
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            >
-                                <option value="newest_first">
-                                    Newest first
-                                </option>
-                                <option value="oldest_first">
-                                    Oldest first
-                                </option>
-                            </select>
-                        </FilterField>
-
-                        <FilterField label="Events per page">
-                            <select
-                                name="per_page"
-                                defaultValue={String(filters.perPage)}
-                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                            >
-                                <option value="10">10</option>
-                                <option value="25">25</option>
-                                <option value="50">50</option>
-                                <option value="100">100</option>
-                            </select>
-                        </FilterField>
-
-                        <div className="flex flex-wrap items-end gap-2 md:col-span-2 xl:col-span-4">
-                            <Button type="submit">
-                                <Activity aria-hidden="true" />
-                                Apply filters
-                            </Button>
-
-                            <Button asChild variant="outline">
-                                <Link href={auditUrl}>Clear filters</Link>
-                            </Button>
-                        </div>
-                    </Form>
-                </section>
-
-                <section className="grid gap-6 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,2fr)]">
+                <section className="grid gap-6 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,2fr)]">
                     <aside
                         aria-labelledby="recent-executions-heading"
                         className="rounded-xl border bg-card p-5 shadow-sm"
@@ -377,6 +243,7 @@ export default function ProjectAudit({
                                 >
                                     Recent executions
                                 </h2>
+
                                 <p className="mt-1 text-sm text-muted-foreground">
                                     Latest 25 project executions
                                 </p>
@@ -395,88 +262,18 @@ export default function ProjectAudit({
                             />
                         ) : (
                             <ul className="mt-4 space-y-3">
-                                {executions.map((execution) => {
-                                    const isSelected =
-                                        selectedExecution?.id === execution.id;
-
-                                    return (
-                                        <li key={execution.id}>
-                                            <Link
-                                                href={buildTimelineUrl(
-                                                    auditUrl,
-                                                    filters,
-                                                    {
-                                                        execution: execution.id,
-                                                        cursor: null,
-                                                    },
-                                                )}
-                                                preserveScroll
-                                                className={[
-                                                    'block rounded-lg border p-4 transition-colors',
-                                                    isSelected
-                                                        ? 'border-primary bg-primary/5'
-                                                        : 'hover:bg-muted/50',
-                                                ].join(' ')}
-                                            >
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <p className="truncate font-medium">
-                                                            {humanize(
-                                                                execution.capability,
-                                                            )}
-                                                        </p>
-                                                        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                                                            {execution.id}
-                                                        </p>
-                                                    </div>
-
-                                                    <StatusBadge
-                                                        status={
-                                                            execution.status
-                                                                .value
-                                                        }
-                                                    >
-                                                        {execution.status.label}
-                                                    </StatusBadge>
-                                                </div>
-
-                                                <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                                                    <Metric
-                                                        label="Attempts"
-                                                        value={String(
-                                                            execution.attemptCount,
-                                                        )}
-                                                    />
-                                                    <Metric
-                                                        label="Retries"
-                                                        value={String(
-                                                            execution.retryCount,
-                                                        )}
-                                                    />
-                                                    <Metric
-                                                        label="Artifacts"
-                                                        value={String(
-                                                            execution.artifactCount,
-                                                        )}
-                                                    />
-                                                    <Metric
-                                                        label="Estimated"
-                                                        value={formatCost(
-                                                            execution.estimatedCost,
-                                                            execution.costCurrency,
-                                                        )}
-                                                    />
-                                                </dl>
-
-                                                {execution.isSimulated && (
-                                                    <p className="mt-3 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground">
-                                                        Simulated and unverified
-                                                    </p>
-                                                )}
-                                            </Link>
-                                        </li>
-                                    );
-                                })}
+                                {executions.map((execution) => (
+                                    <ExecutionListItem
+                                        key={execution.id}
+                                        execution={execution}
+                                        isSelected={
+                                            selectedExecution?.id ===
+                                            execution.id
+                                        }
+                                        auditUrl={auditUrl}
+                                        filters={filters}
+                                    />
+                                ))}
                             </ul>
                         )}
                     </aside>
@@ -485,17 +282,23 @@ export default function ProjectAudit({
                         aria-labelledby="execution-inspector-heading"
                         className="rounded-xl border bg-card p-5 shadow-sm"
                     >
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                                <h2
-                                    id="execution-inspector-heading"
-                                    className="font-semibold"
-                                >
-                                    Execution inspector
-                                </h2>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h2
+                                        id="execution-inspector-heading"
+                                        className="font-semibold"
+                                    >
+                                        Execution inspector
+                                    </h2>
+
+                                    {selectedExecution?.isSimulated ===
+                                        true && <SimulationBadge />}
+                                </div>
+
                                 <p className="mt-1 text-sm text-muted-foreground">
                                     Attempts, retries, errors, costs, and
-                                    immutable artifacts
+                                    immutable artifact summaries
                                 </p>
                             </div>
 
@@ -516,183 +319,299 @@ export default function ProjectAudit({
                     </section>
                 </section>
 
-                <section
-                    aria-labelledby="audit-timeline-heading"
-                    className="rounded-xl border bg-card p-5 shadow-sm"
-                >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h2
-                                id="audit-timeline-heading"
-                                className="font-semibold"
-                            >
-                                Authoritative audit timeline
-                            </h2>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Ordered by immutable sequence and event
-                                timestamp
-                            </p>
-                        </div>
-
-                        <p className="text-sm text-muted-foreground">
-                            {timeline.data.length} event
-                            {timeline.data.length === 1 ? '' : 's'} on this page
-                        </p>
-                    </div>
-
-                    {timeline.data.length === 0 ? (
-                        <EmptyState
-                            title="No matching audit events"
-                            description="Clear or change the selected filters."
-                        />
-                    ) : (
-                        <ol className="mt-6 space-y-4">
-                            {timeline.data.map((event) => (
-                                <li
-                                    key={event.eventId}
-                                    className="relative rounded-lg border p-4"
-                                >
-                                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                        <div>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <StatusBadge
-                                                    status={
-                                                        event.eventType.value
-                                                    }
-                                                >
-                                                    {event.eventType.label}
-                                                </StatusBadge>
-
-                                                <span className="font-mono text-xs text-muted-foreground">
-                                                    Sequence {event.sequence}
-                                                </span>
-                                            </div>
-
-                                            <p className="mt-3 text-sm">
-                                                <span className="font-medium">
-                                                    {humanize(event.actor.type)}
-                                                </span>{' '}
-                                                <span className="text-muted-foreground">
-                                                    {event.actor.id}
-                                                </span>
-                                            </p>
-
-                                            <p className="mt-1 text-sm text-muted-foreground">
-                                                Subject:{' '}
-                                                {humanize(event.subject.type)} ·{' '}
-                                                {event.subject.id}
-                                            </p>
-                                        </div>
-
-                                        <time
-                                            dateTime={event.occurredAt}
-                                            className="text-sm text-muted-foreground"
-                                        >
-                                            {formatDate(event.occurredAt)}
-                                        </time>
-                                    </div>
-
-                                    <details className="mt-4 rounded-md bg-muted/40 p-3 text-xs">
-                                        <summary className="cursor-pointer font-medium">
-                                            Trace identifiers
-                                        </summary>
-
-                                        <dl className="mt-3 grid gap-3 md:grid-cols-2">
-                                            <Metric
-                                                label="Event ID"
-                                                value={event.eventId}
-                                                mono
-                                            />
-                                            <Metric
-                                                label="Execution ID"
-                                                value={
-                                                    event.executionId ?? 'None'
-                                                }
-                                                mono
-                                            />
-                                            <Metric
-                                                label="Correlation ID"
-                                                value={
-                                                    event.correlationId ??
-                                                    'None'
-                                                }
-                                                mono
-                                            />
-                                            <Metric
-                                                label="Causation ID"
-                                                value={
-                                                    event.causationId ?? 'None'
-                                                }
-                                                mono
-                                            />
-                                            <Metric
-                                                label="Schema version"
-                                                value={String(
-                                                    event.schemaVersion,
-                                                )}
-                                            />
-                                        </dl>
-                                    </details>
-                                </li>
-                            ))}
-                        </ol>
-                    )}
-
-                    <nav
-                        aria-label="Audit timeline pagination"
-                        className="mt-6 flex items-center justify-between gap-3"
-                    >
-                        {timeline.previousCursor !== null ? (
-                            <Button asChild variant="outline">
-                                <Link
-                                    href={buildTimelineUrl(auditUrl, filters, {
-                                        cursor: timeline.previousCursor,
-                                    })}
-                                    preserveScroll
-                                >
-                                    Previous
-                                </Link>
-                            </Button>
-                        ) : (
-                            <span />
-                        )}
-
-                        {timeline.nextCursor !== null && (
-                            <Button asChild variant="outline">
-                                <Link
-                                    href={buildTimelineUrl(auditUrl, filters, {
-                                        cursor: timeline.nextCursor,
-                                    })}
-                                    preserveScroll
-                                >
-                                    Next
-                                </Link>
-                            </Button>
-                        )}
-                    </nav>
-                </section>
+                <AuditTimeline
+                    auditUrl={auditUrl}
+                    filters={filters}
+                    timeline={timeline}
+                />
             </main>
         </>
     );
 }
 
 /**
- * Render the selected execution's attempts and artifacts.
+ * Render the complete audit filter form.
+ */
+function AuditFilters({
+    auditUrl,
+    executions,
+    filters,
+    filterOptions,
+}: {
+    auditUrl: string;
+    executions: ExecutionSummary[];
+    filters: Filters;
+    filterOptions: Props['filterOptions'];
+}) {
+    return (
+        <section
+            aria-labelledby="audit-filters-heading"
+            className="rounded-xl border bg-card p-5 shadow-sm"
+        >
+            <h2 id="audit-filters-heading" className="font-semibold">
+                Timeline filters
+            </h2>
+
+            <Form
+                action={auditUrl}
+                method="get"
+                className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+            >
+                <FilterField label="Execution">
+                    <select
+                        name="execution"
+                        defaultValue={filters.execution ?? ''}
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    >
+                        <option value="">All executions</option>
+
+                        {executions.map((execution) => (
+                            <option key={execution.id} value={execution.id}>
+                                {humanize(execution.capability)} ·{' '}
+                                {execution.id.slice(-8)}
+                            </option>
+                        ))}
+                    </select>
+                </FilterField>
+
+                <FilterField label="Event type">
+                    <select
+                        name="event_type"
+                        defaultValue={filters.eventType ?? ''}
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    >
+                        <option value="">All event types</option>
+
+                        {filterOptions.eventTypes.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </FilterField>
+
+                <FilterField label="Subject type">
+                    <select
+                        name="subject_type"
+                        defaultValue={filters.subjectType ?? ''}
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    >
+                        <option value="">All subject types</option>
+
+                        {filterOptions.subjectTypes.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </FilterField>
+
+                <FilterField label="Subject ID">
+                    <input
+                        name="subject_id"
+                        defaultValue={filters.subjectId ?? ''}
+                        maxLength={191}
+                        placeholder="Optional subject ID"
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    />
+                </FilterField>
+
+                <FilterField label="Correlation ID">
+                    <input
+                        name="correlation_id"
+                        defaultValue={filters.correlationId ?? ''}
+                        maxLength={128}
+                        placeholder="Trace one request"
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    />
+                </FilterField>
+
+                <FilterField label="Causation ID">
+                    <input
+                        name="causation_id"
+                        defaultValue={filters.causationId ?? ''}
+                        maxLength={128}
+                        placeholder="Trace one cause"
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    />
+                </FilterField>
+
+                <FilterField label="Order">
+                    <select
+                        name="order"
+                        defaultValue={filters.order}
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    >
+                        <option value="newest_first">Newest first</option>
+                        <option value="oldest_first">Oldest first</option>
+                    </select>
+                </FilterField>
+
+                <FilterField label="Events per page">
+                    <select
+                        name="per_page"
+                        defaultValue={String(filters.perPage)}
+                        className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    >
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </FilterField>
+
+                <div className="flex flex-wrap items-end gap-2 md:col-span-2 xl:col-span-4">
+                    <Button type="submit">
+                        <Activity aria-hidden="true" />
+                        Apply filters
+                    </Button>
+
+                    <Button asChild variant="outline">
+                        <Link href={auditUrl}>Clear filters</Link>
+                    </Button>
+                </div>
+            </Form>
+        </section>
+    );
+}
+
+/**
+ * Render one selectable execution summary.
+ */
+function ExecutionListItem({
+    execution,
+    isSelected,
+    auditUrl,
+    filters,
+}: {
+    execution: ExecutionSummary;
+    isSelected: boolean;
+    auditUrl: string;
+    filters: Filters;
+}) {
+    return (
+        <li>
+            <Link
+                href={buildTimelineUrl(auditUrl, filters, {
+                    execution: execution.id,
+                    cursor: null,
+                })}
+                preserveScroll
+                aria-current={isSelected ? 'page' : undefined}
+                className={[
+                    'block rounded-lg border p-4 transition-colors',
+                    isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'hover:bg-muted/50',
+                ].join(' ')}
+            >
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="truncate font-medium">
+                            {humanize(execution.capability)}
+                        </p>
+
+                        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                            {execution.id}
+                        </p>
+                    </div>
+
+                    <StatusBadge status={execution.status.value}>
+                        {execution.status.label}
+                    </StatusBadge>
+                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <Metric
+                        label="Provider"
+                        value={humanize(
+                            execution.latestProvider ?? 'not assigned',
+                        )}
+                    />
+
+                    <Metric
+                        label="Reasoning"
+                        value={humanize(execution.requestedReasoning)}
+                    />
+
+                    <Metric
+                        label="Attempts"
+                        value={String(execution.attemptCount)}
+                    />
+
+                    <Metric
+                        label="Retries"
+                        value={String(execution.retryCount)}
+                    />
+
+                    <Metric
+                        label="Errors"
+                        value={String(execution.errorCount)}
+                    />
+
+                    <Metric
+                        label="Artifacts"
+                        value={String(execution.artifactCount)}
+                    />
+
+                    <Metric
+                        label="Estimated cost"
+                        value={formatCost(
+                            execution.estimatedCost,
+                            execution.costCurrency,
+                        )}
+                    />
+
+                    <Metric
+                        label="Actual cost"
+                        value={formatCost(
+                            execution.actualCost,
+                            execution.costCurrency,
+                        )}
+                    />
+                </dl>
+
+                {execution.isSimulated && (
+                    <div className="mt-4">
+                        <SimulationBadge />
+                    </div>
+                )}
+            </Link>
+        </li>
+    );
+}
+
+/**
+ * Render the selected execution's status, attempts, and artifacts.
  */
 function ExecutionInspector({ execution }: { execution: SelectedExecution }) {
     return (
         <div className="mt-5 space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <SummaryCard
+                    icon={Activity}
+                    label="Status"
+                    value={execution.status.label}
+                />
+
                 <SummaryCard
                     icon={Clock3}
                     label="Attempts"
                     value={`${execution.attemptCount}/${execution.retryLimit + 1}`}
                 />
+
                 <SummaryCard
                     icon={RefreshCw}
                     label="Retries"
                     value={String(execution.retryCount)}
                 />
+
+                <SummaryCard
+                    icon={AlertTriangle}
+                    label="Errors"
+                    value={String(execution.errorCount)}
+                />
+
                 <SummaryCard
                     icon={CircleDollarSign}
                     label="Estimated cost"
@@ -701,235 +620,474 @@ function ExecutionInspector({ execution }: { execution: SelectedExecution }) {
                         execution.costCurrency,
                     )}
                 />
+
                 <SummaryCard
-                    icon={AlertTriangle}
-                    label="Errors"
-                    value={String(execution.errorCount)}
+                    icon={CircleDollarSign}
+                    label="Actual cost"
+                    value={formatCost(
+                        execution.actualCost,
+                        execution.costCurrency,
+                    )}
                 />
             </div>
 
-            <dl className="grid gap-4 rounded-lg border p-4 text-sm md:grid-cols-2">
+            <dl className="grid gap-4 rounded-lg border p-4 text-sm md:grid-cols-2 xl:grid-cols-3">
                 <Metric label="Execution ID" value={execution.id} mono />
+
                 <Metric
                     label="Capability"
                     value={humanize(execution.capability)}
                 />
+
                 <Metric
                     label="Logical role"
                     value={humanize(execution.logicalRole ?? 'unassigned')}
                 />
+
+                <Metric
+                    label="Provider"
+                    value={humanize(execution.latestProvider ?? 'not assigned')}
+                />
+
                 <Metric
                     label="Requested reasoning"
                     value={humanize(execution.requestedReasoning)}
                 />
+
                 <Metric
                     label="Correlation ID"
                     value={execution.correlationId}
                     mono
                 />
+
                 <Metric
                     label="Created"
                     value={formatDate(execution.createdAt)}
                 />
+
+                <Metric
+                    label="Started"
+                    value={formatDate(execution.startedAt)}
+                />
+
+                <Metric
+                    label="Finished"
+                    value={formatDate(execution.finishedAt)}
+                />
             </dl>
 
-            <div>
-                <h3 className="font-medium">Provider attempts</h3>
+            <AttemptHistory attempts={execution.attempts} />
+            <ArtifactList artifacts={execution.artifacts} />
+        </div>
+    );
+}
 
-                {execution.attempts.length === 0 ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                        No provider attempts have been recorded.
-                    </p>
-                ) : (
-                    <ol className="mt-3 space-y-3">
-                        {execution.attempts.map((attempt) => (
-                            <li
-                                key={attempt.id}
-                                className="rounded-lg border p-4"
-                            >
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div>
-                                        <p className="font-medium">
-                                            Attempt {attempt.attemptNumber}
-                                        </p>
-                                        <p className="mt-1 text-sm text-muted-foreground">
-                                            {humanize(attempt.provider)} ·{' '}
-                                            {humanize(
-                                                attempt.effectiveReasoning,
-                                            )}{' '}
-                                            reasoning
-                                        </p>
-                                    </div>
+/**
+ * Render every immutable provider attempt for the selected execution.
+ */
+function AttemptHistory({ attempts }: { attempts: ExecutionAttempt[] }) {
+    return (
+        <section aria-labelledby="attempt-history-heading">
+            <h3 id="attempt-history-heading" className="font-medium">
+                Attempt history
+            </h3>
+
+            {attempts.length === 0 ? (
+                <EmptyState
+                    title="No attempts recorded"
+                    description="No provider attempt has been recorded for this execution."
+                />
+            ) : (
+                <ol className="mt-3 space-y-3">
+                    {attempts.map((attempt) => (
+                        <li key={attempt.id} className="rounded-lg border p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p className="font-medium">
+                                        Attempt {attempt.attemptNumber}
+                                    </p>
+
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {humanize(attempt.provider)} ·{' '}
+                                        {humanize(attempt.effectiveReasoning)}{' '}
+                                        reasoning
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {attempt.simulationMode !== null && (
+                                        <SimulationBadge />
+                                    )}
 
                                     <StatusBadge status={attempt.status.value}>
                                         {attempt.status.label}
                                     </StatusBadge>
                                 </div>
+                            </div>
 
-                                <dl className="mt-4 grid gap-3 text-sm md:grid-cols-3">
-                                    <Metric
-                                        label="Estimated cost"
-                                        value={formatCost(
-                                            attempt.estimatedCost,
-                                            attempt.costCurrency,
-                                        )}
-                                    />
-                                    <Metric
-                                        label="Actual cost"
-                                        value={formatCost(
-                                            attempt.actualCost,
-                                            attempt.costCurrency,
-                                        )}
-                                    />
-                                    <Metric
-                                        label="Confidence"
-                                        value={
-                                            attempt.confidence === null
-                                                ? 'Not reported'
-                                                : `${(
-                                                      Number(
-                                                          attempt.confidence,
-                                                      ) * 100
-                                                  ).toFixed(1)}%`
-                                        }
-                                    />
-                                    <Metric
-                                        label="Reported state"
-                                        value={humanize(
-                                            attempt.reportedState ??
-                                                'not reported',
-                                        )}
-                                    />
-                                    <Metric
-                                        label="Observed state"
-                                        value={humanize(
-                                            attempt.observedState ??
-                                                'not observed',
-                                        )}
-                                    />
-                                    <Metric
-                                        label="Actual state"
-                                        value={humanize(
-                                            attempt.actualState ?? 'unverified',
-                                        )}
-                                    />
-                                </dl>
+                            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
+                                <Metric
+                                    label="Requested reasoning"
+                                    value={humanize(attempt.requestedReasoning)}
+                                />
 
-                                {attempt.simulationMode !== null && (
-                                    <p className="mt-4 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                                        Simulation mode:{' '}
-                                        {humanize(attempt.simulationMode)}.
-                                        Actual state remains unverified.
+                                <Metric
+                                    label="Effective reasoning"
+                                    value={humanize(attempt.effectiveReasoning)}
+                                />
+
+                                <Metric
+                                    label="Reasoning source"
+                                    value={humanize(attempt.reasoningSource)}
+                                />
+
+                                <Metric
+                                    label="Estimated cost"
+                                    value={formatCost(
+                                        attempt.estimatedCost,
+                                        attempt.costCurrency,
+                                    )}
+                                />
+
+                                <Metric
+                                    label="Actual cost"
+                                    value={formatCost(
+                                        attempt.actualCost,
+                                        attempt.costCurrency,
+                                    )}
+                                />
+
+                                <Metric
+                                    label="Confidence"
+                                    value={formatConfidence(attempt.confidence)}
+                                />
+
+                                <Metric
+                                    label="Reported state"
+                                    value={humanize(
+                                        attempt.reportedState ?? 'not reported',
+                                    )}
+                                />
+
+                                <Metric
+                                    label="Observed state"
+                                    value={humanize(
+                                        attempt.observedState ?? 'not observed',
+                                    )}
+                                />
+
+                                <Metric
+                                    label="Actual state"
+                                    value={humanize(
+                                        attempt.actualState ?? 'unverified',
+                                    )}
+                                />
+
+                                <Metric
+                                    label="Started"
+                                    value={formatDate(attempt.startedAt)}
+                                />
+
+                                <Metric
+                                    label="Finished"
+                                    value={formatDate(attempt.finishedAt)}
+                                />
+
+                                <Metric
+                                    label="Heartbeat"
+                                    value={formatDate(attempt.heartbeatAt)}
+                                />
+                            </dl>
+
+                            {attempt.simulationMode !== null && (
+                                <p className="mt-4 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                                    Simulation mode:{' '}
+                                    {humanize(attempt.simulationMode)}. Actual
+                                    state remains unverified.
+                                </p>
+                            )}
+
+                            {attempt.error !== null && (
+                                <div
+                                    role="alert"
+                                    className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3"
+                                >
+                                    <p className="font-medium text-destructive">
+                                        {attempt.error.code ??
+                                            'Execution error'}
                                     </p>
-                                )}
 
-                                {attempt.error !== null && (
-                                    <div
-                                        role="alert"
-                                        className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3"
-                                    >
-                                        <p className="font-medium text-destructive">
-                                            {attempt.error.code ??
-                                                'Execution error'}
-                                        </p>
-                                        <p className="mt-1 text-sm text-muted-foreground">
-                                            {attempt.error.message ??
-                                                'No safe error message was recorded.'}
-                                        </p>
-                                        <p className="mt-2 text-xs text-muted-foreground">
-                                            Retryable:{' '}
-                                            {attempt.error.retryable === true
-                                                ? 'Yes'
-                                                : attempt.error.retryable ===
-                                                    false
-                                                  ? 'No'
-                                                  : 'Unknown'}
-                                            {attempt.error.retryDelaySeconds !==
-                                                null &&
-                                                ` · Delay ${attempt.error.retryDelaySeconds}s`}
-                                        </p>
-                                    </div>
-                                )}
-                            </li>
-                        ))}
-                    </ol>
-                )}
-            </div>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {attempt.error.message ??
+                                            'No safe error message was recorded.'}
+                                    </p>
 
-            <div>
-                <h3 className="font-medium">Artifacts</h3>
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        Retryable:{' '}
+                                        {attempt.error.retryable === true
+                                            ? 'Yes'
+                                            : attempt.error.retryable === false
+                                              ? 'No'
+                                              : 'Unknown'}
+                                        {attempt.error.retryDelaySeconds !==
+                                            null &&
+                                            ` · Delay ${attempt.error.retryDelaySeconds}s`}
+                                    </p>
+                                </div>
+                            )}
+                        </li>
+                    ))}
+                </ol>
+            )}
+        </section>
+    );
+}
 
-                {execution.artifacts.length === 0 ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                        No artifacts have been recorded for this execution.
-                    </p>
-                ) : (
-                    <ul className="mt-3 grid gap-3 lg:grid-cols-2">
-                        {execution.artifacts.map((artifact) => (
-                            <li
-                                key={artifact.id}
-                                className="rounded-lg border p-4"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="font-medium">
-                                            {artifact.name}
-                                        </p>
-                                        <p className="mt-1 text-sm text-muted-foreground">
-                                            {humanize(artifact.type)} ·{' '}
-                                            {humanize(artifact.provider)}
-                                        </p>
-                                    </div>
+/**
+ * Render safe artifact summaries without exposing raw artifact bodies.
+ */
+function ArtifactList({ artifacts }: { artifacts: ExecutionArtifact[] }) {
+    return (
+        <section aria-labelledby="artifact-list-heading">
+            <h3 id="artifact-list-heading" className="font-medium">
+                Artifacts
+            </h3>
+
+            {artifacts.length === 0 ? (
+                <EmptyState
+                    title="No artifacts recorded"
+                    description="No artifacts have been recorded for this execution."
+                />
+            ) : (
+                <ul className="mt-3 grid gap-3 lg:grid-cols-2">
+                    {artifacts.map((artifact) => (
+                        <li key={artifact.id} className="rounded-lg border p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p className="font-medium">
+                                        {artifact.name}
+                                    </p>
+
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {humanize(artifact.type)} ·{' '}
+                                        {humanize(artifact.provider)}
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {artifact.isSimulated && (
+                                        <SimulationBadge />
+                                    )}
 
                                     <StatusBadge status={artifact.actualState}>
                                         {humanize(artifact.actualState)}
                                     </StatusBadge>
                                 </div>
+                            </div>
 
-                                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                                <Metric
+                                    label="Evidence records"
+                                    value={String(artifact.evidenceCount)}
+                                />
+
+                                <Metric
+                                    label="Evidence required"
+                                    value={
+                                        artifact.evidenceStillRequired
+                                            ? 'Yes'
+                                            : 'No'
+                                    }
+                                />
+
+                                <Metric
+                                    label="Created"
+                                    value={formatDate(artifact.createdAt)}
+                                />
+
+                                <Metric
+                                    label="Confidence"
+                                    value={formatConfidence(
+                                        artifact.confidence,
+                                    )}
+                                />
+                            </dl>
+
+                            {artifact.isSimulated && (
+                                <p className="mt-4 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                    This simulated artifact is not verified
+                                    implementation, CI, QA, merge, or deployment
+                                    evidence.
+                                </p>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    );
+}
+
+/**
+ * Render the authoritative, cursor-paginated audit timeline.
+ */
+function AuditTimeline({
+    auditUrl,
+    filters,
+    timeline,
+}: {
+    auditUrl: string;
+    filters: Filters;
+    timeline: Props['timeline'];
+}) {
+    return (
+        <section
+            aria-labelledby="audit-timeline-heading"
+            className="rounded-xl border bg-card p-5 shadow-sm"
+        >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 id="audit-timeline-heading" className="font-semibold">
+                        Authoritative audit timeline
+                    </h2>
+
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Ordered by immutable sequence and event timestamp
+                    </p>
+                </div>
+
+                <p className="text-sm text-muted-foreground">
+                    {timeline.data.length} event
+                    {timeline.data.length === 1 ? '' : 's'} on this page
+                </p>
+            </div>
+
+            {timeline.data.length === 0 ? (
+                <EmptyState
+                    title="No matching audit events"
+                    description="Clear or change the selected filters."
+                />
+            ) : (
+                <ol className="mt-6 space-y-4">
+                    {timeline.data.map((event) => (
+                        <li
+                            key={event.eventId}
+                            className="rounded-lg border p-4"
+                        >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <StatusBadge
+                                            status={event.eventType.value}
+                                        >
+                                            {event.eventType.label}
+                                        </StatusBadge>
+
+                                        <span className="font-mono text-xs text-muted-foreground">
+                                            Sequence {event.sequence}
+                                        </span>
+                                    </div>
+
+                                    <p className="mt-3 text-sm">
+                                        <span className="font-medium">
+                                            {humanize(event.actor.type)}
+                                        </span>{' '}
+                                        <span className="text-muted-foreground">
+                                            {event.actor.id}
+                                        </span>
+                                    </p>
+
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Subject: {humanize(event.subject.type)}{' '}
+                                        · {event.subject.id}
+                                    </p>
+                                </div>
+
+                                <time
+                                    dateTime={event.occurredAt}
+                                    className="text-sm text-muted-foreground"
+                                >
+                                    {formatDate(event.occurredAt)}
+                                </time>
+                            </div>
+
+                            <details className="mt-4 rounded-md bg-muted/40 p-3 text-xs">
+                                <summary className="cursor-pointer font-medium">
+                                    Trace identifiers
+                                </summary>
+
+                                <dl className="mt-3 grid gap-3 md:grid-cols-2">
                                     <Metric
-                                        label="Evidence records"
-                                        value={String(artifact.evidenceCount)}
+                                        label="Event ID"
+                                        value={event.eventId}
+                                        mono
                                     />
+
                                     <Metric
-                                        label="Evidence required"
-                                        value={
-                                            artifact.evidenceStillRequired
-                                                ? 'Yes'
-                                                : 'No'
-                                        }
+                                        label="Execution ID"
+                                        value={event.executionId ?? 'None'}
+                                        mono
                                     />
+
                                     <Metric
-                                        label="Created"
-                                        value={formatDate(artifact.createdAt)}
+                                        label="Correlation ID"
+                                        value={event.correlationId ?? 'None'}
+                                        mono
                                     />
+
                                     <Metric
-                                        label="Confidence"
-                                        value={
-                                            artifact.confidence === null
-                                                ? 'Not reported'
-                                                : `${(
-                                                      Number(
-                                                          artifact.confidence,
-                                                      ) * 100
-                                                  ).toFixed(1)}%`
-                                        }
+                                        label="Causation ID"
+                                        value={event.causationId ?? 'None'}
+                                        mono
+                                    />
+
+                                    <Metric
+                                        label="Schema version"
+                                        value={String(event.schemaVersion)}
                                     />
                                 </dl>
+                            </details>
+                        </li>
+                    ))}
+                </ol>
+            )}
 
-                                {artifact.isSimulated && (
-                                    <p className="mt-4 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                                        Simulated artifact. This is not verified
-                                        implementation, CI, QA, merge, or
-                                        deployment evidence.
-                                    </p>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
-        </div>
+            {(timeline.previousCursor !== null ||
+                timeline.nextCursor !== null) && (
+                <nav
+                    aria-label="Audit timeline pagination"
+                    className="mt-6 flex items-center justify-between gap-3"
+                >
+                    {timeline.previousCursor !== null ? (
+                        <Button asChild variant="outline">
+                            <Link
+                                href={buildTimelineUrl(auditUrl, filters, {
+                                    cursor: timeline.previousCursor,
+                                })}
+                                preserveScroll
+                            >
+                                Previous
+                            </Link>
+                        </Button>
+                    ) : (
+                        <span />
+                    )}
+
+                    {timeline.nextCursor !== null && (
+                        <Button asChild variant="outline">
+                            <Link
+                                href={buildTimelineUrl(auditUrl, filters, {
+                                    cursor: timeline.nextCursor,
+                                })}
+                                preserveScroll
+                            >
+                                Next
+                            </Link>
+                        </Button>
+                    )}
+                </nav>
+            )}
+        </section>
     );
 }
 
@@ -941,7 +1099,7 @@ function FilterField({
     children,
 }: {
     label: string;
-    children: React.ReactNode;
+    children: ReactNode;
 }) {
     return (
         <label className="grid gap-2 text-sm font-medium">
@@ -959,7 +1117,10 @@ function SummaryCard({
     label,
     value,
 }: {
-    icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+    icon: ComponentType<{
+        className?: string;
+        'aria-hidden'?: boolean;
+    }>;
     label: string;
     value: string;
 }) {
@@ -967,6 +1128,7 @@ function SummaryCard({
         <div className="rounded-lg border p-4">
             <div className="flex items-center gap-2 text-muted-foreground">
                 <Icon aria-hidden={true} className="size-4" />
+
                 <span className="text-xs font-medium tracking-wide uppercase">
                     {label}
                 </span>
@@ -992,6 +1154,7 @@ function Metric({
     return (
         <div className="min-w-0">
             <dt className="text-muted-foreground">{label}</dt>
+
             <dd
                 className={[
                     'mt-1 font-medium break-words',
@@ -1005,6 +1168,17 @@ function Metric({
 }
 
 /**
+ * Render a persistent non-deception indicator for simulation output.
+ */
+function SimulationBadge() {
+    return (
+        <span className="inline-flex rounded-full border border-dashed border-amber-600/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+            Simulated / Unverified
+        </span>
+    );
+}
+
+/**
  * Render one semantic status badge.
  */
 function StatusBadge({
@@ -1012,23 +1186,25 @@ function StatusBadge({
     children,
 }: {
     status: string;
-    children: React.ReactNode;
+    children: ReactNode;
 }) {
+    const normalizedStatus = status.toLowerCase();
+
     const destructive =
-        status.includes('failed') ||
-        status.includes('rejected') ||
-        status.includes('cancelled') ||
-        status.includes('timed_out');
+        normalizedStatus.includes('failed') ||
+        normalizedStatus.includes('rejected') ||
+        normalizedStatus.includes('cancelled') ||
+        normalizedStatus.includes('timed_out');
 
     const active =
-        status.includes('running') ||
-        status.includes('started') ||
-        status.includes('scheduled');
+        normalizedStatus.includes('running') ||
+        normalizedStatus.includes('started') ||
+        normalizedStatus.includes('scheduled');
 
     const successful =
-        status.includes('completed') ||
-        status.includes('granted') ||
-        status.includes('succeeded');
+        normalizedStatus.includes('completed') ||
+        normalizedStatus.includes('granted') ||
+        normalizedStatus.includes('succeeded');
 
     return (
         <span
@@ -1049,7 +1225,7 @@ function StatusBadge({
 }
 
 /**
- * Render an accessible empty result state.
+ * Render an accessible empty result state with a semantic heading.
  */
 function EmptyState({
     title,
@@ -1059,8 +1235,12 @@ function EmptyState({
     description: string;
 }) {
     return (
-        <div className="mt-5 rounded-lg border border-dashed p-8 text-center">
-            <p className="font-medium">{title}</p>
+        <div
+            role="status"
+            className="mt-5 rounded-lg border border-dashed p-8 text-center"
+        >
+            <h3 className="font-medium">{title}</h3>
+
             <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         </div>
     );
@@ -1136,7 +1316,24 @@ function formatDate(value: string | null): string {
 }
 
 /**
- * Format nullable decimal execution costs using their persisted currency.
+ * Format a nullable confidence ratio as a percentage.
+ */
+function formatConfidence(value: string | null): string {
+    if (value === null) {
+        return 'Not reported';
+    }
+
+    const confidence = Number(value);
+
+    if (!Number.isFinite(confidence)) {
+        return value;
+    }
+
+    return `${(confidence * 100).toFixed(1)}%`;
+}
+
+/**
+ * Format nullable execution costs using their persisted currency.
  */
 function formatCost(value: string | null, currency: string | null): string {
     if (value === null) {
