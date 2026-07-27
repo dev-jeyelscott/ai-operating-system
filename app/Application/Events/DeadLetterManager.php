@@ -7,6 +7,7 @@ namespace App\Application\Events;
 use App\Application\Audit\RecordAuditEvent;
 use App\Application\Events\Contracts\OutboxTransport;
 use App\Application\Events\Data\DeadLetterRecord;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Audit\AuditSubjectType;
@@ -15,7 +16,6 @@ use App\Jobs\ConsumeOutboxMessage;
 use App\Models\OutboxMessage;
 use Carbon\CarbonImmutable;
 use Illuminate\Queue\Failed\FailedJobProviderInterface;
-use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use JsonException;
 use RuntimeException;
@@ -35,10 +35,10 @@ final readonly class DeadLetterManager
     private const MAX_REASON_LENGTH = 1000;
 
     /**
-     * Inject the queue failure provider, allowlisted transport, and audit
-     * recorder.
+     * Inject transaction, queue failure, transport, and audit services.
      */
     public function __construct(
+        private TransactionManager $transactions,
         private FailedJobProviderInterface $failedJobs,
         private OutboxTransport $transport,
         private RecordAuditEvent $audit,
@@ -250,7 +250,7 @@ final readonly class DeadLetterManager
         string $actorId,
         string $reason,
     ): DeadLetterRecord {
-        return DB::transaction(
+        return $this->transactions->run(
             function () use (
                 $eventId,
                 $actorId,
@@ -281,9 +281,11 @@ final readonly class DeadLetterManager
 
                 $failedAt = $this->deadLetteredAt($message);
                 $previousAttempts = $message->dispatch_attempts;
+
                 $errorType = $this->errorType(
                     $message->last_error,
                 );
+
                 $replayedAt = CarbonImmutable::now();
                 $replayCount = $message->replay_count + 1;
 
@@ -328,7 +330,6 @@ final readonly class DeadLetterManager
                     errorType: $errorType,
                 );
             },
-            attempts: 3,
         );
     }
 

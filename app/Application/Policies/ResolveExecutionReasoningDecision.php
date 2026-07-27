@@ -6,11 +6,11 @@ namespace App\Application\Policies;
 
 use App\Application\Policies\Data\ReasoningResolutionContext;
 use App\Application\Policies\Exceptions\PolicyDecisionConflict;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Policies\ReasoningEscalationReason;
 use App\Models\Execution;
 use App\Models\PolicyDecision;
 use App\Models\ProjectConfiguration;
-use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use JsonException;
 
@@ -20,10 +20,11 @@ use JsonException;
 final readonly class ResolveExecutionReasoningDecision
 {
     /**
-     * Inject the deterministic pure resolver.
+     * Inject the deterministic resolver and application transaction boundary.
      */
     public function __construct(
         private ReasoningResolver $reasoningResolver,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -41,7 +42,7 @@ final readonly class ResolveExecutionReasoningDecision
             );
         }
 
-        return DB::transaction(
+        return $this->transactions->run(
             function () use ($execution, $context): PolicyDecision {
                 /** @var Execution $lockedExecution */
                 $lockedExecution = Execution::query()
@@ -78,7 +79,9 @@ final readonly class ResolveExecutionReasoningDecision
                     projectConfigurationRevision: $configuration?->revision,
                 );
 
-                $inputFingerprint = $this->inputFingerprint($inputSnapshot);
+                $inputFingerprint = $this->inputFingerprint(
+                    $inputSnapshot,
+                );
 
                 /** @var PolicyDecision|null $existingDecision */
                 $existingDecision = PolicyDecision::query()
@@ -121,7 +124,9 @@ final readonly class ResolveExecutionReasoningDecision
                     'reasoning_escalation_reason' => $resolution
                         ->escalationReason,
                     'reasoning_escalation_reasons' => array_map(
-                        static fn (ReasoningEscalationReason $reason): string => $reason->value,
+                        static fn (
+                            ReasoningEscalationReason $reason,
+                        ): string => $reason->value,
                         $resolution->mandatoryEscalationReasons,
                     ),
                     'input_snapshot' => $inputSnapshot,
@@ -132,7 +137,6 @@ final readonly class ResolveExecutionReasoningDecision
 
                 return $decision;
             },
-            attempts: 3,
         );
     }
 
