@@ -134,10 +134,6 @@ final readonly class GetStartProjectPreflight
 
         $approvalPolicy = $configuration->approval_policy ?? [];
 
-        if (! is_array($approvalPolicy)) {
-            $approvalPolicy = [];
-        }
-
         $budgetLimitMinor = $configuration?->budget_limit_minor;
 
         return new StartProjectPreflightResult(

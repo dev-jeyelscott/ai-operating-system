@@ -235,7 +235,7 @@ test(
         $otherOrganization = Organization::factory()->create();
 
         expect(
-            fn() => app(GetStartProjectPreflight::class)->handle(
+            fn () => app(GetStartProjectPreflight::class)->handle(
                 organizationId: $otherOrganization->id,
                 projectId: $project->id,
             ),
@@ -316,14 +316,14 @@ function startProjectPreflightFixture(
         'current_step' => ProjectSetupStep::Review,
         'completed_steps' => $setupReviewConfirmed
             ? array_map(
-                static fn(ProjectSetupStep $step): string => $step->value,
+                static fn (ProjectSetupStep $step): string => $step->value,
                 ProjectSetupStep::ordered(),
             )
             : array_map(
-                static fn(ProjectSetupStep $step): string => $step->value,
+                static fn (ProjectSetupStep $step): string => $step->value,
                 array_filter(
                     ProjectSetupStep::ordered(),
-                    static fn(ProjectSetupStep $step): bool => $step !== ProjectSetupStep::Review,
+                    static fn (ProjectSetupStep $step): bool => $step !== ProjectSetupStep::Review,
                 ),
             ),
         'completed_at' => $setupReviewConfirmed ? now() : null,
