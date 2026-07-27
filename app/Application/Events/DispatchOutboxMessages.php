@@ -12,7 +12,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Claims committed outbox messages and queues them for consumer processing.
+ * Recovers expired reservations and dispatches committed outbox messages.
  */
 final readonly class DispatchOutboxMessages
 {
@@ -25,7 +25,7 @@ final readonly class DispatchOutboxMessages
     ) {}
 
     /**
-     * Dispatch one bounded batch.
+     * Recover expired terminal reservations and dispatch one bounded batch.
      *
      * Queue publication occurs before published_at is written. A crash between
      * those operations may produce a duplicate queued job, but the durable
@@ -33,6 +33,7 @@ final readonly class DispatchOutboxMessages
      * an event permanently.
      *
      * @return array{
+     *     expired_dead_lettered: int,
      *     claimed: int,
      *     published: int,
      *     failed: int,
@@ -53,6 +54,12 @@ final readonly class DispatchOutboxMessages
             baseBackoffSeconds: $baseBackoffSeconds,
             maximumBackoffSeconds: $maximumBackoffSeconds,
         );
+
+        $expiredDeadLettered =
+            $this->store->deadLetterExpiredExhaustedReservations(
+                maximumAttempts: $maximumAttempts,
+                deadLetteredAt: CarbonImmutable::now(),
+            );
 
         $messages = $this->store->claim(
             limit: $limit,
@@ -116,6 +123,7 @@ final readonly class DispatchOutboxMessages
         }
 
         return [
+            'expired_dead_lettered' => $expiredDeadLettered,
             'claimed' => count($messages),
             'published' => $published,
             'failed' => $failed,
@@ -153,7 +161,7 @@ final readonly class DispatchOutboxMessages
     }
 
     /**
-     * Reject invalid runtime configuration before claiming database rows.
+     * Reject invalid runtime configuration before recovering database rows.
      */
     private function validateConfiguration(
         int $limit,

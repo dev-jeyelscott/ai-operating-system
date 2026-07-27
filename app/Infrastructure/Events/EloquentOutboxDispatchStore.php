@@ -13,10 +13,46 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Claims outbox rows through PostgreSQL row-level locking.
+ * Recovers and claims outbox rows through PostgreSQL-safe updates and locks.
  */
 final class EloquentOutboxDispatchStore implements OutboxDispatchStore
 {
+    private const EXPIRED_EXHAUSTED_RESERVATION_ERROR =
+        'Outbox reservation expired after the maximum delivery attempts.';
+
+    /**
+     * Atomically move expired exhausted reservations into dead-letter state.
+     *
+     * The guarded bulk update ensures concurrent dispatchers can only recover
+     * rows that are still unpublished and have not already been dead-lettered.
+     */
+    public function deadLetterExpiredExhaustedReservations(
+        int $maximumAttempts,
+        CarbonImmutable $deadLetteredAt,
+    ): int {
+        return OutboxMessage::query()
+            ->whereNull('published_at')
+            ->whereNull('dead_lettered_at')
+            ->where(
+                'dispatch_attempts',
+                '>=',
+                $maximumAttempts,
+            )
+            ->whereNotNull('reserved_until')
+            ->where(
+                'reserved_until',
+                '<=',
+                $deadLetteredAt,
+            )
+            ->update([
+                'available_at' => $deadLetteredAt,
+                'reservation_token' => null,
+                'reserved_until' => null,
+                'last_error' => self::EXPIRED_EXHAUSTED_RESERVATION_ERROR,
+                'dead_lettered_at' => $deadLetteredAt,
+            ]);
+    }
+
     /**
      * Atomically reserve the oldest deliverable rows.
      *

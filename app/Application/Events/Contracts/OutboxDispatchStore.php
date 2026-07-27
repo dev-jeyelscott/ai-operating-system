@@ -13,6 +13,14 @@ use Carbon\CarbonImmutable;
 interface OutboxDispatchStore
 {
     /**
+     * Atomically dead-letter expired reservations that exhausted retries.
+     */
+    public function deadLetterExpiredExhaustedReservations(
+        int $maximumAttempts,
+        CarbonImmutable $deadLetteredAt,
+    ): int;
+
+    /**
      * Atomically reserve the next deliverable messages.
      *
      * @return list<ClaimedOutboxMessage>

@@ -29,7 +29,7 @@ final class DispatchOutboxMessagesCommand extends Command
         'Dispatch committed domain events from the transactional outbox';
 
     /**
-     * Execute one dispatcher batch.
+     * Execute expired-reservation recovery and one dispatcher batch.
      */
     public function handle(
         DispatchOutboxMessages $dispatcher,
@@ -70,7 +70,9 @@ final class DispatchOutboxMessagesCommand extends Command
         );
 
         $this->line(sprintf(
-            'Claimed: %d; published: %d; failed: %d; dead-lettered: %d.',
+            'Expired dead-lettered: %d; claimed: %d; published: %d; '
+                .'failed: %d; dead-lettered: %d.',
+            $result['expired_dead_lettered'],
             $result['claimed'],
             $result['published'],
             $result['failed'],
