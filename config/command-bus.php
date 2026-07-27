@@ -6,6 +6,12 @@ use App\Application\Approvals\Commands\DecideApproval;
 use App\Application\Approvals\Commands\RequestApproval;
 use App\Application\Approvals\Handlers\DecideApprovalHandler;
 use App\Application\Approvals\Handlers\RequestApprovalHandler;
+use App\Application\Planning\Commands\DecideRoadmapCommand;
+use App\Application\Planning\Commands\EditRoadmapCommand;
+use App\Application\Planning\Commands\RegenerateRoadmapCommand;
+use App\Application\Planning\Handlers\DecideRoadmapHandler;
+use App\Application\Planning\Handlers\EditRoadmapHandler;
+use App\Application\Planning\Handlers\RegenerateRoadmapHandler;
 use App\Application\Projects\Commands\StartProject;
 use App\Application\Projects\Handlers\StartProjectHandler;
 
@@ -28,6 +34,12 @@ return [
         DecideApproval::class => DecideApprovalHandler::class,
 
         StartProject::class => StartProjectHandler::class,
+
+        EditRoadmapCommand::class => EditRoadmapHandler::class,
+
+        DecideRoadmapCommand::class => DecideRoadmapHandler::class,
+
+        RegenerateRoadmapCommand::class => RegenerateRoadmapHandler::class,
     ],
 
 ];

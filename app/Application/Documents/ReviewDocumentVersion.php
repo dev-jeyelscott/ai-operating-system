@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
-use App\Application\Documents\RecordDocumentLifecycleEvent;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;

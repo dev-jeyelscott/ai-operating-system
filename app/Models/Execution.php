@@ -173,6 +173,12 @@ final class Execution extends Model
             ->orderBy('attempt_number');
     }
 
+    /** @return HasMany<PlanningExecutionDiagnostic, $this> */
+    public function planningDiagnostics(): HasMany
+    {
+        return $this->hasMany(PlanningExecutionDiagnostic::class);
+    }
+
     /**
      * Scope a query to executions belonging to one explicit project.
      *

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Application\Planning\Consumers\DispatchPlanningExecution;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -75,6 +77,6 @@ return [
     */
 
     'consumers' => [
-        //
+        DispatchPlanningExecution::class,
     ],
 ];

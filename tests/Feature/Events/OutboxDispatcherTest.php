@@ -147,7 +147,7 @@ test('it persists only sanitized details when an outbox transport fails', functi
         },
     );
 
-    $this->artisan('outbox:dispatch')->assertSuccessful();
+    $this->artisan('outbox:dispatch')->assertFailed();
 
     $storedError = $message->fresh()?->last_error;
 

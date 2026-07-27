@@ -8,7 +8,9 @@ import {
     RotateCcw,
     Settings2,
     SlidersHorizontal,
+    Map,
 } from 'lucide-react';
+import { index as roadmapIndex } from '@/actions/App/Http/Controllers/Planning/RoadmapController';
 import { Button } from '@/components/ui/button';
 import {
     archive as archiveProject,
@@ -87,6 +89,18 @@ export default function ShowProject({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        <Button asChild variant="outline">
+                            <Link
+                                href={roadmapIndex({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <Map aria-hidden="true" />
+                                Roadmap
+                            </Link>
+                        </Button>
+
                         <Button asChild variant="outline">
                             <Link href={documentsUrl}>
                                 <FileText aria-hidden="true" />

@@ -302,6 +302,64 @@ final readonly class ExecutionResilienceManager
     }
 
     /**
+     * Persist a deterministic planning blocker without scheduling a retry.
+     */
+    public function blockAttempt(
+        ExecutionAttempt $attempt,
+        string $errorCode,
+        string $errorMessage,
+        ?CarbonImmutable $at = null,
+        ?string $causationId = null,
+    ): bool {
+        $blockedAt = $at ?? CarbonImmutable::now();
+        $attempt->loadMissing('execution');
+
+        $changed = $this->transactions->run(function () use ($attempt, $errorCode, $errorMessage, $blockedAt, $causationId): bool {
+            $lockedExecution = $this->lockExecution($attempt->execution);
+            $lockedAttempt = $this->lockAttempt($lockedExecution, $attempt->id);
+
+            if ($lockedExecution->status === ExecutionStatus::Blocked && $lockedAttempt->status->isTerminal()) {
+                return false;
+            }
+
+            $this->assertRunningPair($lockedExecution, $lockedAttempt);
+            $normalizedCode = $this->normalizeErrorCode($errorCode);
+
+            $lockedAttempt->forceFill([
+                'status' => ExecutionAttemptStatus::Failed,
+                'retryable' => false,
+                'error_code' => $normalizedCode,
+                'error_message' => $this->normalizeMessage($this->redactor->message($errorMessage)),
+                'finished_at' => $blockedAt,
+                'heartbeat_at' => $blockedAt,
+            ])->save();
+
+            $lockedExecution->forceFill([
+                'status' => ExecutionStatus::Blocked,
+                'finished_at' => $blockedAt,
+                'next_attempt_at' => null,
+            ])->save();
+
+            $this->events->record(
+                execution: $lockedExecution,
+                eventName: 'execution.blocked',
+                auditEventType: AuditEventType::ExecutionBlocked,
+                occurredAt: $blockedAt,
+                payload: ['error_code' => $normalizedCode, 'retryable' => false],
+                attempt: $lockedAttempt,
+                causationId: $causationId,
+            );
+
+            return true;
+        });
+
+        $attempt->refresh();
+        $attempt->execution->refresh();
+
+        return $changed;
+    }
+
+    /**
      * Mark one running attempt as timed out.
      */
     public function timeOutAttempt(

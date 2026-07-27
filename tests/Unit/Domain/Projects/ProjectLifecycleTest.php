@@ -33,11 +33,13 @@ test('the project lifecycle exposes the defined transition graph', function () {
         ],
         'planning' => [
             'awaiting_roadmap_approval',
+            'ready_for_development',
             'blocked',
             'cancelled',
         ],
         'awaiting_roadmap_approval' => [
             'planning',
+            'documents_pending',
             'ready_for_development',
             'blocked',
             'cancelled',

@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\ReviewDocumentVersion;
+use App\Application\Events\Contracts\DomainEventConsumerRegistry;
 use App\Application\Events\Contracts\DomainEventOutbox;
+use App\Application\Events\DeduplicatedDomainEventConsumer;
+use App\Application\Planning\MaterializeRoadmap;
+use App\Application\Planning\ProcessPlanningExecution;
+use App\Application\Planning\RoadmapEligibility;
 use App\Application\Projects\BuildStartProjectCommand;
 use App\Application\Projects\Commands\StartProject;
 use App\Application\Projects\Handlers\StartProjectHandler;
@@ -18,6 +23,9 @@ use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Domain\Projects\ProjectStatus;
+use App\Jobs\ConsumeOutboxMessage;
+use App\Jobs\ProcessPlanningExecutionJob;
+use App\Models\Approval;
 use App\Models\AuditEvent;
 use App\Models\Document;
 use App\Models\DocumentVersion;
@@ -25,6 +33,7 @@ use App\Models\Execution;
 use App\Models\IdempotencyKey;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
+use App\Models\OutboxMessage;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
 use App\Models\ProjectConfigurationVersion;
@@ -32,11 +41,16 @@ use App\Models\ProjectContextSnapshot;
 use App\Models\ProjectIntegration;
 use App\Models\ProjectSetupProgress;
 use App\Models\ProviderCredential;
+use App\Models\Roadmap;
 use App\Models\User;
 use App\Models\WorkflowInstance;
 use Database\Seeders\ProjectDeliveryWorkflowSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -142,6 +156,270 @@ test(
         Http::assertNothingSent();
     },
 );
+
+test('project start dispatches and completes planning from its immutable context exactly once', function (): void {
+    Queue::fake();
+    $fixture = startProjectCommandFixture();
+    $command = app(BuildStartProjectCommand::class)->handle(
+        organizationId: $fixture['organization']->id,
+        projectId: $fixture['project']->id,
+        requestedByUserId: $fixture['owner']->id,
+        idempotencyKey: 'start-project-planning-dispatch',
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect(app(CommandBus::class)->dispatch($command)->isSuccessful())->toBeTrue();
+
+    $execution = Execution::query()->sole();
+    $startEvent = OutboxMessage::query()->where('event_name', 'project.start_requested')->sole();
+    $consumerJob = new ConsumeOutboxMessage($startEvent->event_id);
+    $consumerJob->handle(
+        app(DomainEventConsumerRegistry::class),
+        app(DeduplicatedDomainEventConsumer::class),
+    );
+    $consumerJob->handle(
+        app(DomainEventConsumerRegistry::class),
+        app(DeduplicatedDomainEventConsumer::class),
+    );
+
+    Queue::assertPushed(ProcessPlanningExecutionJob::class, 1);
+
+    $fixture['configuration']->forceFill([
+        'provider_policy' => ['allowed_provider_ids' => [], 'fallback_order' => []],
+        'revision' => $fixture['configuration']->revision + 1,
+    ])->save();
+
+    (new ProcessPlanningExecutionJob($execution->id))->handle(app(ProcessPlanningExecution::class));
+
+    $roadmap = Roadmap::query()->with(['approval', 'tasks.traceabilityLinks'])->sole();
+    expect($execution->refresh()->status->value)->toBe('completed')
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::AwaitingRoadmapApproval)
+        ->and($roadmap->status)->toBe('awaiting_approval')
+        ->and($roadmap->approval)->not->toBeNull()
+        ->and($roadmap->tasks)->not->toBeEmpty()
+        ->and($roadmap->tasks->first()->traceabilityLinks)->not->toBeEmpty();
+});
+
+test('a deterministic blocked result persists safe diagnostics and does not retry', function (): void {
+    $fixture = startProjectCommandFixture();
+    $command = app(BuildStartProjectCommand::class)->handle(
+        organizationId: $fixture['organization']->id,
+        projectId: $fixture['project']->id,
+        requestedByUserId: $fixture['owner']->id,
+        idempotencyKey: 'blocked-planning-result',
+        correlationId: (string) Str::ulid(),
+    );
+    app(CommandBus::class)->dispatch($command);
+    $execution = Execution::query()->where('project_id', $fixture['project']->id)->sole();
+
+    (new ProcessPlanningExecutionJob($execution->id, scenario: 'conflicts'))->handle(app(ProcessPlanningExecution::class));
+
+    expect($execution->refresh()->status->value)->toBe('blocked')
+        ->and($execution->attempts()->sole()->status->value)->toBe('failed')
+        ->and($execution->attempts()->sole()->retryable)->toBeFalse()
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::Blocked)
+        ->and(Roadmap::query()->sole()->readiness)->toBe('blocked')
+        ->and($execution->planningDiagnostics()->sole()->category)->toBe('deterministic_blocker')
+        ->and($execution->planningDiagnostics()->sole()->message)->not->toContain('http');
+});
+
+test('roadmap approval is authorized idempotent and rejects stale content', function (): void {
+    $this->withoutMiddleware(ThrottleRequests::class);
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap'];
+    $route = route('organizations.projects.roadmaps.approve', [
+        'organization' => $fixture['organization'],
+        'project' => $fixture['project'],
+        'roadmap' => $roadmap,
+    ]);
+    $payload = [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'roadmap-approval-browser-test',
+    ];
+
+    $member = User::factory()->create();
+    OrganizationMembership::factory()->for($fixture['organization'])->for($member)->create();
+    $this->actingAs($member)->post($route, $payload)->assertForbidden();
+
+    $this->actingAs($fixture['owner'])
+        ->post($route, [
+            ...$payload,
+            'expected_content_version' => $roadmap->content_version + 1,
+            'idempotency_key' => 'roadmap-stale-approval-browser-test',
+        ])
+        ->assertSessionHasErrors('roadmap');
+
+    $this->post($route, $payload)->assertSessionHasNoErrors();
+    $this->post($route, $payload)->assertSessionHasNoErrors();
+
+    expect($roadmap->refresh()->status)->toBe('approved')
+        ->and($roadmap->approval->status->value)->toBe('approved')
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::ReadyForDevelopment)
+        ->and(app(RoadmapEligibility::class)->allowsPublicationOrDevelopment($roadmap))->toBeTrue();
+
+    $task = $roadmap->tasks->firstOrFail();
+    $task->setAttribute('acceptance_criteria', [
+        ...$task->acceptance_criteria,
+        ['stable_id' => 'criterion-without-coverage', 'description' => 'Must be covered.', 'source_references' => []],
+    ]);
+    expect(app(RoadmapEligibility::class)->allowsPublicationOrDevelopment($roadmap))->toBeFalse();
+});
+
+test('roadmap rejection records feedback and returns the project to documents', function (): void {
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap'];
+
+    $this->actingAs($fixture['owner'])->post(route('organizations.projects.roadmaps.reject', [
+        'organization' => $fixture['organization'],
+        'project' => $fixture['project'],
+        'roadmap' => $roadmap,
+    ]), [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'roadmap-rejection-browser-test',
+        'reason' => 'Split the delivery into smaller milestones.',
+    ])->assertSessionHasNoErrors();
+
+    expect($roadmap->refresh()->status)->toBe('rejected')
+        ->and($roadmap->regeneration_feedback)->toBe('Split the delivery into smaller milestones.')
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::DocumentsPending);
+});
+
+test('roadmap edits are append only and supersede the prior approval', function (): void {
+    $this->withoutMiddleware(ThrottleRequests::class);
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap']->load('approval');
+    $priorApprovalId = $roadmap->approval_id;
+
+    $payload = [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'roadmap-edit-browser-test',
+        'patch' => ['roadmap' => ['goal' => 'Deliver a smaller traceable roadmap.']],
+    ];
+    $route = route('organizations.projects.roadmaps.edits.store', [
+        'organization' => $fixture['organization'],
+        'project' => $fixture['project'],
+        'roadmap' => $roadmap,
+    ]);
+
+    $this->actingAs($fixture['owner'])->post($route, $payload)->assertSessionHasNoErrors();
+    $this->post($route, $payload)->assertSessionHasNoErrors();
+
+    expect($roadmap->refresh()->content_version)->toBe(2)
+        ->and($roadmap->edits()->count())->toBe(1)
+        ->and($roadmap->approval_id)->not->toBe($priorApprovalId)
+        ->and(Approval::query()->findOrFail($priorApprovalId)->status->value)->toBe('expired')
+        ->and(app(MaterializeRoadmap::class)->handle($roadmap)['goal'])->toBe('Deliver a smaller traceable roadmap.');
+
+    expect(fn () => DB::table('roadmap_edits')->where('roadmap_id', $roadmap->id)->update(['content_version' => 3]))
+        ->toThrow(QueryException::class, 'roadmap_edits is append-only');
+});
+
+test('an immutable policy waiver records an approval gate before development readiness', function (): void {
+    $fixture = startProjectCommandFixture();
+    $fixture['configuration']->forceFill([
+        'approval_policy' => [
+            'roadmap_required' => false,
+            'ticket_execution_required' => true,
+            'merge_required' => true,
+        ],
+        'revision' => 2,
+    ])->save();
+    ProjectConfigurationVersion::query()->create([
+        'project_id' => $fixture['project']->id,
+        'schema_version' => $fixture['configuration']->schema_version,
+        'revision' => 2,
+        'actor_type' => AuditActorType::System,
+        'actor_id' => 'policy-waiver-test',
+        'change_reason' => 'policy_waiver_test',
+        'snapshot' => $fixture['configuration']->toVersionedArray(),
+        'created_at' => now(),
+    ]);
+
+    $command = app(BuildStartProjectCommand::class)->handle(
+        organizationId: $fixture['organization']->id,
+        projectId: $fixture['project']->id,
+        requestedByUserId: $fixture['owner']->id,
+        idempotencyKey: 'policy-waived-roadmap',
+        correlationId: (string) Str::ulid(),
+    );
+    app(CommandBus::class)->dispatch($command);
+    $execution = Execution::query()->where('project_id', $fixture['project']->id)->sole();
+    (new ProcessPlanningExecutionJob($execution->id))->handle(app(ProcessPlanningExecution::class));
+
+    $roadmap = Roadmap::query()->with('approval')->sole();
+    expect($roadmap->status)->toBe('approved')
+        ->and($roadmap->approved_fingerprint)->toBe($roadmap->candidate_fingerprint)
+        ->and($roadmap->approval->status->value)->toBe('approved')
+        ->and($roadmap->approval->decided_by_user_id)->toBeNull()
+        ->and($roadmap->approval->request_payload['approval_authority'])->toBe('immutable_policy')
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::ReadyForDevelopment);
+});
+
+test('roadmap regeneration creates one durable execution and preserves the prior revision', function (): void {
+    Queue::fake();
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap'];
+
+    $this->actingAs($fixture['owner'])->post(route('organizations.projects.roadmaps.regenerate', [
+        'organization' => $fixture['organization'],
+        'project' => $fixture['project'],
+        'roadmap' => $roadmap,
+    ]), [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'roadmap-regeneration-browser-test',
+        'feedback' => 'Prioritize the security work.',
+    ])->assertSessionHasNoErrors();
+
+    expect($roadmap->refresh()->status)->toBe('superseded')
+        ->and($roadmap->feedback_fingerprint)->toBe(hash('sha256', 'Prioritize the security work.'))
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::Planning)
+        ->and(Execution::query()->where('project_id', $fixture['project']->id)->count())->toBe(2)
+        ->and(Roadmap::query()->whereKey($roadmap->id)->exists())->toBeTrue();
+
+    $event = OutboxMessage::query()->where('event_name', 'roadmap.regeneration_requested')->sole();
+    (new ConsumeOutboxMessage($event->event_id))->handle(
+        app(DomainEventConsumerRegistry::class),
+        app(DeduplicatedDomainEventConsumer::class),
+    );
+    Queue::assertPushed(ProcessPlanningExecutionJob::class, 1);
+});
+
+test('roadmap phase task edit and decision routes enforce explicit project ownership', function (): void {
+    $this->withoutMiddleware(ThrottleRequests::class);
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap']->load(['phases', 'tasks']);
+    $otherProject = Project::factory()->for($fixture['organization'])->create();
+    $routeParameters = [
+        'organization' => $fixture['organization'],
+        'project' => $otherProject,
+        'roadmap' => $roadmap,
+    ];
+
+    $this->actingAs($fixture['owner'])
+        ->get(route('organizations.projects.roadmaps.phases.show', [
+            ...$routeParameters,
+            'phase' => $roadmap->phases->firstOrFail(),
+        ]))->assertNotFound();
+    $this->get(route('organizations.projects.roadmaps.tasks.show', [
+        ...$routeParameters,
+        'task' => $roadmap->tasks->firstOrFail(),
+    ]))->assertNotFound();
+    $this->post(route('organizations.projects.roadmaps.edits.store', $routeParameters), [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'cross-project-edit',
+        'patch' => ['roadmap' => ['goal' => 'Forbidden']],
+    ])->assertNotFound();
+    $this->post(route('organizations.projects.roadmaps.approve', $routeParameters), [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'cross-project-decision',
+    ])->assertNotFound();
+});
 
 test(
     'it rejects reuse of a key for another context fingerprint',
@@ -584,4 +862,25 @@ function startProjectCommandFixture(
         'project' => $project,
         'configuration' => $configuration,
     ];
+}
+
+/**
+ * @return array{owner: User, organization: Organization, project: Project, configuration: ProjectConfiguration, roadmap: Roadmap}
+ */
+function awaitingRoadmapApprovalFixture(): array
+{
+    Queue::fake();
+    $fixture = startProjectCommandFixture();
+    $command = app(BuildStartProjectCommand::class)->handle(
+        organizationId: $fixture['organization']->id,
+        projectId: $fixture['project']->id,
+        requestedByUserId: $fixture['owner']->id,
+        idempotencyKey: 'awaiting-roadmap-'.Str::lower((string) Str::ulid()),
+        correlationId: (string) Str::ulid(),
+    );
+    app(CommandBus::class)->dispatch($command);
+    $execution = Execution::query()->where('project_id', $fixture['project']->id)->sole();
+    (new ProcessPlanningExecutionJob($execution->id))->handle(app(ProcessPlanningExecution::class));
+
+    return [...$fixture, 'roadmap' => Roadmap::query()->where('project_id', $fixture['project']->id)->sole()];
 }

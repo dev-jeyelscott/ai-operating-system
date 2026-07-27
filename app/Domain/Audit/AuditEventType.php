@@ -67,6 +67,13 @@ enum AuditEventType: string
 
     case ProjectStartRequested = 'project.start_requested';
 
+    case RoadmapGenerated = 'roadmap.generated';
+    case RoadmapEdited = 'roadmap.edited';
+    case RoadmapApproved = 'roadmap.approved';
+    case RoadmapRejected = 'roadmap.rejected';
+    case RoadmapRegenerationRequested =
+        'roadmap.regeneration_requested';
+
     case WorkflowTransitioned = 'workflow.transitioned';
 
     case ApprovalRequested = 'approval.requested';
@@ -97,6 +104,7 @@ enum AuditEventType: string
 
     case ExecutionCancelled = 'execution.cancelled';
     case ExecutionFailed = 'execution.failed';
+    case ExecutionBlocked = 'execution.blocked';
 
     case DeadLetterReplayRequested =
         'dead_letter.replay_requested';

@@ -19,17 +19,17 @@ final class RedactSensitiveData
     {
         $redacted = preg_replace(
             [
+                '/(?:\{.*\}|\[[^\[\]]*\])/s',
                 '/\bhttps?:\/\/[^\s]+/i',
                 '/\b(?:postgres(?:ql)?|mysql|redis):\/\/[^\s]+/i',
-                '/(?:\{.*\}|\[[^\[\]]*\])/s',
                 '/\b(?:authorization|proxy-authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/i',
                 '/\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+/i',
                 '/\b(?:request[_ -]?body|body)\s*[:=]\s*(?:\{.*|\[.*|.+)/i',
             ],
             [
+                '[redacted-payload]',
                 '[redacted-url]',
                 '[redacted-connection-string]',
-                '[redacted-payload]',
                 '[redacted-authorization]',
                 '[redacted-secret]',
                 '[redacted-request-body]',
