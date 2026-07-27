@@ -6,9 +6,10 @@ namespace App\Application\Events;
 
 use App\Application\Events\Contracts\OutboxDispatchStore;
 use App\Application\Events\Contracts\OutboxTransport;
+use App\Application\Events\Data\ClaimedOutboxMessage;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -16,6 +17,9 @@ use Throwable;
  */
 final readonly class DispatchOutboxMessages
 {
+    private const RESERVATION_CONFLICT_WARNING =
+        'Outbox reservation ownership changed before the dispatch outcome was persisted.';
+
     /**
      * Create the dispatcher application service.
      */
@@ -37,7 +41,8 @@ final readonly class DispatchOutboxMessages
      *     claimed: int,
      *     published: int,
      *     failed: int,
-     *     dead_lettered: int
+     *     dead_lettered: int,
+     *     reservation_conflicts: int
      * }
      */
     public function handle(
@@ -70,20 +75,16 @@ final readonly class DispatchOutboxMessages
         $published = 0;
         $failed = 0;
         $deadLettered = 0;
+        $reservationConflicts = 0;
 
         foreach ($messages as $message) {
             try {
                 $this->transport->publish($message->eventId);
-
-                if (! $this->store->markPublished($message)) {
-                    throw new RuntimeException(
-                        'The outbox reservation was lost before publication '
-                            .'could be recorded.',
-                    );
-                }
-
-                $published++;
             } catch (Throwable $exception) {
+                /*
+                 * The transport genuinely failed, regardless of whether this
+                 * dispatcher still owns the reservation afterward.
+                 */
                 $failed++;
 
                 $failedAt = CarbonImmutable::now();
@@ -97,18 +98,26 @@ final readonly class DispatchOutboxMessages
                     $message->dispatchAttempt
                     >= $maximumAttempts
                 ) {
-                    $this->store->markDeadLettered(
+                    if (! $this->store->markDeadLettered(
                         message: $message,
                         deadLetteredAt: $failedAt,
                         error: $error,
-                    );
+                    )) {
+                        $reservationConflicts++;
+                        $this->recordReservationConflict(
+                            message: $message,
+                            operation: 'mark_dead_lettered',
+                        );
+
+                        continue;
+                    }
 
                     $deadLettered++;
 
                     continue;
                 }
 
-                $this->store->release(
+                if (! $this->store->release(
                     message: $message,
                     availableAt: $failedAt->addSeconds(
                         $this->backoffSeconds(
@@ -118,8 +127,32 @@ final readonly class DispatchOutboxMessages
                         ),
                     ),
                     error: $error,
-                );
+                )) {
+                    $reservationConflicts++;
+                    $this->recordReservationConflict(
+                        message: $message,
+                        operation: 'release',
+                    );
+                }
+
+                continue;
             }
+
+            /*
+             * Publication succeeded, but the reservation may have expired and
+             * been claimed or finalized by another dispatcher before this write.
+             */
+            if (! $this->store->markPublished($message)) {
+                $reservationConflicts++;
+                $this->recordReservationConflict(
+                    message: $message,
+                    operation: 'mark_published',
+                );
+
+                continue;
+            }
+
+            $published++;
         }
 
         return [
@@ -128,7 +161,26 @@ final readonly class DispatchOutboxMessages
             'published' => $published,
             'failed' => $failed,
             'dead_lettered' => $deadLettered,
+            'reservation_conflicts' => $reservationConflicts,
         ];
+    }
+
+    /**
+     * Record a stable warning without exposing reservation-token values.
+     */
+    private function recordReservationConflict(
+        ClaimedOutboxMessage $message,
+        string $operation,
+    ): void {
+        Log::warning(
+            self::RESERVATION_CONFLICT_WARNING,
+            [
+                'operation' => $operation,
+                'outbox_sequence' => $message->sequence,
+                'event_id' => $message->eventId,
+                'dispatch_attempt' => $message->dispatchAttempt,
+            ],
+        );
     }
 
     /**

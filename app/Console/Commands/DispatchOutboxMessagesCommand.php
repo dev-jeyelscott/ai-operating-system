@@ -71,14 +71,19 @@ final class DispatchOutboxMessagesCommand extends Command
 
         $this->line(sprintf(
             'Expired dead-lettered: %d; claimed: %d; published: %d; '
-                .'failed: %d; dead-lettered: %d.',
+                .'failed: %d; dead-lettered: %d; reservation conflicts: %d.',
             $result['expired_dead_lettered'],
             $result['claimed'],
             $result['published'],
             $result['failed'],
             $result['dead_lettered'],
+            $result['reservation_conflicts'],
         ));
 
+        /*
+         * Preserve the existing exit-code behavior. A reservation conflict is
+         * observable, but only an actual transport failure fails this command.
+         */
         return $result['failed'] === 0
             ? self::SUCCESS
             : self::FAILURE;
