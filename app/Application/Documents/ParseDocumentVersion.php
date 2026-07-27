@@ -6,20 +6,24 @@ namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\Contracts\DocumentParser;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Models\DocumentVersion;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final readonly class ParseDocumentVersion
 {
+    /**
+     * Create the document-parsing application service.
+     */
     public function __construct(
         private DocumentParser $documentParser,
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -33,7 +37,7 @@ final readonly class ParseDocumentVersion
     public function handle(int $id, ?AuditContext $auditContext = null): void
     {
         $auditContext ??= AuditContext::system(actorId: 'document-parse-worker');
-        $version = DB::transaction(
+        $version = $this->transactions->run(
             function () use ($id, $auditContext): ?DocumentVersion {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
@@ -94,7 +98,7 @@ final readonly class ParseDocumentVersion
 
         $parsed = $this->documentParser->parse($version);
 
-        $analysisPending = DB::transaction(
+        $analysisPending = $this->transactions->run(
             function () use ($id, $parsed, $auditContext): bool {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
@@ -166,7 +170,7 @@ final readonly class ParseDocumentVersion
     public function markFailed(int $id, ?AuditContext $auditContext = null): void
     {
         $auditContext ??= AuditContext::system(actorId: 'document-parse-worker');
-        DB::transaction(function () use ($id, $auditContext): void {
+        $this->transactions->run(function () use ($id, $auditContext): void {
             $version = DocumentVersion::query()
                 ->lockForUpdate()
                 ->findOrFail($id);

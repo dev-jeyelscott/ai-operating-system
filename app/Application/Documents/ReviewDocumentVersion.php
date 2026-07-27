@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\Document;
 use App\Models\DocumentVersion;
-use Illuminate\Support\Facades\DB;
+use App\Models\Project;
 use LogicException;
 
 /**
@@ -17,8 +18,12 @@ use LogicException;
  */
 final class ReviewDocumentVersion
 {
+    /**
+     * Create the document-review application service.
+     */
     public function __construct(
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -32,8 +37,10 @@ final class ReviewDocumentVersion
         DocumentVersion $version,
         AuditContext $auditContext,
     ): void {
-        DB::transaction(
+        $this->transactions->run(
             function () use ($document, $version, $auditContext): void {
+                $this->lockedProject($document);
+
                 $lockedDocument = $this->lockedDocument(
                     $document,
                 );
@@ -102,8 +109,19 @@ final class ReviewDocumentVersion
                     ],
                 );
             },
-            attempts: 3,
         );
+    }
+
+    /**
+     * Lock the owning project before the document aggregate so StartProject
+     * and authority-changing document reviews share one lock order.
+     */
+    private function lockedProject(Document $document): Project
+    {
+        return Project::query()
+            ->whereKey($document->project_id)
+            ->lockForUpdate()
+            ->firstOrFail();
     }
 
     /**
@@ -114,7 +132,7 @@ final class ReviewDocumentVersion
         DocumentVersion $version,
         AuditContext $auditContext,
     ): void {
-        DB::transaction(
+        $this->transactions->run(
             function () use ($document, $version, $auditContext): void {
                 $lockedDocument = $this->lockedDocument(
                     $document,
@@ -145,7 +163,6 @@ final class ReviewDocumentVersion
                     ],
                 );
             },
-            attempts: 3,
         );
     }
 
@@ -194,7 +211,7 @@ final class ReviewDocumentVersion
 
         if (
             ! $previousApprovedVersion
-            instanceof DocumentVersion
+                instanceof DocumentVersion
         ) {
             throw new LogicException(
                 'The replacement predecessor could not be found.',
@@ -222,7 +239,7 @@ final class ReviewDocumentVersion
         if (
             $approvedVersionIds->count() !== 1
             || (int) $approvedVersionIds->first()
-                !== $previousApprovedVersion->id
+            !== $previousApprovedVersion->id
         ) {
             throw new LogicException(
                 'The document does not have one unambiguous approved predecessor.',

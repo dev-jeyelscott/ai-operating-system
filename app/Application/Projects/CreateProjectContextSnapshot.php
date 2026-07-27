@@ -8,12 +8,12 @@ use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\ApprovedDocumentSetFingerprint;
 use App\Application\Documents\Exceptions\DocumentContextIntegrityException;
 use App\Application\Documents\RecordDocumentLifecycleEvent;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\DocumentVersion;
 use App\Models\Project;
 use App\Models\ProjectConfigurationVersion;
 use App\Models\ProjectContextSnapshot;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -33,9 +33,13 @@ use Throwable;
  */
 final readonly class CreateProjectContextSnapshot
 {
+    /**
+     * Create the immutable project-context snapshot service.
+     */
     public function __construct(
         private ApprovedDocumentSetFingerprint $fingerprint,
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -48,7 +52,7 @@ final readonly class CreateProjectContextSnapshot
     ): ProjectContextSnapshot {
         $auditContext ??= AuditContext::system(actorId: 'context-snapshot-command');
 
-        return DB::transaction(
+        return $this->transactions->run(
             function () use (
                 $organizationId,
                 $projectId,
@@ -147,7 +151,6 @@ final readonly class CreateProjectContextSnapshot
 
                 return $snapshot;
             },
-            attempts: 3,
         );
     }
 

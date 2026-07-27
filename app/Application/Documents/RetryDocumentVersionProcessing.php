@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Jobs\ParseDocumentVersionJob;
 use App\Jobs\ScanDocumentVersionJob;
 use App\Models\DocumentVersion;
-use Illuminate\Support\Facades\DB;
 use LogicException;
 
 /**
@@ -19,8 +19,12 @@ use LogicException;
  */
 final class RetryDocumentVersionProcessing
 {
+    /**
+     * Create the document-processing retry application service.
+     */
     public function __construct(
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -30,7 +34,7 @@ final class RetryDocumentVersionProcessing
         DocumentVersion $version,
         AuditContext $auditContext,
     ): void {
-        $job = DB::transaction(
+        $job = $this->transactions->run(
             function () use ($version, $auditContext): string {
                 $lockedVersion = DocumentVersion::query()
                     ->lockForUpdate()

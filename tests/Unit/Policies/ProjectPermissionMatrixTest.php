@@ -9,9 +9,6 @@ use App\Domain\Projects\ProjectPermissionMatrix;
 /**
  * Return the complete expected project permission matrix.
  *
- * Keeping the expected decisions in one named dataset makes every role and
- * permission pair visible in test output when a regression occurs.
- *
  * @return array<string, array{OrganizationRole, ProjectPermission, bool}>
  */
 function projectPermissionMatrixCases(): array
@@ -30,6 +27,16 @@ function projectPermissionMatrixCases(): array
         'owner may update projects' => [
             OrganizationRole::Owner,
             ProjectPermission::Update,
+            true,
+        ],
+        'owner may approve project operations' => [
+            OrganizationRole::Owner,
+            ProjectPermission::Approve,
+            true,
+        ],
+        'owner may start project operations' => [
+            OrganizationRole::Owner,
+            ProjectPermission::Start,
             true,
         ],
         'owner may manage project integrations' => [
@@ -63,6 +70,16 @@ function projectPermissionMatrixCases(): array
             ProjectPermission::Update,
             true,
         ],
+        'administrator may approve project operations' => [
+            OrganizationRole::Administrator,
+            ProjectPermission::Approve,
+            true,
+        ],
+        'administrator may start project operations' => [
+            OrganizationRole::Administrator,
+            ProjectPermission::Start,
+            true,
+        ],
         'administrator may manage project integrations' => [
             OrganizationRole::Administrator,
             ProjectPermission::ManageIntegrations,
@@ -94,6 +111,16 @@ function projectPermissionMatrixCases(): array
             ProjectPermission::Update,
             true,
         ],
+        'member may not approve project operations' => [
+            OrganizationRole::Member,
+            ProjectPermission::Approve,
+            false,
+        ],
+        'member may not start project operations' => [
+            OrganizationRole::Member,
+            ProjectPermission::Start,
+            false,
+        ],
         'member may not manage project integrations' => [
             OrganizationRole::Member,
             ProjectPermission::ManageIntegrations,
@@ -123,6 +150,16 @@ function projectPermissionMatrixCases(): array
         'viewer may not update projects' => [
             OrganizationRole::Viewer,
             ProjectPermission::Update,
+            false,
+        ],
+        'viewer may not approve project operations' => [
+            OrganizationRole::Viewer,
+            ProjectPermission::Approve,
+            false,
+        ],
+        'viewer may not start project operations' => [
+            OrganizationRole::Viewer,
+            ProjectPermission::Start,
             false,
         ],
         'viewer may not manage project integrations' => [

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
@@ -14,7 +15,6 @@ use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -25,8 +25,12 @@ use Throwable;
  */
 final class StoreProjectDocument
 {
+    /**
+     * Create the project-document storage application service.
+     */
     public function __construct(
         private readonly RecordDocumentLifecycleEvent $events,
+        private readonly TransactionManager $transactions,
     ) {}
 
     /**
@@ -66,7 +70,7 @@ final class StoreProjectDocument
                 throw new RuntimeException('The document checksum could not be calculated.');
             }
 
-            return DB::transaction(function () use (
+            return $this->transactions->run(function () use (
                 $project,
                 $title,
                 $documentClass,

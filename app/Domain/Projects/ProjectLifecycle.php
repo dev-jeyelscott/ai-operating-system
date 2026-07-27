@@ -75,12 +75,14 @@ final class ProjectLifecycle
 
             ProjectStatus::Planning => [
                 ProjectStatus::AwaitingRoadmapApproval,
+                ProjectStatus::ReadyForDevelopment,
                 ProjectStatus::Blocked,
                 ProjectStatus::Cancelled,
             ],
 
             ProjectStatus::AwaitingRoadmapApproval => [
                 ProjectStatus::Planning,
+                ProjectStatus::DocumentsPending,
                 ProjectStatus::ReadyForDevelopment,
                 ProjectStatus::Blocked,
                 ProjectStatus::Cancelled,

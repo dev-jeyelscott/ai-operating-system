@@ -2,6 +2,7 @@
 
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
+use App\Http\Controllers\Audit\ProjectAuditTimelineController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Documents\ProjectDocumentController;
 use App\Http\Controllers\Documents\RetryDocumentVersionProcessingController;
@@ -15,6 +16,10 @@ use App\Http\Controllers\Integrations\TestProjectNotionConnectionController;
 use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
+use App\Http\Controllers\Planning\DecideRoadmapController;
+use App\Http\Controllers\Planning\EditRoadmapController;
+use App\Http\Controllers\Planning\RegenerateRoadmapController;
+use App\Http\Controllers\Planning\RoadmapController;
 use App\Http\Controllers\Projects\ArchiveProjectController;
 use App\Http\Controllers\Projects\ProjectConfigurationController;
 use App\Http\Controllers\Projects\ProjectController;
@@ -65,7 +70,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->can('createProject', 'organization')
                                 ->name('store');
                         });
-
                     /*
                      * Validate a Notion token, workspace, and database through
                      * the dedicated integration connection-test action.
@@ -182,6 +186,46 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                             Route::get('/{project}/integrations', 'integrations')
                                 ->can('view', 'project')
                                 ->name('integrations.index');
+                        });
+
+                    Route::get(
+                        '/{project}/audit',
+                        ProjectAuditTimelineController::class,
+                    )
+                        ->can('view', 'project')
+                        ->name('audit.index');
+
+                    Route::prefix('/{project}/roadmaps')
+                        ->name('roadmaps.')
+                        ->group(function (): void {
+                            Route::get('/', [RoadmapController::class, 'index'])
+                                ->can('view', 'project')
+                                ->name('index');
+                            Route::get('/{roadmap}', [RoadmapController::class, 'show'])
+                                ->can('view', 'project')
+                                ->name('show');
+                            Route::get('/{roadmap}/phases/{phase}', [RoadmapController::class, 'phase'])
+                                ->can('view', 'project')
+                                ->name('phases.show');
+                            Route::get('/{roadmap}/tasks/{task}', [RoadmapController::class, 'task'])
+                                ->can('view', 'project')
+                                ->name('tasks.show');
+                            Route::post('/{roadmap}/edits', EditRoadmapController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('update', 'project')
+                                ->name('edits.store');
+                            Route::post('/{roadmap}/approve', [DecideRoadmapController::class, 'approve'])
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('approve');
+                            Route::post('/{roadmap}/reject', [DecideRoadmapController::class, 'reject'])
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('reject');
+                            Route::post('/{roadmap}/regenerate', RegenerateRoadmapController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('regenerate');
                         });
 
                     Route::controller(ProjectController::class)

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
@@ -14,7 +15,6 @@ use App\Models\DocumentVersion;
 use App\Models\Organization;
 use App\Models\Project;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use LogicException;
@@ -28,6 +28,7 @@ final readonly class StoreReplacementDocumentVersion
 {
     public function __construct(
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions
     ) {}
 
     /**
@@ -108,7 +109,7 @@ final readonly class StoreReplacementDocumentVersion
                 );
             }
 
-            return DB::transaction(
+            return $this->transactions->run(
                 function () use (
                     $project,
                     $document,
@@ -228,7 +229,6 @@ final readonly class StoreReplacementDocumentVersion
 
                     return $replacement;
                 },
-                attempts: 3,
             );
         } catch (Throwable $exception) {
             if (is_string($storedPath) && $storedPath !== '') {

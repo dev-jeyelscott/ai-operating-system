@@ -21,11 +21,15 @@ enum AuditEventType: string
     case ProjectArchived = 'project.archived';
     case ProjectRestored = 'project.restored';
     case ProjectSetupUpdated = 'project.setup.updated';
+
     case ProjectConfigurationVersionCreated =
         'project.configuration.version.created';
 
-    case IntegrationCredentialStored = 'integration.credential.stored';
-    case IntegrationCredentialRotated = 'integration.credential.rotated';
+    case IntegrationCredentialStored =
+        'integration.credential.stored';
+
+    case IntegrationCredentialRotated =
+        'integration.credential.rotated';
 
     case NotionConnectionTestSucceeded =
         'integration.notion.connection_test.succeeded';
@@ -34,7 +38,8 @@ enum AuditEventType: string
         'integration.notion.connection_test.failed';
 
     case DocumentUploaded = 'document.uploaded';
-    case DocumentReplacementUploaded = 'document.replacement.uploaded';
+    case DocumentReplacementUploaded =
+        'document.replacement.uploaded';
 
     case DocumentScanStarted = 'document.scan.started';
     case DocumentScanCompleted = 'document.scan.completed';
@@ -45,16 +50,62 @@ enum AuditEventType: string
     case DocumentParseFailed = 'document.parse.failed';
 
     case DocumentAnalysisStarted = 'document.analysis.started';
-    case DocumentAnalysisCompleted = 'document.analysis.completed';
+    case DocumentAnalysisCompleted =
+        'document.analysis.completed';
     case DocumentAnalysisFailed = 'document.analysis.failed';
 
     case DocumentVersionApproved = 'document.version.approved';
     case DocumentVersionRejected = 'document.version.rejected';
-    case DocumentVersionSuperseded = 'document.version.superseded';
+    case DocumentVersionSuperseded =
+        'document.version.superseded';
 
     case DocumentProcessingRetryRequested =
         'document.processing.retry_requested';
 
     case ProjectContextSnapshotCreated =
         'project.context_snapshot.created';
+
+    case ProjectStartRequested = 'project.start_requested';
+
+    case RoadmapGenerated = 'roadmap.generated';
+    case RoadmapEdited = 'roadmap.edited';
+    case RoadmapApproved = 'roadmap.approved';
+    case RoadmapRejected = 'roadmap.rejected';
+    case RoadmapRegenerationRequested =
+        'roadmap.regeneration_requested';
+
+    case WorkflowTransitioned = 'workflow.transitioned';
+
+    case ApprovalRequested = 'approval.requested';
+    case ApprovalGranted = 'approval.granted';
+    case ApprovalRejected = 'approval.rejected';
+    case ApprovalExpired = 'approval.expired';
+
+    case ExecutionAttemptStarted =
+        'execution.attempt.started';
+
+    case ExecutionAttemptCompleted =
+        'execution.attempt.completed';
+
+    case ExecutionAttemptFailed =
+        'execution.attempt.failed';
+
+    case ExecutionAttemptTimedOut =
+        'execution.attempt.timed_out';
+
+    case ExecutionRetryScheduled =
+        'execution.retry_scheduled';
+
+    case ExecutionRetryReleased =
+        'execution.retry_released';
+
+    case ExecutionCancellationRequested =
+        'execution.cancellation_requested';
+
+    case ExecutionCancelled = 'execution.cancelled';
+    case ExecutionFailed = 'execution.failed';
+    case ExecutionBlocked = 'execution.blocked';
+
+    case DeadLetterReplayRequested =
+        'dead_letter.replay_requested';
 }

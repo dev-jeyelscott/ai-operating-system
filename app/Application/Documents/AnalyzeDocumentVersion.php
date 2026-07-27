@@ -6,10 +6,10 @@ namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\Contracts\DocumentAnalyzer;
+use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentStatus;
 use App\Models\DocumentVersion;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -17,9 +17,13 @@ use Illuminate\Support\Facades\Log;
  */
 final readonly class AnalyzeDocumentVersion
 {
+    /**
+     * Create the document-analysis application service.
+     */
     public function __construct(
         private DocumentAnalyzer $analyzer,
         private RecordDocumentLifecycleEvent $events,
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -45,7 +49,7 @@ final readonly class AnalyzeDocumentVersion
         $analyzerName = $this->analyzer->name();
         $analyzerVersion = $this->analyzer->version();
 
-        $version = DB::transaction(
+        $version = $this->transactions->run(
             function () use (
                 $id,
                 $seed,
@@ -125,7 +129,7 @@ final readonly class AnalyzeDocumentVersion
             seed: $seed,
         );
 
-        $completed = DB::transaction(
+        $completed = $this->transactions->run(
             function () use (
                 $id,
                 $seed,
@@ -220,7 +224,7 @@ final readonly class AnalyzeDocumentVersion
             actorId: 'document-analysis-worker',
         );
 
-        $failed = DB::transaction(
+        $failed = $this->transactions->run(
             function () use ($id, $auditContext): bool {
                 $version = DocumentVersion::query()
                     ->lockForUpdate()
