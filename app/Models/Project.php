@@ -70,6 +70,12 @@ final class Project extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    /** @return HasMany<Roadmap, $this> */
+    public function roadmaps(): HasMany
+    {
+        return $this->hasMany(Roadmap::class)->orderBy('revision');
+    }
+
     /**
      * Return the resumable project setup progress.
      *

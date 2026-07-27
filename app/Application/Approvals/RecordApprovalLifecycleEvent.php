@@ -103,6 +103,7 @@ final readonly class RecordApprovalLifecycleEvent
         Approval $approval,
         string $correlationId,
         ?string $causationId,
+        ?string $reason = null,
     ): string {
         return $this->append(
             approval: $approval,
@@ -115,6 +116,30 @@ final readonly class RecordApprovalLifecycleEvent
             causationId: $causationId,
             payload: [
                 'expired_at' => CarbonImmutable::now()->toISOString(),
+                'reason' => $reason,
+            ],
+        );
+    }
+
+    /** Record a system-authorized approval granted by immutable policy. */
+    public function policyGranted(
+        Approval $approval,
+        string $correlationId,
+        ?string $causationId,
+    ): string {
+        return $this->append(
+            approval: $approval,
+            domainActor: DomainEventActor::system('roadmap-approval-policy'),
+            auditActorType: AuditActorType::System,
+            auditActorId: 'roadmap-approval-policy',
+            eventName: 'approval.granted',
+            auditEventType: AuditEventType::ApprovalGranted,
+            correlationId: $correlationId,
+            causationId: $causationId,
+            payload: [
+                'decision' => ApprovalDecision::Approve->value,
+                'decision_authority' => 'immutable_policy',
+                'reason_present' => true,
             ],
         );
     }

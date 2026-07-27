@@ -5,13 +5,15 @@ namespace App\Providers;
 use App\Application\Documents\Contracts\DocumentAnalyzer;
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\Contracts\MalwareScanner;
+use App\Application\Planning\ExecutionProviderRegistry;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Application\Workflows\Contracts\WorkflowTransitionGuardEvaluator;
+use App\Infrastructure\AgentProviders\SimulationPlanningProvider;
 use App\Infrastructure\Documents\DeterministicDocumentAnalyzer;
 use App\Infrastructure\Documents\DeterministicMalwareScanner;
 use App\Infrastructure\Documents\PlainTextDocumentParser;
 use App\Infrastructure\Persistence\EloquentTransactionManager;
-use App\Infrastructure\Workflows\DenyAllWorkflowTransitionGuardEvaluator;
+use App\Infrastructure\Workflows\RoadmapWorkflowTransitionGuardEvaluator;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -45,14 +47,14 @@ class AppServiceProvider extends ServiceProvider
             EloquentTransactionManager::class,
         );
 
-        /*
-         * Guarded workflow transitions fail closed until an approved
-         * deterministic evaluator replaces this default implementation.
-         */
+        /* Roadmap guards are explicit and every unknown guard fails closed. */
         $this->app->bind(
             WorkflowTransitionGuardEvaluator::class,
-            DenyAllWorkflowTransitionGuardEvaluator::class,
+            RoadmapWorkflowTransitionGuardEvaluator::class,
         );
+
+        $this->app->singleton(SimulationPlanningProvider::class);
+        $this->app->singleton(ExecutionProviderRegistry::class, fn ($app): ExecutionProviderRegistry => new ExecutionProviderRegistry([$app->make(SimulationPlanningProvider::class)]));
     }
 
     /**
