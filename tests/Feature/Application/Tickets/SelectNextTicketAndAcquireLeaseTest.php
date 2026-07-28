@@ -22,14 +22,14 @@ use App\Models\RoadmapTask;
 use App\Models\TicketExecutionLease;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
 use PDO;
 use Tests\TestCase;
 
 final class SelectNextTicketAndAcquireLeaseTest extends TestCase
 {
-    use DatabaseMigrations;
+    use DatabaseTruncation;
 
     /**
      * Verify the approved ranking policy determines the claimed ticket.
