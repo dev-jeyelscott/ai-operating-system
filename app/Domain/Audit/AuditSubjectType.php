@@ -16,6 +16,8 @@ enum AuditSubjectType: string
     case ProjectConfigurationVersion = 'project_configuration_version';
     case ProjectContextSnapshot = 'project_context_snapshot';
     case Roadmap = 'roadmap';
+    case RoadmapTask = 'roadmap_task';
+    case TicketExecutionLease = 'ticket_execution_lease';
 
     case Document = 'document';
     case DocumentVersion = 'document_version';

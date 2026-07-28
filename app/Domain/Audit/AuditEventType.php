@@ -82,6 +82,9 @@ enum AuditEventType: string
     case RoadmapRegenerationRequested =
         'roadmap.regeneration_requested';
 
+    case TicketSelected = 'ticket.selected';
+    case TicketLeaseAcquired = 'ticket.lease_acquired';
+
     case WorkflowTransitioned = 'workflow.transitioned';
 
     case ApprovalRequested = 'approval.requested';
