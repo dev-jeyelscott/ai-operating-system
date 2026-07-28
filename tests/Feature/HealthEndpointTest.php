@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class HealthEndpointTest extends TestCase
@@ -32,6 +35,19 @@ final class HealthEndpointTest extends TestCase
      */
     public function test_readiness_endpoint_reports_dependencies(): void
     {
+        config()->set('filesystems.artifact', 'artifacts');
+
+        DB::shouldReceive('select')
+            ->once()
+            ->with('select 1')
+            ->andReturn([]);
+
+        Redis::shouldReceive('connection->ping')
+            ->once()
+            ->andReturn('PONG');
+
+        Storage::fake('artifacts');
+
         $response = $this->getJson('/ready');
 
         $response

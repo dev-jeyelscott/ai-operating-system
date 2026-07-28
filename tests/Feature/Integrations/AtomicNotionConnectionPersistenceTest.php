@@ -657,6 +657,22 @@ function fakeAtomicSuccessfulNotionConnection(
                 'x-request-id' => 'req-database',
             ]);
         },
+
+        "https://api.notion.com/v1/data_sources/{$dataSourceId}" => static function () use (
+            $dataSourceId,
+            $expectedTransactionLevel,
+        ) {
+            expect(DB::transactionLevel())
+                ->toBe($expectedTransactionLevel);
+
+            return Http::response([
+                'object' => 'data_source',
+                'id' => $dataSourceId,
+                'properties' => atomicNotionTicketProperties(),
+            ], 200, [
+                'x-request-id' => 'req-data-source',
+            ]);
+        },
     ]);
 
     return [
@@ -672,4 +688,26 @@ function fakeAtomicSuccessfulNotionConnection(
 function atomicNotionDatabaseId(): string
 {
     return 'd9824bdc-8445-4327-be8b-5b47500af6ce';
+}
+
+/**
+ * Return the required Notion ticket schema for a successful connection test.
+ *
+ * @return array<string, array{type: string}>
+ */
+function atomicNotionTicketProperties(): array
+{
+    return [
+        'Ticket ID' => ['type' => 'rich_text'],
+        'Name' => ['type' => 'title'],
+        'Status' => ['type' => 'status'],
+        'Type' => ['type' => 'select'],
+        'Priority' => ['type' => 'select'],
+        'Risk' => ['type' => 'select'],
+        'Complexity' => ['type' => 'number'],
+        'Requires Approval' => ['type' => 'checkbox'],
+        'Dependencies' => ['type' => 'rich_text'],
+        'Evidence Requirements' => ['type' => 'rich_text'],
+        'Source References' => ['type' => 'rich_text'],
+    ];
 }

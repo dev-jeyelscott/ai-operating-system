@@ -38,6 +38,7 @@ use App\Models\TaskDependency;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /** Accepts a tracked Notion edit only by creating a separately approvable revision. */
@@ -151,10 +152,12 @@ final readonly class AcceptExternalNotionConflict
                 throw new InvalidArgumentException('The accepted external revision approval could not be created.');
             }
             $approvalId = $approvalResult->data['approval_id'] ?? null;
-            if (! is_int($approvalId)) {
+            if (! is_string($approvalId) || ! Str::isUlid($approvalId)) {
                 throw new InvalidArgumentException('The accepted external revision approval could not be resolved.');
             }
-            $approval = Approval::query()->whereKey($approvalId)->firstOrFail();
+            $approval = Approval::query()
+                ->whereKey($approvalId)
+                ->firstOrFail();
             $roadmap->forceFill(['approval_id' => $approval->id, 'status' => 'awaiting_approval'])->save();
             $project->transitionTo(ProjectStatus::Planning);
             $project->transitionTo(ProjectStatus::AwaitingRoadmapApproval);
