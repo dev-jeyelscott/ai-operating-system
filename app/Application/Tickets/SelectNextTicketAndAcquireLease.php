@@ -21,7 +21,6 @@ use App\Models\TicketExecutionLease;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use LogicException;
 
 /**
  * Selects the highest-ranked workable ticket and acquires its lease atomically.
@@ -117,12 +116,18 @@ final readonly class SelectNextTicketAndAcquireLease
                     return TicketSelectionResult::noWorkableTicket();
                 }
 
-                $activeLeaseTaskIds = TicketExecutionLease::query()
-                    ->active()
-                    ->where('project_id', $project->id)
-                    ->pluck('roadmap_task_id')
-                    ->map(static fn (mixed $id): int => (int) $id)
-                    ->all();
+                /*
+                 * Normalize the plucked identifiers into a PHPStan-compatible
+                 * list while preserving the active-lease exclusion behavior.
+                 */
+                $activeLeaseTaskIds = array_values(
+                    TicketExecutionLease::query()
+                        ->active()
+                        ->where('project_id', $project->id)
+                        ->pluck('roadmap_task_id')
+                        ->map(static fn (mixed $id): int => (int) $id)
+                        ->all(),
+                );
 
                 $approvedTicketReferences =
                     $this->approvedTicketReferences($project->id);
@@ -272,14 +277,19 @@ final readonly class SelectNextTicketAndAcquireLease
                 continue;
             }
 
-            $dependencyStatuses = $candidate->dependencies
-                ->map(
-                    static fn (
-                        TaskDependency $dependency,
-                    ): TicketStatus => $dependency->dependsOn->status,
-                )
-                ->values()
-                ->all();
+            /*
+             * Normalize dependency statuses into a sequential list for the
+             * eligibility contract.
+             */
+            $dependencyStatuses = array_values(
+                $candidate->dependencies
+                    ->map(
+                        static fn (
+                            TaskDependency $dependency,
+                        ): TicketStatus => $dependency->dependsOn->status,
+                    )
+                    ->all(),
+            );
 
             $approvalGranted = $this->approvalGranted(
                 ticket: $candidate,
@@ -341,14 +351,12 @@ final readonly class SelectNextTicketAndAcquireLease
     private function rankingContext(
         RoadmapTask $ticket,
     ): TicketRankingContext {
+        /*
+         * status_changed_at is an authoritative non-null fallback when the
+         * ticket does not have a dedicated ready_at timestamp.
+         */
         $readyAt = $ticket->ready_at
             ?? $ticket->status_changed_at;
-
-        if ($readyAt === null) {
-            throw new LogicException(
-                'Eligible ticket has no deterministic ready timestamp.',
-            );
-        }
 
         return new TicketRankingContext(
             ticketId: $ticket->stable_id,
@@ -371,27 +379,40 @@ final readonly class SelectNextTicketAndAcquireLease
     private function lockedDependencyStatuses(
         RoadmapTask $ticket,
     ): array {
-        $dependencyIds = TaskDependency::query()
-            ->where('roadmap_task_id', $ticket->id)
-            ->orderBy('depends_on_task_id')
-            ->pluck('depends_on_task_id')
-            ->map(static fn (mixed $id): int => (int) $id)
-            ->all();
+        /*
+         * Normalize the dependency identifiers before passing them to whereKey.
+         */
+        $dependencyIds = array_values(
+            TaskDependency::query()
+                ->where('roadmap_task_id', $ticket->id)
+                ->orderBy('depends_on_task_id')
+                ->pluck('depends_on_task_id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all(),
+        );
 
         if ($dependencyIds === []) {
             return [];
         }
 
-        return RoadmapTask::query()
-            ->whereKey($dependencyIds)
-            ->orderBy('id')
-            ->lock('for share')
-            ->pluck('status')
-            ->map(
-                static fn (mixed $status): TicketStatus => TicketStatus::from((string) $status),
-            )
-            ->values()
-            ->all();
+        /*
+         * Return a sequential list matching the eligibility context contract.
+         */
+        return array_values(
+            RoadmapTask::query()
+                ->whereKey($dependencyIds)
+                ->orderBy('id')
+                ->lock('for share')
+                ->pluck('status')
+                ->map(
+                    static fn (
+                        mixed $status,
+                    ): TicketStatus => TicketStatus::from(
+                        (string) $status,
+                    ),
+                )
+                ->all(),
+        );
     }
 
     /**
