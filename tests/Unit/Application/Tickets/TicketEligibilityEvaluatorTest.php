@@ -206,3 +206,56 @@ test(
         );
     },
 );
+
+test(
+    'eligibility context rejects associative dependency collections',
+    function (): void {
+        expect(
+            fn (): TicketEligibilityContext => new TicketEligibilityContext(
+                status: TicketStatus::Ready,
+                changesRequestedApproved: false,
+                hardDependencyStatuses: [
+                    'dependency' => TicketStatus::Done,
+                ],
+                hasUnresolvedBlocker: false,
+                approvalRequired: false,
+                approvalGranted: false,
+                projectStatus: ProjectStatus::Active,
+                providerSupportsExecution: true,
+                budgetPermitsExecution: true,
+                attemptCount: 0,
+                retryLimit: 3,
+            ),
+        )->toThrow(
+            InvalidArgumentException::class,
+            'Hard dependency statuses must be a list.',
+        );
+    },
+);
+
+test(
+    'eligibility context rejects invalid dependency status values',
+    function (): void {
+        expect(
+            fn (): TicketEligibilityContext => new TicketEligibilityContext(
+                status: TicketStatus::Ready,
+                changesRequestedApproved: false,
+                hardDependencyStatuses: [
+                    TicketStatus::Done,
+                    'done',
+                ],
+                hasUnresolvedBlocker: false,
+                approvalRequired: false,
+                approvalGranted: false,
+                projectStatus: ProjectStatus::Active,
+                providerSupportsExecution: true,
+                budgetPermitsExecution: true,
+                attemptCount: 0,
+                retryLimit: 3,
+            ),
+        )->toThrow(
+            InvalidArgumentException::class,
+            'Every hard dependency status must be a TicketStatus.',
+        );
+    },
+);
