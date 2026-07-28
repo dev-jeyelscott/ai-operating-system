@@ -35,6 +35,30 @@ export type RoadmapTask = {
     isCriticalPath: boolean;
     dependencies: Array<{ id: number; stableId: string; title: string }>;
     traceability: RoadmapSourceReference[];
+    notionMapping: {
+        mappingId: number;
+        externalKey: string;
+        pageUrl: string | null;
+        state: string;
+        reconciliationState: string | null;
+        retryable: boolean;
+    } | null;
+};
+
+export type NotionPublicationView = {
+    readiness: boolean;
+    schemaReadiness: 'ready' | 'incompatible' | 'unverified' | 'not_configured';
+    dataSourceName: string | null;
+    dataSourceId: string | null;
+    summary: {
+        createdCount: number;
+        updatedCount: number;
+        skippedCount: number;
+        failedCount: number;
+        conflictedCount: number;
+        completedAt: string | null;
+        diagnostics: string[];
+    } | null;
 };
 
 export type RoadmapView = {

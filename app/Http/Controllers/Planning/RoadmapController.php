@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Planning;
 
 use App\Application\Planning\MaterializeRoadmap;
+use App\Domain\Integrations\NotionConnectionFailureCode;
 use App\Http\Controllers\Controller;
+use App\Models\NotionPublicationSummary;
+use App\Models\NotionReconciliationConflict;
 use App\Models\Organization;
 use App\Models\PlanningExecutionDiagnostic;
 use App\Models\Project;
+use App\Models\ProjectIntegration;
 use App\Models\Roadmap;
 use App\Models\RoadmapPhase;
 use App\Models\RoadmapTask;
@@ -67,6 +71,7 @@ final class RoadmapController extends Controller
                 'tasks.milestone',
                 'tasks.dependencies.dependsOn',
                 'tasks.traceabilityLinks.documentVersion.document',
+                'tasks.externalTicketMappings',
                 'traceabilityLinks.documentVersion.document',
             ]);
         }
@@ -101,7 +106,24 @@ final class RoadmapController extends Controller
                 'edit' => $actor->can('update', $project),
                 'decide' => $actor->can('approve', $project),
                 'regenerate' => $actor->can('approve', $project),
+                'publish' => $actor->can('approve', $project),
             ],
+            'notionPublication' => $roadmap === null ? null : $this->serializeNotionPublication($project, $roadmap),
+            'notionConflicts' => $roadmap === null ? [] : NotionReconciliationConflict::query()
+                ->where('project_id', $project->id)
+                ->whereIn('state', ['open', 'republish_queued', 'republish_failed'])
+                ->whereHas('mapping.task', fn ($query) => $query->where('roadmap_id', $roadmap->id))
+                ->latest('id')
+                ->get(['id', 'external_ticket_mapping_id', 'current_fingerprint', 'external_fingerprint', 'state', 'decision', 'decision_reason'])
+                ->map(fn (NotionReconciliationConflict $conflict): array => [
+                    'id' => $conflict->id,
+                    'mappingId' => $conflict->external_ticket_mapping_id,
+                    'currentFingerprint' => $conflict->current_fingerprint,
+                    'externalFingerprint' => $conflict->external_fingerprint,
+                    'state' => $conflict->state,
+                    'decision' => $conflict->decision,
+                    'decisionReason' => $conflict->decision_reason,
+                ])->all(),
             'actionIdempotencyKey' => (string) Str::uuid(),
         ]);
     }
@@ -186,10 +208,58 @@ final class RoadmapController extends Controller
                         'checksumSha256' => $link->checksum_sha256,
                         'documentName' => $link->documentVersion->document->title,
                     ])->all(),
+                    'notionMapping' => ($mapping = $task->externalTicketMappings->firstWhere('provider', 'notion')) === null ? null : [
+                        'externalKey' => $mapping->external_key,
+                        'mappingId' => $mapping->id,
+                        'pageUrl' => $mapping->page_url,
+                        'state' => $mapping->state,
+                        'reconciliationState' => $mapping->reconciliation_state,
+                        'retryable' => ($mapping->failure_metadata['retryable'] ?? false) === true,
+                    ],
                 ];
             })->all(),
             'reverseTraceability' => $this->reverseTraceability($roadmap),
             'edits' => $roadmap->edits->map(fn ($edit): array => ['contentVersion' => $edit->content_version, 'actorName' => $edit->actor->name, 'createdAt' => $edit->created_at->toISOString()])->all(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function serializeNotionPublication(Project $project, Roadmap $roadmap): array
+    {
+        $integration = ProjectIntegration::query()
+            ->forOrganization($project->organization_id)
+            ->forProject($project->id)
+            ->where('provider', 'notion')
+            ->first();
+        $summary = NotionPublicationSummary::query()
+            ->where('roadmap_id', $roadmap->id)
+            ->latest('id')
+            ->first();
+
+        return [
+            'readiness' => $integration?->connection_status->value === 'connected'
+                && $integration->data_source_id !== null,
+            'schemaReadiness' => $integration === null
+                ? 'not_configured'
+                : ($integration->last_failure_code === NotionConnectionFailureCode::SchemaIncompatible
+                    ? 'incompatible'
+                    : ($integration->connection_status->value === 'connected' ? 'ready' : 'unverified')),
+            'dataSourceName' => $integration?->data_source_name,
+            'dataSourceId' => $integration?->data_source_id,
+            'summary' => $summary === null ? null : [
+                'createdCount' => $summary->created_count,
+                'updatedCount' => $summary->updated_count,
+                'skippedCount' => $summary->skipped_count,
+                'failedCount' => $summary->failed_count,
+                'conflictedCount' => $summary->conflicted_count,
+                'completedAt' => $summary->completed_at,
+                'diagnostics' => collect(is_array($summary->outcomes) ? $summary->outcomes : [])
+                    ->filter(fn (array $outcome): bool => in_array($outcome['outcome'] ?? null, ['failed', 'conflicted', 'blocked'], true))
+                    ->map(fn (array $outcome): string => is_string($outcome['message'] ?? null) && $outcome['message'] !== '' ? $outcome['message'] : 'Notion publication requires attention.')
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ],
         ];
     }
 

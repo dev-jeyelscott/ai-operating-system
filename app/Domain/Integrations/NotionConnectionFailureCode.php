@@ -19,6 +19,7 @@ enum NotionConnectionFailureCode: string
     case RateLimited = 'rate_limited';
     case ProviderUnavailable = 'provider_unavailable';
     case InvalidProviderResponse = 'invalid_provider_response';
+    case SchemaIncompatible = 'schema_incompatible';
     case ConnectionFailed = 'connection_failed';
 
     /**
@@ -40,6 +41,8 @@ enum NotionConnectionFailureCode: string
             self::ProviderUnavailable => 'Notion is temporarily unavailable. Try the connection test again.',
 
             self::InvalidProviderResponse => 'Notion returned an unexpected response. Verify the connection configuration and try again.',
+
+            self::SchemaIncompatible => 'The selected Notion data source does not contain the required ticket properties.',
 
             self::ConnectionFailed => 'The Notion connection could not be validated.',
         };

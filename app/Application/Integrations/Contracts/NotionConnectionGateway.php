@@ -20,5 +20,6 @@ interface NotionConnectionGateway
         IntegrationCredentialSecret $credential,
         NotionDatabaseId $databaseId,
         ?string $expectedWorkspaceId,
+        ?string $selectedDataSourceId = null,
     ): NotionConnectionTestResult;
 }

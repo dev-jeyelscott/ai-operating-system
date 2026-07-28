@@ -18,6 +18,8 @@ use App\Models\Approval;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Execution;
+use App\Models\ExternalTicketMapping;
+use App\Models\NotionReconciliationConflict;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Project;
@@ -54,9 +56,32 @@ final class RoadmapE2ESeeder extends Seeder
         foreach (['approve', 'edit', 'reject', 'regenerate'] as $action) {
             $this->createAwaitingRoadmap($organization, $user, $action);
         }
+
+        $roadmap = $this->createAwaitingRoadmap($organization, $user, 'conflict');
+        $task = $roadmap->tasks()->firstOrFail();
+        $fingerprint = hash('sha256', 'roadmap-e2e-notion-conflict-'.$task->id);
+        $mapping = ExternalTicketMapping::query()->create([
+            'roadmap_task_id' => $task->id,
+            'provider' => 'notion',
+            'external_key' => 'roadmap-e2e-notion-'.$task->id,
+            'page_id' => 'roadmap-e2e-notion-page-'.$task->id,
+            'page_url' => 'https://www.notion.so/roadmap-e2e-notion-page-'.$task->id,
+            'last_synchronized_fingerprint' => hash('sha256', 'roadmap-e2e-notion-published-'.$task->id),
+            'state' => 'synchronized',
+            'reconciliation_state' => 'external_drift',
+            'reconciliation_fingerprint' => $fingerprint,
+        ]);
+        NotionReconciliationConflict::query()->create([
+            'organization_id' => $organization->id,
+            'project_id' => $roadmap->project_id,
+            'external_ticket_mapping_id' => $mapping->id,
+            'current_fingerprint' => $fingerprint,
+            'published_fingerprint' => $mapping->last_synchronized_fingerprint,
+            'external_fingerprint' => $fingerprint,
+        ]);
     }
 
-    private function createAwaitingRoadmap(Organization $organization, User $user, string $action): void
+    private function createAwaitingRoadmap(Organization $organization, User $user, string $action): Roadmap
     {
         $project = Project::factory()->for($organization)->create([
             'name' => Str::headline($action).' Roadmap Project',
@@ -150,6 +175,8 @@ final class RoadmapE2ESeeder extends Seeder
         /** @var Approval $approval */
         $approval = Approval::query()->findOrFail($approvalResult->data['approval_id']);
         $roadmap->forceFill(['approval_id' => $approval->id, 'status' => 'awaiting_approval'])->save();
+
+        return $roadmap;
     }
 
     /** @return array<string, mixed> */

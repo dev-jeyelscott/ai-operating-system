@@ -16,9 +16,15 @@ use App\Http\Controllers\Integrations\TestProjectNotionConnectionController;
 use App\Http\Controllers\Organizations\OrganizationController;
 use App\Http\Controllers\Organizations\OrganizationDashboardController;
 use App\Http\Controllers\Organizations\SwitchCurrentOrganizationController;
+use App\Http\Controllers\Planning\DecideNotionReconciliationConflictController;
 use App\Http\Controllers\Planning\DecideRoadmapController;
+use App\Http\Controllers\Planning\DeferNotionReconciliationConflictController;
 use App\Http\Controllers\Planning\EditRoadmapController;
+use App\Http\Controllers\Planning\PublishRoadmapToNotionController;
+use App\Http\Controllers\Planning\ReconcileNotionRoadmapController;
 use App\Http\Controllers\Planning\RegenerateRoadmapController;
+use App\Http\Controllers\Planning\RetainInternalNotionConflictController;
+use App\Http\Controllers\Planning\RetryFailedNotionPublicationController;
 use App\Http\Controllers\Planning\RoadmapController;
 use App\Http\Controllers\Projects\ArchiveProjectController;
 use App\Http\Controllers\Projects\ProjectConfigurationController;
@@ -226,6 +232,30 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                                 ->middleware('throttle:project-commands')
                                 ->can('approve', 'project')
                                 ->name('regenerate');
+                            Route::post('/{roadmap}/notion/publish', PublishRoadmapToNotionController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('notion.publish');
+                            Route::post('/{roadmap}/notion/retry', RetryFailedNotionPublicationController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('notion.retry');
+                            Route::post('/{roadmap}/notion/reconcile', ReconcileNotionRoadmapController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('notion.reconcile');
+                            Route::post('/notion/conflicts/{conflict}/accept-external', DecideNotionReconciliationConflictController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('notion.conflicts.accept-external');
+                            Route::post('/notion/conflicts/{conflict}/retain-internal', RetainInternalNotionConflictController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('notion.conflicts.retain-internal');
+                            Route::post('/notion/conflicts/{conflict}/defer', DeferNotionReconciliationConflictController::class)
+                                ->middleware('throttle:project-commands')
+                                ->can('approve', 'project')
+                                ->name('notion.conflicts.defer');
                         });
 
                     Route::controller(ProjectController::class)

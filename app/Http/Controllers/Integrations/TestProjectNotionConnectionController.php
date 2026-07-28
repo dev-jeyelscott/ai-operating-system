@@ -51,10 +51,20 @@ final class TestProjectNotionConnectionController
             plaintextCredential: is_string($credential)
                     ? $credential
                     : null,
+            selectedDataSourceId: isset($validated['data_source_id'])
+                    ? (string) $validated['data_source_id']
+                    : null,
             correlationId: is_string($correlationId)
                     ? $correlationId
                     : null,
         );
+
+        if ($result->dataSourceCandidates !== []) {
+            return back()
+                ->withErrors(['data_source_id' => $result->userMessage()])
+                ->with('notion_data_source_candidates', $result->dataSourceCandidates)
+                ->with('status', 'notion-data-source-selection-required');
+        }
 
         if (! $result->successful) {
             return back()

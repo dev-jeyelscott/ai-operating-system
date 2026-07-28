@@ -56,6 +56,7 @@ final class TestProjectNotionConnectionRequest extends FormRequest
                 'max:2048',
                 new ValidNotionDatabaseId,
             ],
+            'data_source_id' => ['nullable', 'uuid'],
         ];
     }
 
@@ -120,6 +121,7 @@ final class TestProjectNotionConnectionRequest extends FormRequest
         return [
             'credential' => 'Notion integration credential',
             'database_id' => 'Notion database',
+            'data_source_id' => 'Notion data source',
         ];
     }
 }

@@ -3,11 +3,25 @@
 declare(strict_types=1);
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Audit\RecordAuditEvent;
 use App\Application\Documents\ReviewDocumentVersion;
 use App\Application\Events\Contracts\DomainEventConsumerRegistry;
 use App\Application\Events\Contracts\DomainEventOutbox;
 use App\Application\Events\DeduplicatedDomainEventConsumer;
+use App\Application\Integrations\Contracts\IntegrationCredentialCipher;
+use App\Application\Integrations\Contracts\NotionPublicationClient;
+use App\Application\Integrations\Data\NotionDataSource;
+use App\Application\Integrations\Data\NotionPage;
+use App\Application\Integrations\NotionPublicationException;
 use App\Application\Planning\MaterializeRoadmap;
+use App\Application\Planning\Notion\AcceptExternalNotionConflict;
+use App\Application\Planning\Notion\DeferNotionReconciliationConflict;
+use App\Application\Planning\Notion\NotionTicketFingerprint;
+use App\Application\Planning\Notion\NotionTicketMapper;
+use App\Application\Planning\Notion\ReconcileNotionRoadmap;
+use App\Application\Planning\Notion\RetainInternalNotionConflict;
+use App\Application\Planning\Notion\RetryFailedNotionPublication;
+use App\Application\Planning\Notion\UpsertNotionTicket;
 use App\Application\Planning\ProcessPlanningExecution;
 use App\Application\Planning\RoadmapEligibility;
 use App\Application\Projects\BuildStartProjectCommand;
@@ -19,18 +33,23 @@ use App\Domain\Audit\AuditActorType;
 use App\Domain\Events\DomainEventEnvelope;
 use App\Domain\Idempotency\IdempotencyKeyStatus;
 use App\Domain\Identity\OrganizationRole;
+use App\Domain\Integrations\IntegrationCredentialSecret;
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Domain\Projects\ProjectStatus;
 use App\Jobs\ConsumeOutboxMessage;
 use App\Jobs\ProcessPlanningExecutionJob;
+use App\Jobs\RepublishNotionConflictJob;
+use App\Jobs\RetryFailedNotionPublicationJob;
 use App\Models\Approval;
 use App\Models\AuditEvent;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Execution;
+use App\Models\ExternalTicketMapping;
 use App\Models\IdempotencyKey;
+use App\Models\NotionReconciliationConflict;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\OutboxMessage;
@@ -42,6 +61,7 @@ use App\Models\ProjectIntegration;
 use App\Models\ProjectSetupProgress;
 use App\Models\ProviderCredential;
 use App\Models\Roadmap;
+use App\Models\RoadmapTask;
 use App\Models\User;
 use App\Models\WorkflowInstance;
 use Database\Seeders\ProjectDeliveryWorkflowSeeder;
@@ -53,6 +73,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Tests\Fakes\InMemoryNotionPublicationClient;
 
 beforeEach(function (): void {
     Http::preventStrayRequests();
@@ -264,6 +285,437 @@ test('roadmap approval is authorized idempotent and rejects stale content', func
         ['stable_id' => 'criterion-without-coverage', 'description' => 'Must be covered.', 'source_references' => []],
     ]);
     expect(app(RoadmapEligibility::class)->allowsPublicationOrDevelopment($roadmap))->toBeFalse();
+});
+
+test('accepting external Notion content creates a separately approvable roadmap revision', function (): void {
+    $this->withoutMiddleware(ThrottleRequests::class);
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap'];
+    $this->actingAs($fixture['owner'])->post(route('organizations.projects.roadmaps.approve', [
+        'organization' => $fixture['organization'],
+        'project' => $fixture['project'],
+        'roadmap' => $roadmap,
+    ]), [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'approve-before-notion-conflict',
+    ])->assertSessionHasNoErrors();
+
+    $task = $roadmap->tasks()->firstOrFail();
+    $mapping = ExternalTicketMapping::query()->create([
+        'roadmap_task_id' => $task->id,
+        'provider' => IntegrationProvider::Notion->value,
+        'external_key' => 'notion-conflict-task-key',
+        'page_id' => 'notion-page-id',
+        'page_url' => 'https://www.notion.so/notion-page-id',
+        'state' => 'published',
+    ]);
+    $mapped = app(NotionTicketMapper::class)->map($task, $mapping);
+    $properties = $mapped['properties'];
+    $properties['Name']['title'][0]['text']['content'] = 'Accepted Notion title';
+    $page = new NotionPage(
+        id: 'notion-page-id',
+        dataSourceId: ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id,
+        url: 'https://www.notion.so/notion-page-id',
+        properties: $properties,
+        providerRequestId: 'request-conflict-accept',
+    );
+    $fingerprint = app(NotionTicketFingerprint::class)->from($properties, $mapped['body']);
+    $mapping->update(['reconciliation_fingerprint' => $fingerprint]);
+    $conflict = NotionReconciliationConflict::query()->create([
+        'organization_id' => $fixture['organization']->id,
+        'project_id' => $fixture['project']->id,
+        'external_ticket_mapping_id' => $mapping->id,
+        'current_fingerprint' => $fingerprint,
+        'published_fingerprint' => $mapped['fingerprint'],
+        'external_fingerprint' => $fingerprint,
+    ]);
+
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->andReturn(IntegrationCredentialSecret::from('secret_notion_conflict_resolution_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+    $client = Mockery::mock(NotionPublicationClient::class);
+    $client->shouldReceive('retrievePage')->once()->andReturn($page);
+    $client->shouldReceive('retrievePageBody')->once()->andReturn($mapped['body']);
+    app()->instance(NotionPublicationClient::class, $client);
+
+    $accepted = app(AcceptExternalNotionConflict::class)->handle(
+        conflict: $conflict,
+        actor: $fixture['owner'],
+        expectedFingerprint: $fingerprint,
+        reason: 'The external refinement is approved for internal review.',
+        idempotencyKey: 'accept-external-notion-conflict',
+        correlationId: (string) Str::ulid(),
+    );
+    $replayed = app(AcceptExternalNotionConflict::class)->handle(
+        conflict: $conflict->fresh(),
+        actor: $fixture['owner'],
+        expectedFingerprint: $fingerprint,
+        reason: 'The external refinement is approved for internal review.',
+        idempotencyKey: 'accept-external-notion-conflict',
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($accepted->id)->not->toBe($roadmap->id)
+        ->and($replayed->id)->toBe($accepted->id)
+        ->and($accepted->parent_roadmap_id)->toBe($roadmap->id)
+        ->and($accepted->revision)->toBe($roadmap->revision + 1)
+        ->and($accepted->status)->toBe('awaiting_approval')
+        ->and($accepted->tasks()->where('stable_id', $task->stable_id)->sole()->title)->toBe('Accepted Notion title')
+        ->and($roadmap->refresh()->status)->toBe('approved')
+        ->and($fixture['project']->refresh()->status)->toBe(ProjectStatus::AwaitingRoadmapApproval)
+        ->and($conflict->refresh()->state)->toBe('accepted')
+        ->and($conflict->resulting_roadmap_id)->toBe($accepted->id);
+});
+
+test('retaining internal Notion content authorizes only one queued republish', function (): void {
+    $fixture = notionConflictFixture();
+
+    $resolved = app(RetainInternalNotionConflict::class)->handle(
+        conflict: $fixture['conflict'],
+        actor: $fixture['owner'],
+        expectedFingerprint: $fixture['fingerprint'],
+        reason: 'The approved roadmap remains authoritative.',
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($resolved->state)->toBe('republish_queued')
+        ->and($resolved->decision)->toBe('retain_internal')
+        ->and($fixture['mapping']->refresh()->reconciliation_state)->toBe('republish_authorized')
+        ->and(AuditEvent::query()->where('event_type', 'integration.notion.conflict.retain_internal_requested')->exists())->toBeTrue();
+});
+
+test('deferring a Notion conflict blocks subsequent publication without remote I/O', function (): void {
+    $fixture = notionConflictFixture();
+
+    app(DeferNotionReconciliationConflict::class)->handle(
+        conflict: $fixture['conflict'],
+        actor: $fixture['owner'],
+        expectedFingerprint: $fixture['fingerprint'],
+        reason: 'Await product review before choosing a source of truth.',
+        correlationId: (string) Str::ulid(),
+    );
+
+    $result = app(UpsertNotionTicket::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        task: $fixture['task']->fresh(),
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($fixture['conflict']->refresh()->state)->toBe('deferred')
+        ->and($fixture['conflict']->decision)->toBe('defer')
+        ->and($fixture['mapping']->refresh()->reconciliation_state)->toBe('deferred')
+        ->and($result->outcome)->toBe('blocked')
+        ->and(AuditEvent::query()->where('event_type', 'integration.notion.conflict.deferred')->exists())->toBeTrue();
+});
+
+test('a retained-internal decision resolves only after its queued typed upsert succeeds', function (): void {
+    $fixture = notionConflictFixture();
+    app(RetainInternalNotionConflict::class)->handle(
+        conflict: $fixture['conflict'],
+        actor: $fixture['owner'],
+        expectedFingerprint: $fixture['fingerprint'],
+        reason: 'Republish the approved internal roadmap content.',
+        correlationId: (string) Str::ulid(),
+    );
+
+    $properties = app(NotionTicketMapper::class)->map($fixture['task'], $fixture['mapping']->fresh())['properties'];
+    $source = new NotionDataSource(
+        id: ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id,
+        name: 'Tickets',
+        properties: [
+            'Ticket ID' => ['type' => 'rich_text'],
+            'Name' => ['type' => 'title'],
+            'Status' => ['type' => 'status'],
+            'Type' => ['type' => 'select'],
+            'Priority' => ['type' => 'select'],
+            'Risk' => ['type' => 'select'],
+            'Complexity' => ['type' => 'number'],
+            'Requires Approval' => ['type' => 'checkbox'],
+            'Dependencies' => ['type' => 'rich_text'],
+            'Evidence Requirements' => ['type' => 'rich_text'],
+            'Source References' => ['type' => 'rich_text'],
+        ],
+        providerRequestId: 'request-schema',
+    );
+    $page = new NotionPage(
+        id: (string) $fixture['mapping']->page_id,
+        dataSourceId: $source->id,
+        url: (string) $fixture['mapping']->page_url,
+        properties: $properties,
+        providerRequestId: 'request-republish',
+    );
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->andReturn(IntegrationCredentialSecret::from('secret_notion_republish_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+    $client = Mockery::mock(NotionPublicationClient::class);
+    $client->shouldReceive('retrieveDataSource')->once()->andReturn($source);
+    $client->shouldReceive('retrievePage')->once()->andReturn($page);
+    $client->shouldReceive('updatePage')->once()->andReturn($page);
+    app()->instance(NotionPublicationClient::class, $client);
+
+    (new RepublishNotionConflictJob(
+        conflictId: $fixture['conflict']->id,
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        correlationId: (string) Str::ulid(),
+    ))->handle(app(UpsertNotionTicket::class), app(RecordAuditEvent::class));
+
+    expect($fixture['conflict']->refresh()->state)->toBe('resolved')
+        ->and($fixture['mapping']->refresh()->state)->toBe('synchronized')
+        ->and($fixture['mapping']->reconciliation_state)->toBe('in_sync')
+        ->and(AuditEvent::query()->where('event_type', 'integration.notion.conflict.retain_internal_completed')->exists())->toBeTrue();
+});
+
+test('a retry request persists an idempotent summary without reissuing successful mappings', function (): void {
+    $fixture = notionConflictFixture();
+    $first = app(RetryFailedNotionPublication::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        idempotencyKey: 'notion-retry-no-failed-mappings',
+        correlationId: (string) Str::ulid(),
+    );
+    $replay = app(RetryFailedNotionPublication::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        idempotencyKey: 'notion-retry-no-failed-mappings',
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($replay->id)->toBe($first->id)
+        ->and($first->outcomes)->toBe([])
+        ->and($fixture['mapping']->refresh()->state)->toBe('synchronized');
+});
+
+test('a retryable Notion failure recovers once and replays its completed summary', function (): void {
+    $fixture = notionConflictFixture();
+    $fixture['mapping']->update([
+        'state' => 'failed',
+        'failure_metadata' => ['category' => 'provider_unavailable', 'retryable' => true],
+        'reconciliation_state' => null,
+    ]);
+    $mapping = $fixture['mapping']->fresh();
+    $properties = app(NotionTicketMapper::class)->map($fixture['task'], $mapping)['properties'];
+    $source = notionTicketDataSource(
+        ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id,
+    );
+    $page = new NotionPage(
+        id: (string) $mapping->page_id,
+        dataSourceId: $source->id,
+        url: (string) $mapping->page_url,
+        properties: $properties,
+        providerRequestId: 'request-retry-recovery',
+    );
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->andReturn(IntegrationCredentialSecret::from('secret_notion_retry_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+    $client = Mockery::mock(NotionPublicationClient::class);
+    $client->shouldReceive('retrieveDataSource')->once()->andReturn($source);
+    $client->shouldReceive('retrievePage')->once()->andReturn($page);
+    $client->shouldReceive('updatePage')->once()->andReturn($page);
+    app()->instance(NotionPublicationClient::class, $client);
+
+    $first = app(RetryFailedNotionPublication::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        idempotencyKey: 'notion-retry-recovery',
+        correlationId: (string) Str::ulid(),
+    );
+    $replay = app(RetryFailedNotionPublication::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        idempotencyKey: 'notion-retry-recovery',
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($first->updated_count)->toBe(1)
+        ->and($replay->id)->toBe($first->id)
+        ->and($mapping->refresh()->state)->toBe('synchronized')
+        ->and($mapping->failure_metadata)->toBeNull();
+});
+
+test('the offline Notion fixture proves retry replay creates only one page', function (): void {
+    $fixture = notionConflictFixture();
+    $fixture['mapping']->update([
+        'page_id' => null,
+        'page_url' => null,
+        'state' => 'failed',
+        'failure_metadata' => ['category' => 'provider_unavailable', 'retryable' => true],
+        'reconciliation_state' => null,
+    ]);
+    $source = notionTicketDataSource(
+        ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id,
+    );
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->once()->andReturn(IntegrationCredentialSecret::from('secret_notion_fixture_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+    $client = new InMemoryNotionPublicationClient($source);
+    app()->instance(NotionPublicationClient::class, $client);
+
+    $first = app(RetryFailedNotionPublication::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        idempotencyKey: 'notion-offline-fixture-retry',
+        correlationId: (string) Str::ulid(),
+    );
+    $replay = app(RetryFailedNotionPublication::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        idempotencyKey: 'notion-offline-fixture-retry',
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($first->created_count)->toBe(1)
+        ->and($replay->id)->toBe($first->id)
+        ->and(collect($client->calls)->where('operation', 'create_page'))->toHaveCount(1)
+        ->and($fixture['mapping']->refresh()->state)->toBe('synchronized');
+});
+
+test('reconciliation detects external drift without overwriting approved roadmap content', function (): void {
+    $fixture = notionConflictFixture();
+    $mapping = $fixture['mapping']->fresh();
+    $source = notionTicketDataSource(
+        ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id,
+    );
+    $payload = app(NotionTicketMapper::class)->map($fixture['task'], $mapping);
+    $externalProperties = $payload['properties'];
+    $externalProperties['Name']['title'][0]['text']['content'] = 'Externally edited Notion title';
+    $client = new InMemoryNotionPublicationClient($source);
+    $client->seedPage(new NotionPage(
+        id: (string) $mapping->page_id,
+        dataSourceId: $source->id,
+        url: (string) $mapping->page_url,
+        properties: $externalProperties,
+        providerRequestId: 'fixture-external-edit',
+    ), $payload['body']);
+    app()->instance(NotionPublicationClient::class, $client);
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->once()->andReturn(IntegrationCredentialSecret::from('secret_notion_reconciliation_fixture_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+    $internalTitle = $fixture['task']->title;
+
+    $results = app(ReconcileNotionRoadmap::class)->handle(
+        actorUserId: $fixture['owner']->id,
+        organizationId: $fixture['organization']->id,
+        roadmap: $fixture['roadmap']->fresh(),
+        correlationId: (string) Str::ulid(),
+    );
+
+    expect($results)->toContain([
+        'task_id' => $fixture['task']->id,
+        'mapping_id' => $mapping->id,
+        'classification' => 'external_drift',
+        'evidence_fingerprint' => app(NotionTicketFingerprint::class)->from($externalProperties, $payload['body']),
+    ])
+        ->and($fixture['task']->refresh()->title)->toBe($internalTitle)
+        ->and($mapping->refresh()->reconciliation_state)->toBe('external_drift')
+        ->and(collect($client->calls)->whereIn('operation', ['create_page', 'update_page']))->toBeEmpty();
+});
+
+test('reconciliation classifies duplicate external ticket keys without a write', function (): void {
+    $fixture = notionConflictFixture();
+    $mapping = $fixture['mapping']->fresh();
+    $source = notionTicketDataSource(ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id);
+    $payload = app(NotionTicketMapper::class)->map($fixture['task'], $mapping);
+    $client = new InMemoryNotionPublicationClient($source);
+    foreach ([(string) $mapping->page_id, 'duplicate-fixture-page'] as $pageId) {
+        $client->seedPage(new NotionPage($pageId, $source->id, 'https://www.notion.so/'.$pageId, $payload['properties'], 'fixture-'.$pageId), $payload['body']);
+    }
+    app()->instance(NotionPublicationClient::class, $client);
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->once()->andReturn(IntegrationCredentialSecret::from('secret_notion_duplicate_fixture_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+
+    $results = app(ReconcileNotionRoadmap::class)->handle($fixture['owner']->id, $fixture['organization']->id, $fixture['roadmap']->fresh(), (string) Str::ulid());
+
+    expect(collect($results)->firstWhere('task_id', $fixture['task']->id)['classification'])->toBe('duplicate_key')
+        ->and($mapping->refresh()->reconciliation_state)->toBe('duplicate_key')
+        ->and(collect($client->calls)->whereIn('operation', ['create_page', 'update_page']))->toBeEmpty();
+});
+
+test('reconciliation classifies a missing external page without a write', function (): void {
+    $fixture = notionConflictFixture();
+    $source = notionTicketDataSource(ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id);
+    $client = new InMemoryNotionPublicationClient($source);
+    app()->instance(NotionPublicationClient::class, $client);
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->once()->andReturn(IntegrationCredentialSecret::from('secret_notion_missing_fixture_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+
+    $results = app(ReconcileNotionRoadmap::class)->handle($fixture['owner']->id, $fixture['organization']->id, $fixture['roadmap']->fresh(), (string) Str::ulid());
+
+    expect(collect($results)->firstWhere('task_id', $fixture['task']->id)['classification'])->toBe('missing_external_page')
+        ->and($fixture['mapping']->refresh()->reconciliation_state)->toBe('missing_external_page')
+        ->and(collect($client->calls)->whereIn('operation', ['create_page', 'update_page']))->toBeEmpty();
+});
+
+test('reconciliation classifies an inaccessible external page without a write', function (): void {
+    $fixture = notionConflictFixture();
+    $source = notionTicketDataSource(ProjectIntegration::query()->where('project_id', $fixture['project']->id)->sole()->data_source_id);
+    $client = new InMemoryNotionPublicationClient($source);
+    $client->failNext('find_by_ticket_key', new NotionPublicationException('forbidden', false, 'fixture-forbidden'));
+    app()->instance(NotionPublicationClient::class, $client);
+    $cipher = Mockery::mock(IntegrationCredentialCipher::class);
+    $cipher->shouldReceive('decrypt')->once()->andReturn(IntegrationCredentialSecret::from('secret_notion_inaccessible_fixture_token'));
+    app()->instance(IntegrationCredentialCipher::class, $cipher);
+
+    $results = app(ReconcileNotionRoadmap::class)->handle($fixture['owner']->id, $fixture['organization']->id, $fixture['roadmap']->fresh(), (string) Str::ulid());
+
+    expect(collect($results)->firstWhere('task_id', $fixture['task']->id)['classification'])->toBe('inaccessible')
+        ->and($fixture['mapping']->refresh()->reconciliation_state)->toBe('inaccessible')
+        ->and(collect($client->calls)->whereIn('operation', ['create_page', 'update_page']))->toBeEmpty();
+});
+
+test('the authorized retry endpoint queues a durable retry job', function (): void {
+    Queue::fake();
+    $fixture = awaitingRoadmapApprovalFixture();
+
+    $this->actingAs($fixture['owner'])
+        ->post(route('organizations.projects.roadmaps.notion.retry', [
+            'organization' => $fixture['organization'],
+            'project' => $fixture['project'],
+            'roadmap' => $fixture['roadmap'],
+        ]), [
+            'idempotency_key' => 'notion-retry-controller-test',
+        ])
+        ->assertSessionHas('status', 'notion-publication-retry-queued');
+
+    Queue::assertPushed(RetryFailedNotionPublicationJob::class, function (RetryFailedNotionPublicationJob $job) use ($fixture): bool {
+        return $job->actorUserId === $fixture['owner']->id
+            && $job->organizationId === $fixture['organization']->id
+            && $job->roadmapId === $fixture['roadmap']->id
+            && $job->idempotencyKey === 'notion-retry-controller-test'
+            && $job->taskIds === null;
+    });
+});
+
+test('the authorized retry endpoint scopes a retry to the requested task', function (): void {
+    Queue::fake();
+    $fixture = awaitingRoadmapApprovalFixture();
+    $task = $fixture['roadmap']->tasks()->firstOrFail();
+
+    $this->actingAs($fixture['owner'])
+        ->post(route('organizations.projects.roadmaps.notion.retry', [
+            'organization' => $fixture['organization'],
+            'project' => $fixture['project'],
+            'roadmap' => $fixture['roadmap'],
+        ]), [
+            'idempotency_key' => 'notion-task-retry-controller-test',
+            'task_ids' => [$task->id],
+        ])
+        ->assertSessionHas('status', 'notion-publication-retry-queued');
+
+    Queue::assertPushed(RetryFailedNotionPublicationJob::class, function (RetryFailedNotionPublicationJob $job) use ($task): bool {
+        return $job->taskIds === [$task->id]
+            && $job->idempotencyKey === 'notion-task-retry-controller-test';
+    });
 });
 
 test('roadmap rejection records feedback and returns the project to documents', function (): void {
@@ -883,4 +1335,68 @@ function awaitingRoadmapApprovalFixture(): array
     (new ProcessPlanningExecutionJob($execution->id))->handle(app(ProcessPlanningExecution::class));
 
     return [...$fixture, 'roadmap' => Roadmap::query()->where('project_id', $fixture['project']->id)->sole()];
+}
+
+/**
+ * @return array{owner: User, organization: Organization, project: Project, roadmap: Roadmap, task: RoadmapTask, mapping: ExternalTicketMapping, conflict: NotionReconciliationConflict, fingerprint: string}
+ */
+function notionConflictFixture(): array
+{
+    $fixture = awaitingRoadmapApprovalFixture();
+    $roadmap = $fixture['roadmap'];
+    test()->actingAs($fixture['owner'])->post(route('organizations.projects.roadmaps.approve', [
+        'organization' => $fixture['organization'],
+        'project' => $fixture['project'],
+        'roadmap' => $roadmap,
+    ]), [
+        'expected_content_version' => $roadmap->content_version,
+        'expected_fingerprint' => $roadmap->candidate_fingerprint,
+        'idempotency_key' => 'approve-before-notion-decision-'.Str::lower((string) Str::ulid()),
+    ])->assertSessionHasNoErrors();
+
+    $task = $roadmap->tasks()->firstOrFail();
+    $fingerprint = hash('sha256', 'notion-conflict-'.$task->id);
+    $mapping = ExternalTicketMapping::query()->create([
+        'roadmap_task_id' => $task->id,
+        'provider' => IntegrationProvider::Notion->value,
+        'external_key' => 'notion-conflict-'.$task->id,
+        'page_id' => 'notion-page-'.$task->id,
+        'page_url' => 'https://www.notion.so/notion-page-'.$task->id,
+        'state' => 'synchronized',
+        'last_synchronized_fingerprint' => hash('sha256', 'published-'.$task->id),
+        'reconciliation_state' => 'external_drift',
+        'reconciliation_fingerprint' => $fingerprint,
+    ]);
+    $conflict = NotionReconciliationConflict::query()->create([
+        'organization_id' => $fixture['organization']->id,
+        'project_id' => $fixture['project']->id,
+        'external_ticket_mapping_id' => $mapping->id,
+        'current_fingerprint' => $fingerprint,
+        'published_fingerprint' => $mapping->last_synchronized_fingerprint,
+        'external_fingerprint' => $fingerprint,
+    ]);
+
+    return [...$fixture, 'task' => $task, 'mapping' => $mapping, 'conflict' => $conflict, 'fingerprint' => $fingerprint];
+}
+
+function notionTicketDataSource(string $id): NotionDataSource
+{
+    return new NotionDataSource(
+        id: $id,
+        name: 'Tickets',
+        properties: [
+            'Ticket ID' => ['type' => 'rich_text'],
+            'Name' => ['type' => 'title'],
+            'Status' => ['type' => 'status'],
+            'Type' => ['type' => 'select'],
+            'Priority' => ['type' => 'select'],
+            'Risk' => ['type' => 'select'],
+            'Complexity' => ['type' => 'number'],
+            'Requires Approval' => ['type' => 'checkbox'],
+            'Dependencies' => ['type' => 'rich_text'],
+            'Evidence Requirements' => ['type' => 'rich_text'],
+            'Source References' => ['type' => 'rich_text'],
+        ],
+        providerRequestId: 'request-schema',
+    );
 }

@@ -160,6 +160,7 @@ Treat these versions as authoritative:
 * Create documentation files only when explicitly requested.
 * Prefer tests over temporary verification scripts or Tinker experiments.
 * Keep explanations focused on important decisions and results.
+* Use `./vendor/bin/sail` when running `composer` or `pnpm`
 
 ---
 

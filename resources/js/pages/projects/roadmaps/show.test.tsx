@@ -143,6 +143,7 @@ function props(overrides: Partial<Props> = {}): Props {
                     criticalPathPosition: 1,
                     isCriticalPath: true,
                     dependencies: [],
+                    notionMapping: null,
                     traceability: [
                         {
                             criterionStableId: 'criterion-one',
@@ -167,7 +168,20 @@ function props(overrides: Partial<Props> = {}): Props {
         },
         selectedPhaseId: null,
         selectedTaskId: 5,
-        permissions: { edit: true, decide: true, regenerate: true },
+        permissions: {
+            edit: true,
+            decide: true,
+            regenerate: true,
+            publish: true,
+        },
+        notionPublication: {
+            readiness: false,
+            schemaReadiness: 'not_configured',
+            dataSourceName: null,
+            dataSourceId: null,
+            summary: null,
+        },
+        notionConflicts: [],
         actionIdempotencyKey: 'test-idempotency',
     };
 
@@ -175,6 +189,126 @@ function props(overrides: Partial<Props> = {}): Props {
 }
 
 describe('RoadmapShow', () => {
+    it('shows the task-level Notion mapping and page link', () => {
+        render(
+            <RoadmapShow
+                {...props({
+                    roadmap: {
+                        ...props().roadmap!,
+                        tasks: [
+                            {
+                                ...props().roadmap!.tasks[0],
+                                notionMapping: {
+                                    mappingId: 8,
+                                    externalKey: 'notion:p2:r1:ttask-one',
+                                    pageUrl: 'https://www.notion.so/task-one',
+                                    state: 'synchronized',
+                                    reconciliationState: 'in_sync',
+                                    retryable: false,
+                                },
+                            },
+                        ],
+                    },
+                })}
+            />,
+        );
+
+        expect(screen.getByText('notion:p2:r1:ttask-one')).toBeInTheDocument();
+        expect(
+            screen.getByRole('link', { name: 'Open in Notion' }),
+        ).toHaveAttribute('href', 'https://www.notion.so/task-one');
+        expect(
+            screen.getByRole('button', { name: 'Retry this task' }),
+        ).toBeDisabled();
+    });
+
+    it('submits only the selected retryable failed task', () => {
+        render(
+            <RoadmapShow
+                {...props({
+                    roadmap: {
+                        ...props().roadmap!,
+                        status: 'approved',
+                        isLatest: true,
+                        tasks: [
+                            {
+                                ...props().roadmap!.tasks[0],
+                                notionMapping: {
+                                    mappingId: 8,
+                                    externalKey: 'notion:p2:r1:ttask-one',
+                                    pageUrl: null,
+                                    state: 'failed',
+                                    reconciliationState: null,
+                                    retryable: true,
+                                },
+                            },
+                        ],
+                    },
+                    notionPublication: {
+                        readiness: true,
+                        schemaReadiness: 'ready',
+                        dataSourceName: 'Tickets',
+                        dataSourceId: 'source-1',
+                        summary: null,
+                    },
+                })}
+            />,
+        );
+
+        expect(
+            screen.getByRole('button', { name: 'Retry this task' }),
+        ).toBeEnabled();
+        expect(screen.getByDisplayValue('5')).toHaveAttribute(
+            'name',
+            'task_ids[]',
+        );
+    });
+
+    it('shows an explicit accepted-external conflict decision form', () => {
+        render(
+            <RoadmapShow
+                {...props({
+                    roadmap: {
+                        ...props().roadmap!,
+                        status: 'approved',
+                    },
+                    notionConflicts: [
+                        {
+                            id: 9,
+                            mappingId: 4,
+                            currentFingerprint: 'b'.repeat(64),
+                            externalFingerprint: 'b'.repeat(64),
+                            state: 'open',
+                            decision: null,
+                            decisionReason: null,
+                        },
+                    ],
+                })}
+            />,
+        );
+
+        expect(
+            screen.getByRole('heading', {
+                name: 'External change decisions',
+            }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', {
+                name: 'Accept as new revision',
+            }),
+        ).toBeEnabled();
+        expect(
+            screen.getByRole('button', {
+                name: 'Retain internal and republish',
+            }),
+        ).toBeEnabled();
+        expect(
+            screen.getByRole('button', {
+                name: 'Defer and block writes',
+            }),
+        ).toBeEnabled();
+    });
+
     it('renders an accessible empty state', () => {
         render(<RoadmapShow {...props({ roadmap: null, revisions: [] })} />);
 
@@ -197,6 +331,110 @@ describe('RoadmapShow', () => {
             screen.getByRole('button', { name: 'Approve roadmap' }),
         ).toBeInTheDocument();
         expect(screen.getByLabelText('Regeneration feedback')).toBeRequired();
+    });
+
+    it('disables publication until a Notion data source is ready', () => {
+        render(<RoadmapShow {...props()} />);
+
+        expect(screen.getByText('Not configured')).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Publish to Notion' }),
+        ).toBeDisabled();
+    });
+
+    it('reports an incompatible Notion ticket schema without enabling publication', () => {
+        render(
+            <RoadmapShow
+                {...props({
+                    notionPublication: {
+                        readiness: false,
+                        schemaReadiness: 'incompatible',
+                        dataSourceName: 'Tickets',
+                        dataSourceId: 'source-1',
+                        summary: null,
+                    },
+                })}
+            />,
+        );
+
+        expect(screen.getByText('Incompatible')).toBeInTheDocument();
+        expect(
+            screen.getByText(
+                'The selected Notion data source is missing required ticket properties.',
+            ),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Publish to Notion' }),
+        ).toBeDisabled();
+    });
+
+    it('shows completed publication counts and enables approved publication', () => {
+        const current = props();
+        render(
+            <RoadmapShow
+                {...current}
+                roadmap={{ ...current.roadmap!, status: 'approved' }}
+                notionPublication={{
+                    readiness: true,
+                    schemaReadiness: 'ready',
+                    dataSourceName: 'Tickets',
+                    dataSourceId: 'source-1',
+                    summary: {
+                        createdCount: 2,
+                        updatedCount: 1,
+                        skippedCount: 3,
+                        failedCount: 0,
+                        conflictedCount: 0,
+                        completedAt: '2026-07-28T00:00:00Z',
+                        diagnostics: [],
+                    },
+                }}
+            />,
+        );
+
+        expect(screen.getByText('Tickets')).toBeInTheDocument();
+        expect(
+            screen.getByText(/2 created, 1 updated, 3 skipped/),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Publish to Notion' }),
+        ).toBeEnabled();
+        expect(
+            screen.getByRole('button', { name: 'Retry failed' }),
+        ).toBeDisabled();
+    });
+
+    it('shows sanitized publication diagnostics from the latest summary', () => {
+        const current = props();
+        render(
+            <RoadmapShow
+                {...current}
+                roadmap={{ ...current.roadmap!, status: 'approved' }}
+                notionPublication={{
+                    readiness: true,
+                    schemaReadiness: 'ready',
+                    dataSourceName: 'Tickets',
+                    dataSourceId: 'source-1',
+                    summary: {
+                        createdCount: 0,
+                        updatedCount: 0,
+                        skippedCount: 1,
+                        failedCount: 1,
+                        conflictedCount: 0,
+                        completedAt: '2026-07-28T00:00:00Z',
+                        diagnostics: [
+                            'A hard dependency has no successful external mapping.',
+                        ],
+                    },
+                }}
+            />,
+        );
+
+        expect(
+            screen.getByText(
+                'A hard dependency has no successful external mapping.',
+            ),
+        ).toBeInTheDocument();
     });
 
     it('renders blocking diagnostics', () => {
@@ -263,6 +501,7 @@ describe('RoadmapShow', () => {
                         edit: false,
                         decide: false,
                         regenerate: false,
+                        publish: false,
                     },
                 })}
             />,

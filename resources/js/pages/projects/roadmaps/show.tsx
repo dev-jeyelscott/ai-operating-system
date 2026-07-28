@@ -7,13 +7,19 @@ import {
     RefreshCw,
     Route,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
+import DecideNotionReconciliationConflictController from '@/actions/App/Http/Controllers/Planning/DecideNotionReconciliationConflictController';
 import {
     approve,
     reject,
 } from '@/actions/App/Http/Controllers/Planning/DecideRoadmapController';
+import DeferNotionReconciliationConflictController from '@/actions/App/Http/Controllers/Planning/DeferNotionReconciliationConflictController';
 import EditRoadmapController from '@/actions/App/Http/Controllers/Planning/EditRoadmapController';
+import PublishRoadmapToNotionController from '@/actions/App/Http/Controllers/Planning/PublishRoadmapToNotionController';
+import ReconcileNotionRoadmapController from '@/actions/App/Http/Controllers/Planning/ReconcileNotionRoadmapController';
 import RegenerateRoadmapController from '@/actions/App/Http/Controllers/Planning/RegenerateRoadmapController';
+import RetainInternalNotionConflictController from '@/actions/App/Http/Controllers/Planning/RetainInternalNotionConflictController';
+import RetryFailedNotionPublicationController from '@/actions/App/Http/Controllers/Planning/RetryFailedNotionPublicationController';
 import {
     phase,
     show,
@@ -24,7 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import type { RoadmapTask, RoadmapView } from '@/types';
+import type { NotionPublicationView, RoadmapTask, RoadmapView } from '@/types';
 
 type Props = {
     organization: { id: number; name: string; slug: string };
@@ -47,7 +53,22 @@ type Props = {
     }>;
     selectedPhaseId: number | null;
     selectedTaskId: number | null;
-    permissions: { edit: boolean; decide: boolean; regenerate: boolean };
+    permissions: {
+        edit: boolean;
+        decide: boolean;
+        regenerate: boolean;
+        publish: boolean;
+    };
+    notionPublication: NotionPublicationView | null;
+    notionConflicts: Array<{
+        id: number;
+        mappingId: number;
+        currentFingerprint: string;
+        externalFingerprint: string | null;
+        state: string;
+        decision: string | null;
+        decisionReason: string | null;
+    }>;
     actionIdempotencyKey: string;
 };
 
@@ -153,6 +174,10 @@ export default function RoadmapShow(props: Props) {
                             </Alert>
                         )}
                         <Readiness roadmap={roadmap} />
+                        <NotionPublicationPanel
+                            {...props}
+                            routeArgs={routeArgs}
+                        />
                         <section className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
                             <aside className="space-y-4">
                                 <Card>
@@ -198,7 +223,20 @@ export default function RoadmapShow(props: Props) {
                                     selectedPhaseId={props.selectedPhaseId}
                                 />
                                 {selectedTask && (
-                                    <TaskInspector task={selectedTask} />
+                                    <TaskInspector
+                                        task={selectedTask}
+                                        routeArgs={routeArgs}
+                                        actionIdempotencyKey={
+                                            props.actionIdempotencyKey
+                                        }
+                                        canRetry={
+                                            props.permissions.publish &&
+                                            roadmap.status === 'approved' &&
+                                            roadmap.isLatest &&
+                                            props.notionPublication
+                                                ?.readiness === true
+                                        }
+                                    />
                                 )}
                                 <RoadmapActions
                                     {...props}
@@ -453,7 +491,27 @@ function TaskList({
     );
 }
 
-function TaskInspector({ task: item }: { task: RoadmapTask }) {
+function TaskInspector({
+    task: item,
+    routeArgs,
+    actionIdempotencyKey,
+    canRetry,
+}: {
+    task: RoadmapTask;
+    routeArgs: {
+        organization: Props['organization'];
+        project: Props['project'];
+        roadmap: number;
+    };
+    actionIdempotencyKey: string;
+    canRetry: boolean;
+}) {
+    const canRetryTask =
+        canRetry &&
+        item.notionMapping?.state === 'failed' &&
+        item.notionMapping.retryable &&
+        item.notionMapping.reconciliationState === null;
+
     return (
         <Card>
             <CardHeader>
@@ -486,6 +544,85 @@ function TaskInspector({ task: item }: { task: RoadmapTask }) {
                     )}
                     empty="No dependencies."
                 />
+                <div>
+                    <h3 className="font-medium">Notion publication</h3>
+                    {item.notionMapping ? (
+                        <dl className="mt-2 grid gap-2 rounded-md bg-muted p-3 text-sm sm:grid-cols-3">
+                            <div>
+                                <dt className="text-muted-foreground">
+                                    Ticket key
+                                </dt>
+                                <dd className="mt-1 font-mono text-xs break-all">
+                                    {item.notionMapping.externalKey}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-muted-foreground">State</dt>
+                                <dd className="mt-1">
+                                    {humanize(item.notionMapping.state)}
+                                    {item.notionMapping.reconciliationState &&
+                                        ` · ${humanize(item.notionMapping.reconciliationState)}`}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-muted-foreground">Page</dt>
+                                <dd className="mt-1">
+                                    {item.notionMapping.pageUrl ? (
+                                        <a
+                                            href={item.notionMapping.pageUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                        >
+                                            Open in Notion
+                                        </a>
+                                    ) : (
+                                        'Not published'
+                                    )}
+                                </dd>
+                            </div>
+                        </dl>
+                    ) : (
+                        <p className="mt-1 text-muted-foreground">
+                            No Notion mapping has been allocated yet.
+                        </p>
+                    )}
+                    {item.notionMapping && (
+                        <Form
+                            className="mt-3 flex flex-wrap items-center gap-2"
+                            {...RetryFailedNotionPublicationController.form(
+                                routeArgs,
+                            )}
+                        >
+                            {({ processing, errors }) => (
+                                <>
+                                    <input
+                                        type="hidden"
+                                        name="idempotency_key"
+                                        value={`notion-retry:${item.id}:${actionIdempotencyKey}`}
+                                    />
+                                    <input
+                                        type="hidden"
+                                        name="task_ids[]"
+                                        value={item.id}
+                                    />
+                                    <ActionErrors errors={errors} />
+                                    <SubmitButton
+                                        label="Retry this task"
+                                        processing={processing}
+                                        disabled={!canRetryTask}
+                                    />
+                                    {!canRetryTask && (
+                                        <span className="text-xs text-muted-foreground">
+                                            Only retryable failed Notion tickets
+                                            can be retried.
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                        </Form>
+                    )}
+                </div>
                 <div>
                     <h3 className="font-medium">Source coverage</h3>
                     <ul className="mt-2 space-y-2">
@@ -546,6 +683,305 @@ function TraceabilityMatrix({ roadmap }: { roadmap: RoadmapView }) {
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+function NotionPublicationPanel(
+    props: Props & {
+        routeArgs: {
+            organization: Props['organization'];
+            project: Props['project'];
+            roadmap: number;
+        };
+    },
+) {
+    const publication = props.notionPublication;
+    const roadmap = props.roadmap;
+
+    if (!roadmap || !publication) {
+        return null;
+    }
+
+    const canPublish =
+        props.permissions.publish &&
+        roadmap.status === 'approved' &&
+        roadmap.isLatest &&
+        publication.readiness;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>
+                    <h2>Notion publication</h2>
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                <div className="space-y-2 text-sm">
+                    <p>
+                        Data source:{' '}
+                        <span className="font-medium">
+                            {publication.dataSourceName ?? 'Not configured'}
+                        </span>
+                    </p>
+                    <p>
+                        Schema readiness:{' '}
+                        <span className="font-medium">
+                            {humanize(publication.schemaReadiness)}
+                        </span>
+                    </p>
+                    {!publication.readiness && (
+                        <p className="text-muted-foreground">
+                            {publication.schemaReadiness === 'incompatible'
+                                ? 'The selected Notion data source is missing required ticket properties.'
+                                : 'Configure and validate a Notion data source before publication.'}
+                        </p>
+                    )}
+                    {publication.summary && (
+                        <>
+                            <p
+                                className="text-muted-foreground"
+                                aria-live="polite"
+                            >
+                                Last run: {publication.summary.createdCount}{' '}
+                                created, {publication.summary.updatedCount}{' '}
+                                updated, {publication.summary.skippedCount}{' '}
+                                skipped, {publication.summary.failedCount}{' '}
+                                failed, {publication.summary.conflictedCount}{' '}
+                                conflicted.
+                            </p>
+                            {publication.summary.diagnostics.length > 0 && (
+                                <ul className="space-y-1 text-destructive">
+                                    {publication.summary.diagnostics.map(
+                                        (diagnostic) => (
+                                            <li key={diagnostic}>
+                                                {diagnostic}
+                                            </li>
+                                        ),
+                                    )}
+                                </ul>
+                            )}
+                        </>
+                    )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <Form
+                        {...PublishRoadmapToNotionController.form(
+                            props.routeArgs,
+                        )}
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <input
+                                    type="hidden"
+                                    name="idempotency_key"
+                                    value={`notion-publish:${props.actionIdempotencyKey}`}
+                                />
+                                <ActionErrors errors={errors} />
+                                <SubmitButton
+                                    label="Publish to Notion"
+                                    processing={processing}
+                                    disabled={!canPublish}
+                                />
+                            </>
+                        )}
+                    </Form>
+                    <Form
+                        {...RetryFailedNotionPublicationController.form(
+                            props.routeArgs,
+                        )}
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <input
+                                    type="hidden"
+                                    name="idempotency_key"
+                                    value={`notion-retry:${props.actionIdempotencyKey}`}
+                                />
+                                <ActionErrors errors={errors} />
+                                <SubmitButton
+                                    label="Retry failed"
+                                    processing={processing}
+                                    disabled={
+                                        !canPublish ||
+                                        (publication.summary?.failedCount ??
+                                            0) === 0
+                                    }
+                                />
+                            </>
+                        )}
+                    </Form>
+                    <Form
+                        {...ReconcileNotionRoadmapController.form(
+                            props.routeArgs,
+                        )}
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <ActionErrors errors={errors} />
+                                <SubmitButton
+                                    label="Reconcile"
+                                    processing={processing}
+                                    disabled={!publication.readiness}
+                                />
+                            </>
+                        )}
+                    </Form>
+                </div>
+            </CardContent>
+            {props.notionConflicts.length > 0 && (
+                <CardContent className="border-t pt-6">
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="text-sm font-medium">
+                                External change decisions
+                            </h3>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Choose whether to retain the approved internal
+                                content and republish it, create a new governed
+                                revision from the external content, or defer all
+                                writes with a recorded reason.
+                            </p>
+                        </div>
+                        {props.notionConflicts.map((conflict) => (
+                            <div
+                                key={conflict.id}
+                                className="space-y-3 rounded-md border p-4"
+                            >
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="outline">
+                                        {humanize(conflict.state)}
+                                    </Badge>
+                                    {conflict.decisionReason && (
+                                        <p className="text-sm text-muted-foreground">
+                                            {conflict.decisionReason}
+                                        </p>
+                                    )}
+                                </div>
+                                <ConflictDecisionForm
+                                    form={RetainInternalNotionConflictController.form(
+                                        {
+                                            organization: props.organization,
+                                            project: props.project,
+                                            conflict: conflict.id,
+                                        },
+                                    )}
+                                    conflict={conflict}
+                                    props={props}
+                                    decisionKey="retain-internal"
+                                    label="Retain internal and republish"
+                                    confirmation="Overwrite this external Notion ticket with the approved internal roadmap content?"
+                                    disabled={
+                                        conflict.state !== 'open' &&
+                                        conflict.state !== 'republish_failed'
+                                    }
+                                />
+                                <ConflictDecisionForm
+                                    form={DecideNotionReconciliationConflictController.form(
+                                        {
+                                            organization: props.organization,
+                                            project: props.project,
+                                            conflict: conflict.id,
+                                        },
+                                    )}
+                                    conflict={conflict}
+                                    props={props}
+                                    decisionKey="accept-external"
+                                    label="Accept as new revision"
+                                    confirmation="Create a new roadmap revision from this external Notion change?"
+                                    disabled={conflict.state !== 'open'}
+                                />
+                                <ConflictDecisionForm
+                                    form={DeferNotionReconciliationConflictController.form(
+                                        {
+                                            organization: props.organization,
+                                            project: props.project,
+                                            conflict: conflict.id,
+                                        },
+                                    )}
+                                    conflict={conflict}
+                                    props={props}
+                                    decisionKey="defer"
+                                    label="Defer and block writes"
+                                    confirmation="Defer this conflict and block all Notion writes for this ticket?"
+                                    disabled={conflict.state !== 'open'}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            )}
+        </Card>
+    );
+}
+
+function ConflictDecisionForm({
+    form,
+    conflict,
+    props,
+    decisionKey,
+    label,
+    confirmation,
+    disabled,
+}: {
+    form: Pick<ComponentProps<typeof Form>, 'action' | 'method'>;
+    conflict: Props['notionConflicts'][number];
+    props: Props;
+    decisionKey: string;
+    label: string;
+    confirmation: string;
+    disabled: boolean;
+}) {
+    const roadmap = props.roadmap;
+
+    return (
+        <Form
+            {...form}
+            onSubmit={(event) => {
+                if (!window.confirm(confirmation)) {
+                    event.preventDefault();
+                }
+            }}
+            className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end"
+        >
+            {({ processing, errors }) => (
+                <>
+                    <div className="space-y-2">
+                        <input
+                            type="hidden"
+                            name="expected_fingerprint"
+                            value={conflict.currentFingerprint}
+                        />
+                        <input
+                            type="hidden"
+                            name="idempotency_key"
+                            value={`notion-conflict:${conflict.id}:${decisionKey}:${props.actionIdempotencyKey}`}
+                        />
+                        <label
+                            htmlFor={`notion-conflict-reason-${conflict.id}-${decisionKey}`}
+                            className="text-sm font-medium"
+                        >
+                            Reason for {label.toLowerCase()}
+                        </label>
+                        <Textarea
+                            id={`notion-conflict-reason-${conflict.id}-${decisionKey}`}
+                            name="reason"
+                            required
+                        />
+                        <ActionErrors errors={errors} />
+                    </div>
+                    <SubmitButton
+                        label={label}
+                        processing={processing}
+                        disabled={
+                            disabled ||
+                            !props.permissions.decide ||
+                            !roadmap?.isLatest ||
+                            roadmap.status !== 'approved'
+                        }
+                    />
+                </>
+            )}
+        </Form>
     );
 }
 
@@ -765,17 +1201,19 @@ function SubmitButton({
     destructive = false,
     icon,
     processing = false,
+    disabled = false,
 }: {
     label: string;
     destructive?: boolean;
     icon?: ReactNode;
     processing?: boolean;
+    disabled?: boolean;
 }) {
     return (
         <Button
             type="submit"
             variant={destructive ? 'destructive' : 'default'}
-            disabled={processing}
+            disabled={processing || disabled}
         >
             {icon}
             {processing ? 'Working…' : label}

@@ -37,6 +37,14 @@ enum AuditEventType: string
     case NotionConnectionTestFailed =
         'integration.notion.connection_test.failed';
 
+    case NotionTicketPublished = 'integration.notion.ticket.published';
+    case NotionTicketPublicationFailed = 'integration.notion.ticket.publication_failed';
+    case NotionTicketReconciled = 'integration.notion.ticket.reconciled';
+    case NotionConflictAccepted = 'integration.notion.conflict.accepted';
+    case NotionConflictRetainInternalRequested = 'integration.notion.conflict.retain_internal_requested';
+    case NotionConflictRetainInternalCompleted = 'integration.notion.conflict.retain_internal_completed';
+    case NotionConflictDeferred = 'integration.notion.conflict.deferred';
+
     case DocumentUploaded = 'document.uploaded';
     case DocumentReplacementUploaded =
         'document.replacement.uploaded';

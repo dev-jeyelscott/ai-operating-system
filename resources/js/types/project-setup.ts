@@ -86,3 +86,8 @@ export type ProjectIntegrationConnection = {
     lastTestedAt: string | null;
     lastConnectedAt: string | null;
 };
+
+export type NotionDataSourceCandidate = {
+    id: string;
+    name: string;
+};

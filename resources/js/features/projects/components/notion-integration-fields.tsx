@@ -1,10 +1,21 @@
 import InputError from '@/components/input-error';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { ProjectIntegrationConnection } from '@/types';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import type {
+    NotionDataSourceCandidate,
+    ProjectIntegrationConnection,
+} from '@/types';
 
 type Props = {
     integration: ProjectIntegrationConnection;
+    dataSourceCandidates: NotionDataSourceCandidate[];
     errors: Record<string, string | undefined>;
     disabled: boolean;
 };
@@ -14,6 +25,7 @@ type Props = {
  */
 export function NotionIntegrationFields({
     integration,
+    dataSourceCandidates,
     errors,
     disabled,
 }: Props) {
@@ -85,6 +97,40 @@ export function NotionIntegrationFields({
                 id="notion-connection-error"
                 message={errors.connection}
             />
+
+            {dataSourceCandidates.length > 0 && (
+                <div className="grid gap-2">
+                    <Label htmlFor="notion-data-source-id">
+                        Notion task data source
+                    </Label>
+                    <Select name="data_source_id" required disabled={disabled}>
+                        <SelectTrigger
+                            id="notion-data-source-id"
+                            aria-invalid={Boolean(errors.data_source_id)}
+                        >
+                            <SelectValue placeholder="Select a data source" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {dataSourceCandidates.map((candidate) => (
+                                <SelectItem
+                                    key={candidate.id}
+                                    value={candidate.id}
+                                >
+                                    {candidate.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <p className="text-sm text-muted-foreground">
+                        This database has multiple eligible data sources. Select
+                        the one that stores roadmap tickets.
+                    </p>
+                    <InputError
+                        id="notion-data-source-id-error"
+                        message={errors.data_source_id}
+                    />
+                </div>
+            )}
 
             {integration.status !== null && (
                 <div className="rounded-lg border bg-muted/30 p-4">

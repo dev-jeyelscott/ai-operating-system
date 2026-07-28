@@ -17,6 +17,7 @@ use App\Models\ProjectSetupProgress;
 use App\Models\ProviderCredential;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,6 +46,7 @@ final class ProjectSetupController extends Controller
      * Render one server-controlled project setup step.
      */
     public function show(
+        Request $request,
         Organization $organization,
         Project $project,
         ProjectSetupStep $step,
@@ -121,6 +123,7 @@ final class ProjectSetupController extends Controller
                 'lastConnectedAt' => $notionIntegration?->last_connected_at
                     ?->toIso8601String(),
             ],
+            'notionDataSourceCandidates' => $this->notionDataSourceCandidates($request),
             'progress' => [
                 'currentStep' => $progress->current_step->value,
                 'completedSteps' => $progress->completed_steps,
@@ -156,6 +159,21 @@ final class ProjectSetupController extends Controller
                 ),
             ],
         ]);
+    }
+
+    /** @return list<array{id:string,name:string}> */
+    private function notionDataSourceCandidates(Request $request): array
+    {
+        $candidates = $request->session()->get('notion_data_source_candidates', []);
+        if (! is_array($candidates)) {
+            return [];
+        }
+
+        return array_values(collect($candidates)
+            ->filter(fn (mixed $candidate): bool => is_array($candidate) && is_string($candidate['id'] ?? null) && is_string($candidate['name'] ?? null))
+            ->map(fn (array $candidate): array => ['id' => $candidate['id'], 'name' => $candidate['name']])
+            ->values()
+            ->all());
     }
 
     /**

@@ -54,6 +54,7 @@ final readonly class TestProjectNotionConnection
         string $databaseReference,
         #[\SensitiveParameter]
         ?string $plaintextCredential = null,
+        ?string $selectedDataSourceId = null,
         ?string $correlationId = null,
     ): NotionConnectionTestResult {
         $this->assertPositiveIdentifier(
@@ -146,7 +147,12 @@ final readonly class TestProjectNotionConnection
             credential: $credential,
             databaseId: $databaseId,
             expectedWorkspaceId: $existingIntegration?->workspace_id,
+            selectedDataSourceId: $selectedDataSourceId,
         );
+
+        if ($result->dataSourceCandidates !== []) {
+            return $result;
+        }
 
         return $this->transactions->run(
             function () use (

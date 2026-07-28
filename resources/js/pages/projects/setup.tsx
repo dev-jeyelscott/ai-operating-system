@@ -20,6 +20,7 @@ import type { ValidationCommandFormData } from '@/features/projects/components/v
 import type {
     OrganizationSummary,
     ProjectIntegrationConnection,
+    NotionDataSourceCandidate,
     ProjectSetupConfiguration,
     ProjectSetupProgress,
     ProjectSetupStep,
@@ -37,6 +38,7 @@ type Props = {
     configuration: ProjectSetupConfiguration;
     progress: ProjectSetupProgress;
     integration: ProjectIntegrationConnection;
+    notionDataSourceCandidates: NotionDataSourceCandidate[];
     urls: {
         update: string;
         method: 'post' | 'put';
@@ -59,6 +61,7 @@ export default function ProjectSetup({
     steps,
     configuration,
     integration,
+    notionDataSourceCandidates,
     progress,
     urls,
 }: Props) {
@@ -137,6 +140,9 @@ export default function ProjectSetup({
                                 {activeStep === 'integrations' && (
                                     <NotionIntegrationFields
                                         integration={integration}
+                                        dataSourceCandidates={
+                                            notionDataSourceCandidates
+                                        }
                                         errors={errors}
                                         disabled={processing}
                                     />

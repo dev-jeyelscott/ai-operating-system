@@ -23,6 +23,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Inertia\Testing\AssertableInertia;
 
 beforeEach(function (): void {
     config()->set([
@@ -99,6 +100,14 @@ test(
             ], 200, [
                 'x-request-id' => 'req-database',
             ]),
+
+            'https://api.notion.com/v1/data_sources/248104cd-477e-80af-bc30-000bd28de8f9' => Http::response([
+                'object' => 'data_source',
+                'id' => '248104cd-477e-80af-bc30-000bd28de8f9',
+                'properties' => notionTicketProperties(),
+            ], 200, [
+                'x-request-id' => 'req-data-source',
+            ]),
         ]);
 
         $this->actingAs($user)
@@ -164,7 +173,7 @@ test(
             )
             ->toBe(2);
 
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
 
         Http::assertSent(
             static fn (Request $request): bool => $request->method() === 'GET'
@@ -195,6 +204,48 @@ test(
         )->toBe(1);
     },
 );
+
+test('an incompatible Notion ticket schema blocks publication readiness', function (): void {
+    [
+        'user' => $user,
+        'organization' => $organization,
+        'project' => $project,
+        'url' => $url,
+    ] = notionConnectionFixture(OrganizationRole::Owner);
+    $databaseId = 'd9824bdc-8445-4327-be8b-5b47500af6ce';
+    $sourceId = '248104cd-477e-80af-bc30-000bd28de8f9';
+
+    Http::fake([
+        'https://api.notion.com/v1/users/me' => Http::response([
+            'object' => 'user',
+            'type' => 'bot',
+            'bot' => ['workspace_name' => 'AIOS', 'workspace_id' => '17ab3186-873d-418f-b899-c3f6a43f68de'],
+        ]),
+        "https://api.notion.com/v1/databases/{$databaseId}" => Http::response([
+            'object' => 'database',
+            'id' => $databaseId,
+            'data_sources' => [['id' => $sourceId, 'name' => 'Tickets']],
+        ]),
+        "https://api.notion.com/v1/data_sources/{$sourceId}" => Http::response([
+            'object' => 'data_source',
+            'id' => $sourceId,
+            'properties' => ['Ticket ID' => ['type' => 'title']],
+        ], 200, ['x-request-id' => 'req-schema']),
+    ]);
+
+    $this->actingAs($user)
+        ->from(route('organizations.projects.setup.show', compact('organization', 'project') + ['step' => ProjectSetupStep::Integrations]))
+        ->post($url, [
+            'credential' => 'secret_notion_abcdefghijklmnopqrstuvwxyz',
+            'database_id' => $databaseId,
+        ])
+        ->assertRedirect(route('organizations.projects.setup.show', compact('organization', 'project') + ['step' => ProjectSetupStep::Integrations]));
+
+    $integration = ProjectIntegration::query()->sole();
+    expect($integration->connection_status)->toBe(NotionConnectionStatus::Failed)
+        ->and($integration->last_failure_code)->toBe(NotionConnectionFailureCode::SchemaIncompatible)
+        ->and($project->setupProgress()->sole()->hasCompleted(ProjectSetupStep::Integrations))->toBeFalse();
+});
 
 test(
     'a database not shared with the integration does not advance setup',
@@ -362,6 +413,49 @@ test(
     },
 );
 
+test('a multi-source database requires and exposes an explicit safe selection', function (): void {
+    [
+        'user' => $user,
+        'organization' => $organization,
+        'project' => $project,
+        'url' => $url,
+    ] = notionConnectionFixture(OrganizationRole::Owner);
+    $databaseId = 'd9824bdc-8445-4327-be8b-5b47500af6ce';
+    Http::fake([
+        'https://api.notion.com/v1/users/me' => Http::response([
+            'object' => 'user',
+            'type' => 'bot',
+            'bot' => ['owner' => ['type' => 'workspace', 'workspace' => true], 'workspace_name' => 'AIOS', 'workspace_id' => '17ab3186-873d-418f-b899-c3f6a43f68de'],
+        ]),
+        "https://api.notion.com/v1/databases/{$databaseId}" => Http::response([
+            'object' => 'database',
+            'id' => $databaseId,
+            'title' => [['plain_text' => 'AIOS Tickets']],
+            'data_sources' => [
+                ['id' => '248104cd-477e-80af-bc30-000bd28de8f9', 'name' => 'Product tickets'],
+                ['id' => '348104cd-477e-80af-bc30-000bd28de8f9', 'name' => 'Operations tickets'],
+            ],
+        ]),
+    ]);
+
+    $this->actingAs($user)
+        ->from(route('organizations.projects.setup.show', compact('organization', 'project') + ['step' => ProjectSetupStep::Integrations]))
+        ->post($url, ['credential' => 'secret_notion_abcdefghijklmnopqrstuvwxyz', 'database_id' => $databaseId])
+        ->assertRedirect(route('organizations.projects.setup.show', compact('organization', 'project') + ['step' => ProjectSetupStep::Integrations]))
+        ->assertSessionHasErrors('data_source_id')
+        ->assertSessionHas('notion_data_source_candidates', [
+            ['id' => '248104cd-477e-80af-bc30-000bd28de8f9', 'name' => 'Product tickets'],
+            ['id' => '348104cd-477e-80af-bc30-000bd28de8f9', 'name' => 'Operations tickets'],
+        ]);
+
+    $this->get(route('organizations.projects.setup.show', compact('organization', 'project') + ['step' => ProjectSetupStep::Integrations]))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->component('projects/setup')
+            ->where('notionDataSourceCandidates.0.name', 'Product tickets')
+            ->where('notionDataSourceCandidates.1.name', 'Operations tickets'));
+});
+
 test(
     'members cannot test project integrations',
     function (): void {
@@ -449,5 +543,23 @@ function notionConnectionFixture(
                 'project' => $project,
             ],
         ),
+    ];
+}
+
+/** @return array<string, array{type:string}> */
+function notionTicketProperties(): array
+{
+    return [
+        'Ticket ID' => ['type' => 'rich_text'],
+        'Name' => ['type' => 'title'],
+        'Status' => ['type' => 'status'],
+        'Type' => ['type' => 'select'],
+        'Priority' => ['type' => 'select'],
+        'Risk' => ['type' => 'select'],
+        'Complexity' => ['type' => 'number'],
+        'Requires Approval' => ['type' => 'checkbox'],
+        'Dependencies' => ['type' => 'rich_text'],
+        'Evidence Requirements' => ['type' => 'rich_text'],
+        'Source References' => ['type' => 'rich_text'],
     ];
 }

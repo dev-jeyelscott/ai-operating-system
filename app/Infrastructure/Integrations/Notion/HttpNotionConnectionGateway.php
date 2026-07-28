@@ -6,6 +6,7 @@ namespace App\Infrastructure\Integrations\Notion;
 
 use App\Application\Integrations\Contracts\NotionConnectionGateway;
 use App\Application\Integrations\NotionConnectionTestResult;
+use App\Application\Planning\Notion\NotionTicketSchema;
 use App\Domain\Integrations\IntegrationCredentialSecret;
 use App\Domain\Integrations\NotionConnectionFailureCode;
 use App\Domain\Integrations\NotionDatabaseId;
@@ -22,6 +23,8 @@ use Throwable;
  */
 final readonly class HttpNotionConnectionGateway implements NotionConnectionGateway
 {
+    public function __construct(private NotionTicketSchema $ticketSchema) {}
+
     /**
      * Validate the token workspace and retrieve the configured database.
      */
@@ -29,6 +32,7 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
         IntegrationCredentialSecret $credential,
         NotionDatabaseId $databaseId,
         ?string $expectedWorkspaceId,
+        ?string $selectedDataSourceId = null,
     ): NotionConnectionTestResult {
         try {
             $selfResponse = $this->request($credential)
@@ -139,15 +143,52 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
             );
         }
 
-        $dataSource = $this->dataSource($databaseResponse);
+        $dataSources = $this->dataSources($databaseResponse);
 
-        if ($dataSource === null) {
+        if ($dataSources === []) {
             return NotionConnectionTestResult::failed(
                 failureCode: NotionConnectionFailureCode::InvalidProviderResponse,
                 databaseId: $databaseId->value(),
                 providerRequestId: $this->requestId($databaseResponse),
                 workspaceId: $workspaceId,
                 workspaceName: $workspaceName,
+            );
+        }
+
+        if ($selectedDataSourceId === null && count($dataSources) > 1) {
+            return NotionConnectionTestResult::dataSourceSelectionRequired(
+                databaseId: $databaseId->value(),
+                candidates: $dataSources,
+                providerRequestId: $this->requestId($databaseResponse),
+                workspaceId: $workspaceId,
+                workspaceName: $workspaceName,
+            );
+        }
+
+        $dataSource = $selectedDataSourceId === null
+            ? $dataSources[0]
+            : collect($dataSources)->first(fn (array $candidate): bool => hash_equals($selectedDataSourceId, $candidate['id']));
+        if ($dataSource === null) {
+            return NotionConnectionTestResult::failed(NotionConnectionFailureCode::InvalidProviderResponse, $databaseId->value(), $this->requestId($databaseResponse), $workspaceId, $workspaceName);
+        }
+
+        try {
+            $dataSourceResponse = $this->request($credential)
+                ->get('data_sources/'.$dataSource['id']);
+        } catch (ConnectionException) {
+            return NotionConnectionTestResult::failed(NotionConnectionFailureCode::ProviderUnavailable, $databaseId->value(), null, $workspaceId, $workspaceName);
+        }
+        if (! $dataSourceResponse->successful() || $dataSourceResponse->json('object') !== 'data_source' || ! hash_equals($dataSource['id'], (string) $this->normalizedUuid($dataSourceResponse->json('id')))) {
+            return NotionConnectionTestResult::failed($dataSourceResponse->successful() ? NotionConnectionFailureCode::InvalidProviderResponse : $this->failureCode($dataSourceResponse, true), $databaseId->value(), $this->requestId($dataSourceResponse), $workspaceId, $workspaceName);
+        }
+        $properties = $dataSourceResponse->json('properties');
+        if (! is_array($properties) || ! $this->ticketSchema->propertiesAreReady($properties)) {
+            return NotionConnectionTestResult::failed(
+                NotionConnectionFailureCode::SchemaIncompatible,
+                $databaseId->value(),
+                $this->requestId($dataSourceResponse),
+                $workspaceId,
+                $workspaceName,
             );
         }
 
@@ -158,7 +199,8 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
             databaseName: $this->databaseName($databaseResponse),
             dataSourceId: $dataSource['id'],
             dataSourceName: $dataSource['name'],
-            providerRequestId: $this->requestId($databaseResponse)
+            providerRequestId: $this->requestId($dataSourceResponse)
+                ?? $this->requestId($databaseResponse)
                 ?? $this->requestId($selfResponse),
         );
     }
@@ -362,32 +404,24 @@ final readonly class HttpNotionConnectionGateway implements NotionConnectionGate
      * Select the database's only data source so later schema and ticket queries
      * can target the Notion data-source API rather than the database container.
      *
-     * @return array{id: string, name: string|null}|null
+     * @return list<array{id: string, name: string|null}>
      */
-    private function dataSource(Response $response): ?array
+    private function dataSources(Response $response): array
     {
         $dataSources = $response->json('data_sources', []);
 
-        if (! is_array($dataSources) || count($dataSources) !== 1) {
-            return null;
+        if (! is_array($dataSources) || $dataSources === []) {
+            return [];
+        }
+        $candidates = [];
+        foreach ($dataSources as $dataSource) {
+            if (! is_array($dataSource) || ($id = $this->normalizedUuid($dataSource['id'] ?? null)) === null) {
+                return [];
+            }
+            $candidates[] = ['id' => $id, 'name' => $this->nullableString($dataSource['name'] ?? null)];
         }
 
-        $dataSource = $dataSources[0] ?? null;
-
-        if (! is_array($dataSource)) {
-            return null;
-        }
-
-        $id = $this->normalizedUuid($dataSource['id'] ?? null);
-
-        if ($id === null) {
-            return null;
-        }
-
-        return [
-            'id' => $id,
-            'name' => $this->nullableString($dataSource['name'] ?? null),
-        ];
+        return $candidates;
     }
 
     /**

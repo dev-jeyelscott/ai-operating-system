@@ -25,6 +25,8 @@ final readonly class NotionConnectionTestResult
         public ?NotionConnectionFailureCode $failureCode,
         public ?string $providerRequestId,
         public bool $configurationChanged,
+        /** @var list<array{id:string,name:string|null}> */
+        public array $dataSourceCandidates = [],
     ) {}
 
     /**
@@ -77,6 +79,12 @@ final readonly class NotionConnectionTestResult
         );
     }
 
+    /** @param list<array{id:string,name:string|null}> $candidates */
+    public static function dataSourceSelectionRequired(string $databaseId, array $candidates, ?string $providerRequestId, ?string $workspaceId, ?string $workspaceName): self
+    {
+        return new self(false, $workspaceId, $workspaceName, $databaseId, null, null, null, null, $providerRequestId, false, $candidates);
+    }
+
     /**
      * Attach whether the persisted project configuration materially changed.
      */
@@ -94,6 +102,7 @@ final readonly class NotionConnectionTestResult
             failureCode: $this->failureCode,
             providerRequestId: $this->providerRequestId,
             configurationChanged: $configurationChanged,
+            dataSourceCandidates: $this->dataSourceCandidates,
         );
     }
 
@@ -102,6 +111,10 @@ final readonly class NotionConnectionTestResult
      */
     public function userMessage(): string
     {
+        if ($this->dataSourceCandidates !== []) {
+            return 'Choose the Notion data source to use for ticket publication.';
+        }
+
         return $this->failureCode?->userMessage()
             ?? 'The Notion connection was validated successfully.';
     }

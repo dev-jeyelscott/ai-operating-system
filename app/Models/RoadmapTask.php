@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $logical_agent
  * @property int $estimated_complexity
  * @property bool $human_approval_required
+ * @property array<string, list<string>>|null $notion_body_overrides
  * @property int $position
  * @property int|null $critical_path_rank
  * @property int|null $critical_path_position
@@ -73,8 +74,14 @@ final class RoadmapTask extends Model
         return $this->hasMany(RoadmapTraceabilityLink::class);
     }
 
+    /** @return HasMany<ExternalTicketMapping, $this> */
+    public function externalTicketMappings(): HasMany
+    {
+        return $this->hasMany(ExternalTicketMapping::class);
+    }
+
     protected function casts(): array
     {
-        return ['scope' => 'array', 'acceptance_criteria' => 'array', 'source_references' => 'array', 'evidence_requirements' => 'array', 'human_approval_required' => 'boolean', 'estimated_complexity' => 'integer', 'position' => 'integer', 'critical_path_rank' => 'integer', 'critical_path_position' => 'integer', 'is_critical_path' => 'boolean'];
+        return ['scope' => 'array', 'acceptance_criteria' => 'array', 'source_references' => 'array', 'evidence_requirements' => 'array', 'notion_body_overrides' => 'array', 'human_approval_required' => 'boolean', 'estimated_complexity' => 'integer', 'position' => 'integer', 'critical_path_rank' => 'integer', 'critical_path_position' => 'integer', 'is_critical_path' => 'boolean'];
     }
 }

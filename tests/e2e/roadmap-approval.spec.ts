@@ -8,6 +8,13 @@ const roadmapPath = (action: string) =>
     `/organizations/roadmap-browser/projects/${action}-roadmap-project/roadmaps`;
 const errorsByPage = new WeakMap<Page, string[]>();
 
+function artisan(arguments_: string[], stdio: 'inherit' | 'pipe'): void {
+    execFileSync('./vendor/bin/sail', ['artisan', ...arguments_], {
+        cwd: repositoryRoot,
+        stdio,
+    });
+}
+
 async function login(page: Page): Promise<void> {
     await page.goto('/login');
     await page.getByLabel('Email address').fill('roadmap-owner@example.test');
@@ -16,29 +23,28 @@ async function login(page: Page): Promise<void> {
     await page.waitForURL(/\/dashboard$/);
 }
 
+function roadmapStatus(page: Page, status: string) {
+    return page
+        .getByRole('heading', { name: 'Roadmap inspection' })
+        .locator('..')
+        .getByText(status, { exact: true });
+}
+
 test.describe.serial('roadmap approval gate', () => {
     test.beforeAll(() => {
-        execFileSync(
-            'php',
+        artisan(
             [
-                'artisan',
                 'db:seed',
                 '--class=Database\\Seeders\\RoadmapE2ESeeder',
                 '--force',
             ],
-            { cwd: repositoryRoot, stdio: 'inherit' },
+            'inherit',
         );
-        execFileSync('php', ['artisan', 'cache:clear'], {
-            cwd: repositoryRoot,
-            stdio: 'inherit',
-        });
+        artisan(['cache:clear'], 'inherit');
     });
 
     test.beforeEach(async ({ page }) => {
-        execFileSync('php', ['artisan', 'cache:clear'], {
-            cwd: repositoryRoot,
-            stdio: 'pipe',
-        });
+        artisan(['cache:clear'], 'pipe');
         const consoleErrors: string[] = [];
         page.on('console', (message) => {
             if (message.type() === 'error') {
@@ -72,7 +78,7 @@ test.describe.serial('roadmap approval gate', () => {
         await page.goto(roadmapPath('approve'));
         await page.getByRole('button', { name: 'Approve roadmap' }).focus();
         await page.keyboard.press('Enter');
-        await expect(page.getByText('Approved', { exact: true })).toBeVisible();
+        await expect(roadmapStatus(page, 'Approved')).toBeVisible();
     });
 
     test('requires and records rejection feedback', async ({ page }) => {
@@ -95,5 +101,30 @@ test.describe.serial('roadmap approval gate', () => {
         await expect(
             page.getByText('Superseded', { exact: true }),
         ).toBeVisible();
+    });
+
+    test('confirms and defers a Notion reconciliation conflict without overwriting either source', async ({
+        page,
+    }) => {
+        await page.goto(roadmapPath('conflict'));
+        const approve = page.getByRole('button', { name: 'Approve roadmap' });
+
+        if (await approve.isVisible()) {
+            await approve.click();
+        }
+
+        await expect(roadmapStatus(page, 'Approved')).toBeVisible();
+
+        const defer = page.getByRole('button', {
+            name: 'Defer and block writes',
+        });
+        await expect(defer).toBeVisible();
+        await page
+            .getByLabel('Reason for defer and block writes')
+            .fill('Awaiting product review of the external change.');
+        page.once('dialog', (dialog) => dialog.accept());
+        await defer.click();
+
+        await expect(defer).toBeHidden();
     });
 });

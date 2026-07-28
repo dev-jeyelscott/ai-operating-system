@@ -22,6 +22,7 @@ enum AuditSubjectType: string
 
     case ProviderCredential = 'provider_credential';
     case ProjectIntegration = 'project_integration';
+    case ExternalTicketMapping = 'external_ticket_mapping';
 
     case WorkflowInstance = 'workflow_instance';
 

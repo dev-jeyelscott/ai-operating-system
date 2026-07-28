@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { NotionIntegrationFields } from './notion-integration-fields';
 
@@ -18,6 +19,7 @@ describe('NotionIntegrationFields', () => {
                     lastTestedAt: null,
                     lastConnectedAt: null,
                 }}
+                dataSourceCandidates={[]}
                 errors={{}}
                 disabled={false}
             />,
@@ -47,6 +49,7 @@ describe('NotionIntegrationFields', () => {
                     lastTestedAt: '2026-07-20T10:00:00+08:00',
                     lastConnectedAt: '2026-07-20T10:00:00+08:00',
                 }}
+                dataSourceCandidates={[]}
                 errors={{}}
                 disabled={false}
             />,
@@ -66,5 +69,97 @@ describe('NotionIntegrationFields', () => {
         expect(screen.getByText('AI Operating System')).toBeInTheDocument();
 
         expect(screen.getByText('AIOS Tickets')).toBeInTheDocument();
+    });
+
+    it('requires an explicit selection for multiple data sources', () => {
+        render(
+            <NotionIntegrationFields
+                integration={{
+                    provider: 'notion',
+                    credentialConfigured: true,
+                    status: 'failed',
+                    workspaceId: null,
+                    workspaceName: null,
+                    databaseId: 'database-id',
+                    databaseName: 'Tickets',
+                    lastFailureCode: null,
+                    lastTestedAt: null,
+                    lastConnectedAt: null,
+                }}
+                dataSourceCandidates={[
+                    {
+                        id: '11111111-1111-4111-8111-111111111111',
+                        name: 'Product tickets',
+                    },
+                    {
+                        id: '22222222-2222-4222-8222-222222222222',
+                        name: 'Operations tickets',
+                    },
+                ]}
+                errors={{ data_source_id: 'Select one source.' }}
+                disabled={false}
+            />,
+        );
+
+        expect(
+            screen.getByRole('combobox', {
+                name: 'Notion task data source',
+            }),
+        ).toHaveAttribute('aria-required', 'true');
+        expect(
+            screen.getByText(/multiple eligible data sources/i),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Select one source.')).toBeInTheDocument();
+    });
+
+    it('submits the selected data source through the surrounding form', async () => {
+        const user = userEvent.setup();
+
+        const { container } = render(
+            <form>
+                <NotionIntegrationFields
+                    integration={{
+                        provider: 'notion',
+                        credentialConfigured: true,
+                        status: 'failed',
+                        workspaceId: null,
+                        workspaceName: null,
+                        databaseId: 'database-id',
+                        databaseName: 'Tickets',
+                        lastFailureCode: null,
+                        lastTestedAt: null,
+                        lastConnectedAt: null,
+                    }}
+                    dataSourceCandidates={[
+                        {
+                            id: '11111111-1111-4111-8111-111111111111',
+                            name: 'Product tickets',
+                        },
+                        {
+                            id: '22222222-2222-4222-8222-222222222222',
+                            name: 'Operations tickets',
+                        },
+                    ]}
+                    errors={{}}
+                    disabled={false}
+                />
+            </form>,
+        );
+
+        const form = container.querySelector('form') as HTMLFormElement;
+        const dataSourceInput = form.querySelector<HTMLSelectElement>(
+            'select[name="data_source_id"]',
+        );
+
+        expect(dataSourceInput).toBeRequired();
+
+        await user.selectOptions(
+            dataSourceInput as HTMLSelectElement,
+            '11111111-1111-4111-8111-111111111111',
+        );
+
+        expect(new FormData(form).get('data_source_id')).toBe(
+            '11111111-1111-4111-8111-111111111111',
+        );
     });
 });
