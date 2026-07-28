@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property list<array<string, mixed>> $acceptance_criteria
  * @property list<array<string, mixed>> $source_references
  * @property list<string> $evidence_requirements
+ * @property array<string, mixed>|null $notion_body_overrides
  * @property string $priority
  * @property string $risk
  * @property string $reasoning_level
@@ -48,6 +49,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read RoadmapMilestone|null $milestone
  * @property-read Collection<int, TaskDependency> $dependencies
  * @property-read Collection<int, RoadmapTraceabilityLink> $traceabilityLinks
+ * @property-read Collection<int, ExternalTicketMapping> $externalTicketMappings
  */
 final class RoadmapTask extends Model
 {
@@ -123,6 +125,22 @@ final class RoadmapTask extends Model
     }
 
     /**
+     * Return the external publication mappings associated with this ticket.
+     *
+     * These records preserve the stable relationship between the internal
+     * roadmap task and external systems such as Notion.
+     *
+     * @return HasMany<ExternalTicketMapping, $this>
+     */
+    public function externalTicketMappings(): HasMany
+    {
+        return $this->hasMany(
+            ExternalTicketMapping::class,
+            'roadmap_task_id',
+        );
+    }
+
+    /**
      * Cast persisted task content and ticket states to stable PHP types.
      *
      * @return array<string, string>
@@ -134,6 +152,7 @@ final class RoadmapTask extends Model
             'acceptance_criteria' => 'array',
             'source_references' => 'array',
             'evidence_requirements' => 'array',
+            'notion_body_overrides' => 'array',
             'human_approval_required' => 'boolean',
             'estimated_complexity' => 'integer',
             'position' => 'integer',

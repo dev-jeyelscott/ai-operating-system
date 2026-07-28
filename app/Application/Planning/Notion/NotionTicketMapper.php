@@ -40,35 +40,79 @@ final class NotionTicketMapper
     }
 
     /**
+     * Build the canonical Markdown body for the Notion ticket.
+     *
      * @param  list<string>  $dependencies
      * @param  list<string>  $references
      */
-    private function body(RoadmapTask $task, array $dependencies, array $references): string
-    {
+    private function body(
+        RoadmapTask $task,
+        array $dependencies,
+        array $references,
+    ): string {
         $scope = $task->scope;
         $included = $this->sortedStrings($scope['included']);
         $excluded = $this->sortedStrings($scope['excluded']);
-        $acceptance = collect($task->acceptance_criteria)->map(fn (array $criterion): string => (string) ($criterion['description'] ?? ''))->filter()->sort()->values()->all();
+
+        $acceptance = collect($task->acceptance_criteria)
+            ->map(
+                fn (array $criterion): string => (string) (
+                    $criterion['description'] ?? ''
+                ),
+            )
+            ->filter()
+            ->sort()
+            ->values()
+            ->all();
+
+        /** @var array<string, mixed> $overrides */
         $overrides = $task->notion_body_overrides ?? [];
+
         $sections = [
             'Objective' => [$task->objective],
             'Scope' => $included,
             'Exclusions' => $excluded,
             'Acceptance Criteria' => $acceptance,
             'Dependency Identifiers' => $dependencies,
-            'Required Evidence' => $this->sortedStrings($task->evidence_requirements),
+            'Required Evidence' => $this->sortedStrings(
+                $task->evidence_requirements,
+            ),
             'Source References' => $references,
             'Risks' => [$task->risk],
-            'Implementation Notes' => $this->override($overrides, 'Implementation Notes', ['Publish from approved roadmap revision '.$task->roadmap->revision.'.']),
-            'QA Findings' => $this->override($overrides, 'QA Findings', []),
-            'Final Disposition' => $this->override($overrides, 'Final Disposition', ['Staged for implementation.']),
+            'Implementation Notes' => $this->override(
+                $overrides,
+                'Implementation Notes',
+                [
+                    'Publish from approved roadmap revision '
+                        .$task->roadmap->revision
+                        .'.',
+                ],
+            ),
+            'QA Findings' => $this->override(
+                $overrides,
+                'QA Findings',
+                [],
+            ),
+            'Final Disposition' => $this->override(
+                $overrides,
+                'Final Disposition',
+                ['Staged for implementation.'],
+            ),
         ];
 
-        return collect($sections)->map(function (array $items, string $heading): string {
-            $content = $items === [] ? '- None.' : collect($items)->map(fn (string $item): string => '- '.$item)->implode("\n");
+        return collect($sections)
+            ->map(function (array $items, string $heading): string {
+                $content = $items === []
+                    ? '- None.'
+                    : collect($items)
+                        ->map(
+                            fn (string $item): string => '- '.$item,
+                        )
+                        ->implode("\n");
 
-            return '## '.$heading."\n".$content;
-        })->implode("\n\n");
+                return '## '.$heading."\n".$content;
+            })
+            ->implode("\n\n");
     }
 
     /** @return list<string> */
