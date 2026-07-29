@@ -1,0 +1,50 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Application\Development;
+
+use App\Application\Development\Data\DevelopmentExecutionRequest;
+use App\Application\Development\Data\DevelopmentExecutionResult;
+
+final readonly class SyntheticDevelopmentArtifactGenerator
+{
+    public function __construct(
+        private RepositoryExecutionPolicy $repositoryPolicy,
+        private DevelopmentResultValidator $validator,
+    ) {}
+
+    public function generate(DevelopmentExecutionRequest $request): DevelopmentExecutionResult
+    {
+        $branch = $this->repositoryPolicy->sourceBranch('feature', $request->ticketId, $request->ticketObjective);
+        $root = "simulation://projects/{$request->projectId}/executions/{$request->executionId}";
+        $commit = hash('sha1', implode('|', [
+            (string) $request->projectId, $request->ticketId, $request->executionId,
+            (string) $request->attemptNumber, $request->repositoryBaseReference,
+            $request->simulationScenario, (string) $request->deterministicSeed,
+        ]));
+        $push = substr(hash('sha256', $commit.'|push'), 0, 24);
+        $pullRequest = substr(hash('sha256', $commit.'|pull-request'), 0, 24);
+        $path = 'app/Simulated/'.strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $request->ticketId) ?? '').'.php';
+        $data = [
+            'schema_version' => 1, 'provider_identifier' => 'simulation', 'capability' => 'development.simulation', 'outcome' => 'succeeded',
+            'stage_results' => array_map(static fn (string $stage): array => ['stage' => $stage, 'status' => 'passed', 'summary' => "Simulated {$stage} completed; unverified evidence remains required."], ['plan', 'implementation', 'validation', 'commit', 'push', 'pull_request']),
+            'implementation_plan' => ['Simulated plan: inspect immutable ticket scope.', 'Simulated plan: generate deterministic synthetic changes.', 'Simulated plan: record unverified validation output.'],
+            'changed_files' => [['path' => $path, 'change_type' => 'modified', 'summary' => 'Simulated change only; no workspace file was modified.']],
+            'diff_summary' => 'Simulated diff only; no repository content was changed.',
+            'validation_results' => array_map(static fn (string $command): array => ['command' => $command, 'status' => 'passed', 'summary' => 'Simulated validation pass; real command execution remains required.'], $request->validationCommands),
+            'synthetic_branch_result' => ['kind' => 'branch', 'identifier' => $branch, 'reference' => "{$root}/branches/{$branch}", 'target_branch' => null, 'synthetic' => true, 'evidence_still_required' => true],
+            'synthetic_commit_result' => ['kind' => 'commit', 'identifier' => $commit, 'reference' => "{$root}/commits/{$commit}", 'target_branch' => null, 'synthetic' => true, 'evidence_still_required' => true],
+            'synthetic_push_result' => ['kind' => 'push', 'identifier' => $push, 'reference' => "{$root}/pushes/{$push}", 'target_branch' => null, 'synthetic' => true, 'evidence_still_required' => true],
+            'synthetic_pull_request_result' => ['kind' => 'pull_request', 'identifier' => $pullRequest, 'reference' => "{$root}/pull-requests/{$pullRequest}", 'target_branch' => 'develop', 'synthetic' => true, 'evidence_still_required' => true],
+            'target_branch' => 'develop', 'assumptions' => ['Simulation provider used; no repository access occurred.'], 'confidence' => 0.75,
+            'risks' => ['No real source-code QA occurred.'], 'evidence_gaps' => ['Real repository, command, CI, and review evidence remain required.'],
+            'simulation_classification' => 'simulated', 'verification_classification' => 'unverified', 'retry_classification' => 'none',
+            'recommended_next_action' => 'Collect authorized real repository evidence in a later layer.', 'canonical_result_fingerprint' => '',
+        ];
+        $temporary = DevelopmentExecutionResult::fromArray($data);
+        $data['canonical_result_fingerprint'] = $this->validator->fingerprint($temporary);
+
+        return DevelopmentExecutionResult::fromArray($data);
+    }
+}
