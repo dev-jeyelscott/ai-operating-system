@@ -14,7 +14,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
-use LogicException;
 
 beforeEach(function (): void {
     config()->set('filesystems.artifact', 'documents');

@@ -13,8 +13,6 @@ use App\Application\Shared\Exceptions\RetryableOperationException;
 use App\Infrastructure\Bus\IdempotentCommandBus;
 use App\Infrastructure\Bus\LaravelCommandBus;
 use Illuminate\Validation\ValidationException;
-use LogicException;
-use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -115,7 +113,7 @@ final class CommandBusTest extends TestCase
      */
     public function test_it_rejects_an_unregistered_command(): void
     {
-        $this->expectException(LogicException::class);
+        $this->expectException(\LogicException::class);
 
         $this->expectExceptionMessage(sprintf(
             'No command handler is registered for [%s].',
@@ -132,7 +130,7 @@ final class CommandBusTest extends TestCase
      */
     public function test_it_rejects_an_invalid_handler_result(): void
     {
-        $this->expectException(LogicException::class);
+        $this->expectException(\LogicException::class);
 
         $this->expectExceptionMessage(sprintf(
             'The command handler [%s] must return [%s].',
@@ -150,7 +148,7 @@ final class CommandBusTest extends TestCase
      */
     public function test_it_does_not_hide_unexpected_failures(): void
     {
-        $this->expectException(RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
 
         $this->expectExceptionMessage(
             'Unexpected infrastructure failure.',
@@ -304,7 +302,7 @@ final class UnexpectedFailureCommandHandler
      */
     public function handle(UnexpectedFailureCommand $command): never
     {
-        throw new RuntimeException(
+        throw new \RuntimeException(
             'Unexpected infrastructure failure.',
         );
     }

@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Domain\Integrations\NotionDatabaseId;
-use InvalidArgumentException;
 
 test('a dashed Notion database UUID is accepted', function (): void {
     $databaseId = NotionDatabaseId::from(

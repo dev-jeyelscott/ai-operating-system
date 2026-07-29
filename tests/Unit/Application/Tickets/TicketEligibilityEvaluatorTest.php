@@ -7,7 +7,6 @@ use App\Application\Tickets\TicketEligibilityEvaluator;
 use App\Domain\Projects\ProjectStatus;
 use App\Domain\Tickets\TicketIneligibilityReason;
 use App\Domain\Tickets\TicketStatus;
-use InvalidArgumentException;
 
 /**
  * Create a valid default eligibility context with optional gate overrides.
@@ -150,6 +149,64 @@ test(
             ]);
     },
 );
+
+test(
+    'each execution gate returns its stable focused reason',
+    function (string $gate, TicketIneligibilityReason $expectedReason): void {
+        $context = match ($gate) {
+            'dependency' => aios090EligibilityContext(
+                hardDependencyStatuses: [TicketStatus::Ready],
+            ),
+            'blocker' => aios090EligibilityContext(
+                hasUnresolvedBlocker: true,
+            ),
+            'approval' => aios090EligibilityContext(
+                approvalRequired: true,
+                approvalGranted: false,
+            ),
+            'project' => aios090EligibilityContext(
+                projectStatus: ProjectStatus::Paused,
+            ),
+            'provider' => aios090EligibilityContext(
+                providerSupportsExecution: false,
+            ),
+            'budget' => aios090EligibilityContext(
+                budgetPermitsExecution: false,
+            ),
+            default => throw new LogicException('Unknown eligibility gate fixture.'),
+        };
+
+        $result = (new TicketEligibilityEvaluator)->evaluate($context);
+
+        expect($result->isEligible())->toBeFalse()
+            ->and($result->reasons)->toBe([$expectedReason]);
+    },
+)->with([
+    'dependency incomplete' => [
+        'dependency',
+        TicketIneligibilityReason::DependencyIncomplete,
+    ],
+    'blocker unresolved' => [
+        'blocker',
+        TicketIneligibilityReason::BlockerUnresolved,
+    ],
+    'approval missing' => [
+        'approval',
+        TicketIneligibilityReason::ApprovalMissing,
+    ],
+    'project inactive' => [
+        'project',
+        TicketIneligibilityReason::ProjectNotActive,
+    ],
+    'provider unavailable' => [
+        'provider',
+        TicketIneligibilityReason::ProviderUnavailable,
+    ],
+    'budget unavailable' => [
+        'budget',
+        TicketIneligibilityReason::BudgetUnavailable,
+    ],
+]);
 
 test(
     'retry limit permits the initial attempt and final allowed retry',

@@ -9,8 +9,8 @@ use InvalidArgumentException;
 /**
  * Immutable request for one atomic ticket-selection attempt.
  *
- * Provider and budget booleans must come from deterministic application policy,
- * never directly from an execution provider response.
+ * The caller supplies only scope and lease-claim identity. Eligibility facts
+ * are resolved from authoritative application state inside the selector.
  */
 final readonly class TicketSelectionRequest
 {
@@ -22,8 +22,6 @@ final readonly class TicketSelectionRequest
         public int $projectId,
         public string $executionId,
         public string $owner,
-        public bool $providerSupportsExecution,
-        public bool $budgetPermitsExecution,
         public int $leaseDurationSeconds = 300,
     ) {
         if ($this->organizationId < 1) {

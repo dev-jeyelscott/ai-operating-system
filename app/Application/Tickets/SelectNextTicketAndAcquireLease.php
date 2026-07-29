@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace App\Application\Tickets;
 
 use App\Application\Tickets\Data\TicketEligibilityContext;
+use App\Application\Tickets\Data\TicketExecutionPolicyFacts;
 use App\Application\Tickets\Data\TicketRankingContext;
 use App\Application\Tickets\Data\TicketSelectionRequest;
 use App\Application\Tickets\Data\TicketSelectionResult;
-use App\Domain\Approvals\ApprovalStatus;
-use App\Domain\Approvals\ApprovalType;
 use App\Domain\Tickets\TicketStatus;
-use App\Models\Approval;
 use App\Models\Execution;
 use App\Models\Project;
 use App\Models\Roadmap;
@@ -33,6 +31,7 @@ final readonly class SelectNextTicketAndAcquireLease
     public function __construct(
         private TicketEligibilityEvaluator $eligibility,
         private TicketRanker $ranker,
+        private TicketExecutionPolicyResolver $policyResolver,
         private RecordTicketSelectionEvents $events,
     ) {}
 
@@ -64,6 +63,11 @@ final readonly class SelectNextTicketAndAcquireLease
                     ->whereKey($request->executionId)
                     ->lockForUpdate()
                     ->firstOrFail();
+
+                $policyFacts = $this->policyResolver->resolve(
+                    project: $project,
+                    execution: $execution,
+                );
 
                 /*
                  * Same-execution replay returns the original selection rather
@@ -129,16 +133,11 @@ final readonly class SelectNextTicketAndAcquireLease
                         ->all(),
                 );
 
-                $approvedTicketReferences =
-                    $this->approvedTicketReferences($project->id);
-
                 $rankedCandidates = $this->rankEligibleCandidates(
                     candidates: $candidates,
                     activeLeaseTaskIds: $activeLeaseTaskIds,
-                    approvedTicketReferences: $approvedTicketReferences,
                     project: $project,
-                    execution: $execution,
-                    request: $request,
+                    policyFacts: $policyFacts,
                 );
 
                 foreach ($rankedCandidates as $rankedCandidate) {
@@ -183,10 +182,8 @@ final readonly class SelectNextTicketAndAcquireLease
                     $dependencyStatuses =
                         $this->lockedDependencyStatuses($lockedTicket);
 
-                    $approvalGranted = $this->approvalGranted(
-                        ticket: $lockedTicket,
-                        approvedTicketReferences: $approvedTicketReferences,
-                    );
+                    $approvalGranted = $policyFacts
+                        ->approvalGrantedFor($lockedTicket);
 
                     /*
                      * Re-run eligibility using current locked database facts.
@@ -198,8 +195,7 @@ final readonly class SelectNextTicketAndAcquireLease
                             dependencyStatuses: $dependencyStatuses,
                             approvalGranted: $approvalGranted,
                             project: $project,
-                            execution: $execution,
-                            request: $request,
+                            policyFacts: $policyFacts,
                         ),
                     );
 
@@ -251,19 +247,13 @@ final readonly class SelectNextTicketAndAcquireLease
      *
      * @param  Collection<int, RoadmapTask>  $candidates
      * @param  list<int>  $activeLeaseTaskIds
-     * @param  array{
-     *     ids:array<int, true>,
-     *     stable_ids:array<string, true>
-     * }  $approvedTicketReferences
      * @return list<TicketRankingContext>
      */
     private function rankEligibleCandidates(
         Collection $candidates,
         array $activeLeaseTaskIds,
-        array $approvedTicketReferences,
         Project $project,
-        Execution $execution,
-        TicketSelectionRequest $request,
+        TicketExecutionPolicyFacts $policyFacts,
     ): array {
         $activeLeaseLookup = array_fill_keys(
             $activeLeaseTaskIds,
@@ -291,10 +281,8 @@ final readonly class SelectNextTicketAndAcquireLease
                     ->all(),
             );
 
-            $approvalGranted = $this->approvalGranted(
-                ticket: $candidate,
-                approvedTicketReferences: $approvedTicketReferences,
-            );
+            $approvalGranted = $policyFacts
+                ->approvalGrantedFor($candidate);
 
             $eligibility = $this->eligibility->evaluate(
                 $this->eligibilityContext(
@@ -302,8 +290,7 @@ final readonly class SelectNextTicketAndAcquireLease
                     dependencyStatuses: $dependencyStatuses,
                     approvalGranted: $approvalGranted,
                     project: $project,
-                    execution: $execution,
-                    request: $request,
+                    policyFacts: $policyFacts,
                 ),
             );
 
@@ -327,8 +314,7 @@ final readonly class SelectNextTicketAndAcquireLease
         array $dependencyStatuses,
         bool $approvalGranted,
         Project $project,
-        Execution $execution,
-        TicketSelectionRequest $request,
+        TicketExecutionPolicyFacts $policyFacts,
     ): TicketEligibilityContext {
         return new TicketEligibilityContext(
             status: $ticket->status,
@@ -338,10 +324,10 @@ final readonly class SelectNextTicketAndAcquireLease
             approvalRequired: $ticket->human_approval_required,
             approvalGranted: $approvalGranted,
             projectStatus: $project->status,
-            providerSupportsExecution: $request->providerSupportsExecution,
-            budgetPermitsExecution: $request->budgetPermitsExecution,
-            attemptCount: $execution->attempt_count,
-            retryLimit: $execution->retry_limit,
+            providerSupportsExecution: $policyFacts->providerSupportsExecution,
+            budgetPermitsExecution: $policyFacts->budgetPermitsExecution,
+            attemptCount: $policyFacts->attemptCount,
+            retryLimit: $policyFacts->retryLimit,
         );
     }
 
@@ -412,74 +398,6 @@ final readonly class SelectNextTicketAndAcquireLease
                     ),
                 )
                 ->all(),
-        );
-    }
-
-    /**
-     * Return approved execution-approval references for this project.
-     *
-     * @return array{
-     *     ids:array<int, true>,
-     *     stable_ids:array<string, true>
-     * }
-     */
-    private function approvedTicketReferences(
-        int $projectId,
-    ): array {
-        $references = [
-            'ids' => [],
-            'stable_ids' => [],
-        ];
-
-        $approvals = Approval::query()
-            ->forProject($projectId)
-            ->where('type', ApprovalType::Execution->value)
-            ->where('status', ApprovalStatus::Approved->value)
-            ->get(['request_payload']);
-
-        foreach ($approvals as $approval) {
-            $payload = $approval->request_payload;
-
-            $roadmapTaskId =
-                $payload['roadmap_task_id'] ?? null;
-
-            $ticketId =
-                $payload['ticket_id'] ?? null;
-
-            if (is_int($roadmapTaskId) && $roadmapTaskId > 0) {
-                $references['ids'][$roadmapTaskId] = true;
-            }
-
-            if (
-                is_string($ticketId)
-                && $ticketId !== ''
-                && trim($ticketId) === $ticketId
-            ) {
-                $references['stable_ids'][$ticketId] = true;
-            }
-        }
-
-        return $references;
-    }
-
-    /**
-     * Determine whether an approved execution decision references the ticket.
-     *
-     * @param  array{
-     *     ids:array<int, true>,
-     *     stable_ids:array<string, true>
-     * }  $approvedTicketReferences
-     */
-    private function approvalGranted(
-        RoadmapTask $ticket,
-        array $approvedTicketReferences,
-    ): bool {
-        return isset(
-            $approvedTicketReferences['ids'][$ticket->id],
-        ) || isset(
-            $approvedTicketReferences['stable_ids'][
-                $ticket->stable_id
-            ],
         );
     }
 

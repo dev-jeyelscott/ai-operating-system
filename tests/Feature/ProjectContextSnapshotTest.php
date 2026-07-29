@@ -13,7 +13,6 @@ use App\Models\Organization;
 use App\Models\ProjectContextSnapshot;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
-use LogicException;
 
 beforeEach(function (): void {
     config()->set(

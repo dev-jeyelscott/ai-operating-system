@@ -6,6 +6,7 @@ namespace Tests\Support;
 
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Projects\Configuration\ReasoningLevel;
+use App\Domain\Projects\ProjectStatus;
 use App\Models\Execution;
 use App\Models\Project;
 use App\Models\ProjectConfigurationVersion;
@@ -22,13 +23,23 @@ final class TicketTestFixture
 {
     /**
      * @param  array<string, mixed>  $ticketAttributes
-     * @return array{project: Project, roadmap: Roadmap, ticket: RoadmapTask}
+     * @param  array<string, mixed>  $configurationSnapshot
+     * @return array{
+     *     project: Project,
+     *     configurationVersion: ProjectConfigurationVersion,
+     *     contextSnapshot: ProjectContextSnapshot,
+     *     roadmap: Roadmap,
+     *     ticket: RoadmapTask
+     * }
      */
     public static function create(
         string $stableId = 'AIOS-089',
         array $ticketAttributes = [],
+        array $configurationSnapshot = [],
     ): array {
-        $project = Project::factory()->create();
+        $project = Project::factory()
+            ->status(ProjectStatus::Active)
+            ->create();
         $configuration = ProjectConfigurationVersion::query()->create([
             'project_id' => $project->id,
             'schema_version' => 1,
@@ -36,10 +47,21 @@ final class TicketTestFixture
             'actor_type' => AuditActorType::System,
             'actor_id' => 'ticket-test-fixture',
             'change_reason' => 'ticket_feature_test',
-            'snapshot' => [
+            'snapshot' => array_replace_recursive([
                 'schema_version' => 1,
                 'revision' => 1,
-            ],
+                'policy' => [
+                    'provider' => [
+                        'allowed_provider_ids' => ['simulation'],
+                        'fallback_order' => ['simulation'],
+                    ],
+                    'budget' => [
+                        'limit_minor' => 5000,
+                        'currency' => 'USD',
+                    ],
+                    'automatic_retry_limit' => 3,
+                ],
+            ], $configurationSnapshot),
         ]);
         $contextSnapshot = ProjectContextSnapshot::query()->create([
             'project_id' => $project->id,
@@ -137,6 +159,8 @@ final class TicketTestFixture
 
         return [
             'project' => $project,
+            'configurationVersion' => $configuration,
+            'contextSnapshot' => $contextSnapshot,
             'roadmap' => $roadmap,
             'ticket' => $ticket,
         ];

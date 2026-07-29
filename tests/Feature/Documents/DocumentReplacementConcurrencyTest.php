@@ -12,7 +12,6 @@ use App\Models\Project;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
 use Tests\ProcessDatabaseTestCase;
 
 /**
@@ -135,7 +134,7 @@ final class DocumentReplacementConcurrencyTest extends ProcessDatabaseTestCase
         );
 
         if (! is_string($temporaryPath)) {
-            throw new RuntimeException(
+            throw new \RuntimeException(
                 'Unable to create a temporary replacement file.',
             );
         }

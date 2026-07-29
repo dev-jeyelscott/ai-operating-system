@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Application\Tickets\Data\TicketRankingContext;
 use App\Application\Tickets\TicketRanker;
-use InvalidArgumentException;
 
 /**
  * Create a valid AIOS-091 ranking candidate with optional overrides.

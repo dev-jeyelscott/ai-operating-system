@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Domain\Projects\Configuration\AutonomyLevel;
 use App\Domain\Projects\Configuration\ProjectPolicyConfiguration;
 use App\Domain\Projects\Configuration\ReasoningLevel;
-use InvalidArgumentException;
 
 test(
     'project policy configuration is normalized for persistence',

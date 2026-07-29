@@ -6,7 +6,6 @@ namespace Tests\Unit\Application\Shared\Commands;
 
 use App\Application\Shared\Commands\CommandResult;
 use App\Application\Shared\Commands\CommandResultStatus;
-use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -113,7 +112,7 @@ final class CommandResultTest extends TestCase
      */
     public function test_retryable_result_rejects_an_invalid_delay(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(\InvalidArgumentException::class);
 
         $this->expectExceptionMessage(
             'The retry delay must be at least one second.',

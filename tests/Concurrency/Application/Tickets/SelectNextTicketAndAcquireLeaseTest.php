@@ -499,8 +499,6 @@ final class SelectNextTicketAndAcquireLeaseTest extends TestCase
             projectId: $project->id,
             executionId: $execution->id,
             owner: 'layer-2-worker-01',
-            providerSupportsExecution: true,
-            budgetPermitsExecution: true,
             leaseDurationSeconds: 300,
         );
     }
