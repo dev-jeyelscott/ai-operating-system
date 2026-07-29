@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\DevelopmentResultValidator;
 use App\Application\Development\SyntheticDevelopmentArtifactGenerator;
+use App\Domain\Development\Exceptions\DevelopmentProviderTimeout;
 
 function aios097Request(int $seed = 97): DevelopmentExecutionRequest
 {
@@ -75,4 +76,30 @@ test('changed paths are unique normalized project relative synthetic fixtures', 
     foreach ($paths as $path) {
         expect($path)->not->toStartWith('/')->not->toContain('..', '\\');
     }
+});
+
+test('DevelopmentValidationFailure omits successful repository artifacts and remains unverified', function (): void {
+    $request = DevelopmentExecutionRequest::fromArray([
+        ...aios097Request()->toArray(),
+        'simulation_scenario' => 'development_validation_failure',
+    ]);
+    $result = app(SyntheticDevelopmentArtifactGenerator::class)->generate($request);
+
+    (new DevelopmentResultValidator)->validateResult($result);
+    expect($result->outcome->value)->toBe('validation_failed')
+        ->and($result->syntheticCommitResult)->toBeNull()
+        ->and($result->syntheticPushResult)->toBeNull()
+        ->and($result->syntheticPullRequestResult)->toBeNull()
+        ->and($result->validationResults[0]->status->value)->toBe('failed')
+        ->and($result->verificationClassification->value)->toBe('unverified');
+});
+
+test('provider timeout scenario raises the typed timeout boundary', function (): void {
+    $request = DevelopmentExecutionRequest::fromArray([
+        ...aios097Request()->toArray(),
+        'simulation_scenario' => 'provider_timeout_retry',
+    ]);
+
+    expect(fn () => app(SyntheticDevelopmentArtifactGenerator::class)->generate($request))
+        ->toThrow(DevelopmentProviderTimeout::class);
 });

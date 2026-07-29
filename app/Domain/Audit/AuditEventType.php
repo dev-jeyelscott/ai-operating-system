@@ -93,6 +93,7 @@ enum AuditEventType: string
     case ImplementationStarted = 'implementation.started';
     case ValidationStarted = 'validation.started';
     case ValidationCompleted = 'validation.completed';
+    case ValidationFailed = 'validation.failed';
     case SyntheticCommitCreated = 'synthetic.commit_created';
     case SyntheticPushRecorded = 'synthetic.push_recorded';
     case PullRequestCreated = 'pull_request.created';

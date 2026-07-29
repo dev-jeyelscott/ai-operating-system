@@ -6,6 +6,7 @@ namespace App\Application\Development;
 
 use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
+use App\Domain\Development\Exceptions\DevelopmentProviderTimeout;
 
 final readonly class SyntheticDevelopmentArtifactGenerator
 {
@@ -16,6 +17,10 @@ final readonly class SyntheticDevelopmentArtifactGenerator
 
     public function generate(DevelopmentExecutionRequest $request): DevelopmentExecutionResult
     {
+        if ($request->simulationScenario === 'provider_timeout_retry') {
+            throw new DevelopmentProviderTimeout('The simulated development provider timed out.');
+        }
+
         $branch = $this->repositoryPolicy->sourceBranch('feature', $request->ticketId, $request->ticketObjective);
         $root = "simulation://projects/{$request->projectId}/executions/{$request->executionId}";
         $commit = hash('sha1', implode('|', [
@@ -42,6 +47,24 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             'simulation_classification' => 'simulated', 'verification_classification' => 'unverified', 'retry_classification' => 'none',
             'recommended_next_action' => 'Collect authorized real repository evidence in a later layer.', 'canonical_result_fingerprint' => '',
         ];
+
+        if ($request->simulationScenario === 'development_validation_failure') {
+            $data['outcome'] = 'validation_failed';
+            $data['stage_results'] = [
+                ['stage' => 'plan', 'status' => 'passed', 'summary' => 'Simulated plan completed.'],
+                ['stage' => 'implementation', 'status' => 'passed', 'summary' => 'Simulated implementation completed.'],
+                ['stage' => 'validation', 'status' => 'failed', 'summary' => 'Simulated validation failed.'],
+                ['stage' => 'commit', 'status' => 'skipped', 'summary' => 'Synthetic commit skipped after validation failure.'],
+                ['stage' => 'push', 'status' => 'skipped', 'summary' => 'Synthetic push skipped after validation failure.'],
+                ['stage' => 'pull_request', 'status' => 'skipped', 'summary' => 'Synthetic pull request skipped after validation failure.'],
+            ];
+            $data['validation_results'] = array_map(static fn (string $command): array => ['command' => $command, 'status' => 'failed', 'summary' => 'Simulated validation failure; no real command ran.'], $request->validationCommands);
+            $data['synthetic_commit_result'] = null;
+            $data['synthetic_push_result'] = null;
+            $data['synthetic_pull_request_result'] = null;
+            $data['retry_classification'] = 'validation';
+            $data['recommended_next_action'] = 'Wait for the durable retry schedule before another attempt.';
+        }
         $temporary = DevelopmentExecutionResult::fromArray($data);
         $data['canonical_result_fingerprint'] = $this->validator->fingerprint($temporary);
 

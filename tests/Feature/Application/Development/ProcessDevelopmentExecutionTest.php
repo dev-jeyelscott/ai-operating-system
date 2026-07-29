@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Application\Development\Consumers\DispatchDevelopmentExecution;
+use App\Application\Development\Consumers\RedispatchDevelopmentRetry;
 use App\Application\Development\Contracts\DevelopmentExecutionProvider;
 use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
@@ -10,6 +11,7 @@ use App\Application\Development\DevelopmentArtifactRecorder;
 use App\Application\Development\DevelopmentProviderRegistry;
 use App\Application\Development\ProcessDevelopmentExecution;
 use App\Application\Events\Data\StoredDomainEvent;
+use App\Application\Events\DeduplicatedDomainEventConsumer;
 use App\Application\Executions\ExecutionResilienceManager;
 use App\Application\Tickets\Data\TicketSelectionRequest;
 use App\Application\Tickets\SelectNextTicketAndAcquireLease;
@@ -29,7 +31,7 @@ use Illuminate\Support\Facades\DB;
 use Tests\Support\TicketTestFixture;
 
 /** @return array<string, mixed> */
-function aios096Fixture(): array
+function aios096Fixture(int $retryLimit = 2): array
 {
     $fixture = TicketTestFixture::create(
         stableId: 'AIOS-096',
@@ -48,7 +50,7 @@ function aios096Fixture(): array
     ])->save();
     $execution = Execution::factory()->for($fixture['project'])->create([
         'project_context_snapshot_id' => $fixture['contextSnapshot']->id,
-        'capability' => 'development.simulation', 'retry_limit' => 2,
+        'capability' => 'development.simulation', 'retry_limit' => $retryLimit,
     ]);
     app(SelectNextTicketAndAcquireLease::class)->handle(new TicketSelectionRequest(
         organizationId: $fixture['project']->organization_id, projectId: $fixture['project']->id,
@@ -242,4 +244,83 @@ test('artifact persistence failure rolls back the terminal stage and schedules d
         ->and($fixture['ticket']->refresh()->status)->toBe(TicketStatus::InProgress)
         ->and($fixture['lease']->refresh()->isActive())->toBeTrue();
     $this->assertDatabaseCount('artifacts', 0);
+});
+
+test('DevelopmentValidationFailure persists only failed simulated evidence and schedules retry', function (): void {
+    $fixture = aios096Fixture();
+
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution'], 'development_validation_failure', 98);
+
+    expect($fixture['execution']->refresh()->status)->toBe(ExecutionStatus::RetryScheduled)
+        ->and($fixture['execution']->next_attempt_at)->not->toBeNull()
+        ->and($fixture['ticket']->refresh()->status)->toBe(TicketStatus::InProgress)
+        ->and($fixture['lease']->refresh()->isActive())->toBeTrue();
+    $this->assertDatabaseCount('artifacts', 1);
+    $this->assertDatabaseHas('artifacts', ['artifact_type' => 'validation_failure', 'actual_state' => 'unverified']);
+    $this->assertDatabaseHas('evidence', ['classification' => 'simulated_output', 'evidence_type' => 'validation_failure']);
+    $this->assertDatabaseMissing('artifacts', ['artifact_type' => 'synthetic_commit']);
+    $this->assertDatabaseMissing('artifacts', ['artifact_type' => 'synthetic_push']);
+    $this->assertDatabaseMissing('artifacts', ['artifact_type' => 'synthetic_pull_request']);
+});
+
+test('DevelopmentRetry provider timeout uses domain timing without queue retry or artifacts', function (): void {
+    $fixture = aios096Fixture();
+
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution'], 'provider_timeout_retry', 98);
+
+    expect($fixture['execution']->refresh()->status)->toBe(ExecutionStatus::RetryScheduled)
+        ->and($fixture['execution']->next_attempt_at)->not->toBeNull()
+        ->and($fixture['lease']->refresh()->isActive())->toBeTrue();
+    $this->assertDatabaseHas('execution_attempts', ['execution_id' => $fixture['execution']->id, 'error_code' => 'development.provider_timeout', 'retryable' => true]);
+    $this->assertDatabaseCount('artifacts', 0);
+});
+
+test('DevelopmentRetry release permits later success while preserving failure history', function (): void {
+    $fixture = aios096Fixture();
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution'], 'development_validation_failure', 98);
+    $fixture['execution']->refresh();
+    $nextAttemptAt = $fixture['execution']->next_attempt_at;
+    expect($nextAttemptAt)->not->toBeNull();
+
+    expect(app(ExecutionResilienceManager::class)->releaseDueRetries($nextAttemptAt?->subSecond()))->toBe(0)
+        ->and(app(ExecutionResilienceManager::class)->releaseDueRetries($nextAttemptAt?->addSecond()))->toBe(1);
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution']->refresh(), 'happy_path', 98);
+
+    expect($fixture['execution']->refresh()->status)->toBe(ExecutionStatus::Completed)
+        ->and($fixture['execution']->attempt_count)->toBe(2)
+        ->and($fixture['ticket']->refresh()->status)->toBe(TicketStatus::ForQa)
+        ->and(Artifact::query()->where('artifact_type', 'validation_failure')->count())->toBe(1);
+    $this->assertDatabaseHas('execution_attempts', ['execution_id' => $fixture['execution']->id, 'attempt_number' => 1, 'error_code' => 'development.validation_failed']);
+    $this->assertDatabaseHas('execution_attempts', ['execution_id' => $fixture['execution']->id, 'attempt_number' => 2, 'status' => 'completed']);
+});
+
+test('DevelopmentRetry exhaustion fails execution and releases lease exactly once', function (): void {
+    $fixture = aios096Fixture(retryLimit: 0);
+
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution'], 'development_validation_failure', 98);
+
+    expect($fixture['execution']->refresh()->status)->toBe(ExecutionStatus::Failed)
+        ->and($fixture['ticket']->refresh()->status)->toBe(TicketStatus::InProgress)
+        ->and($fixture['lease']->refresh()->release_reason)->toBe(TicketLeaseReleaseReason::TerminalFailure);
+    $this->assertDatabaseCount('ticket_execution_leases', 1);
+});
+
+test('RedispatchDevelopmentRetry dispatches only after durable retry release', function (): void {
+    Bus::fake();
+    $fixture = aios096Fixture();
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution'], 'development_validation_failure', 98);
+    $execution = $fixture['execution']->refresh();
+    app(ExecutionResilienceManager::class)->releaseDueRetries($execution->next_attempt_at?->addSecond());
+    $event = new StoredDomainEvent(
+        eventId: '01KYPAB5S2ETWGGMB4TFTVWX1J', eventName: 'execution.retry_released',
+        organizationId: $fixture['project']->organization_id, projectId: $fixture['project']->id,
+        schemaVersion: 1, envelope: ['payload' => ['execution_id' => $execution->id]],
+    );
+
+    $deduplicated = app(DeduplicatedDomainEventConsumer::class);
+    $consumer = app(RedispatchDevelopmentRetry::class);
+    $deduplicated->handle($event, $consumer);
+    $deduplicated->handle($event, $consumer);
+
+    Bus::assertDispatched(ProcessDevelopmentExecutionJob::class, 1);
 });

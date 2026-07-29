@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Application\Development\Consumers\DispatchDevelopmentExecution;
+use App\Application\Development\Consumers\RedispatchDevelopmentRetry;
 use App\Application\Planning\Consumers\DispatchPlanningExecution;
 use App\Application\Tickets\Consumers\ReleaseLeaseForTerminalExecution;
 
@@ -81,6 +82,7 @@ return [
     'consumers' => [
         DispatchPlanningExecution::class,
         DispatchDevelopmentExecution::class,
+        RedispatchDevelopmentRetry::class,
         ReleaseLeaseForTerminalExecution::class,
     ],
 ];
