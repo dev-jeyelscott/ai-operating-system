@@ -1,14 +1,16 @@
 <?php
 
-use App\Domain\Projects\ProjectSetupStep;
-use App\Models\Project;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /*
 |--------------------------------------------------------------------------
-| Test Case
+| Feature Tests
 |--------------------------------------------------------------------------
+|
+| Normal feature tests use database transactions for fast isolation.
+|
 */
 
 pest()->extend(TestCase::class)
@@ -17,8 +19,26 @@ pest()->extend(TestCase::class)
 
 /*
 |--------------------------------------------------------------------------
+| Database Concurrency Tests
+|--------------------------------------------------------------------------
+|
+| Concurrency tests require committed fixtures that are visible to separate
+| PostgreSQL connections. DatabaseMigrations provides a clean schema without
+| wrapping the test data inside the parent process transaction.
+|
+*/
+
+pest()->extend(TestCase::class)
+    ->use(DatabaseMigrations::class)
+    ->in('Concurrency');
+
+/*
+|--------------------------------------------------------------------------
 | Expectations
 |--------------------------------------------------------------------------
+|
+| Add project-specific expectations here.
+|
 */
 
 expect()->extend('toBeOne', function () {
@@ -29,53 +49,12 @@ expect()->extend('toBeOne', function () {
 |--------------------------------------------------------------------------
 | Functions
 |--------------------------------------------------------------------------
+|
+| Add project-specific test helpers here.
+|
 */
 
-/**
- * Advance a project fixture beyond the external Integrations setup step.
- *
- * Command and policy tests are not responsible for testing the Notion API.
- * Their fixtures may therefore arrange persisted wizard progress directly,
- * provided the required Details and Repository steps are already complete.
- */
-function completeProjectIntegrationSetupForTesting(Project $project): void
+function something()
 {
-    $progress = $project->setupProgress()->firstOrFail();
-
-    /*
-     * Protect tests from silently constructing an impossible setup state.
-     */
-    foreach (
-        [
-            ProjectSetupStep::Details,
-            ProjectSetupStep::Repository,
-        ] as $requiredStep
-    ) {
-        if (! $progress->hasCompleted($requiredStep)) {
-            throw new LogicException(sprintf(
-                'Complete the "%s" setup step before bypassing Integrations.',
-                $requiredStep->value,
-            ));
-        }
-    }
-
-    $completedSteps = $progress->completed_steps;
-
-    if (
-        ! in_array(
-            ProjectSetupStep::Integrations->value,
-            $completedSteps,
-            true,
-        )
-    ) {
-        $completedSteps[] = ProjectSetupStep::Integrations->value;
-    }
-
-    /*
-     * Persist the minimum valid state required by command and policy tests.
-     */
-    $progress->forceFill([
-        'completed_steps' => array_values(array_unique($completedSteps)),
-        'current_step' => ProjectSetupStep::Commands,
-    ])->save();
+    // Reserved for shared Pest test helpers.
 }
