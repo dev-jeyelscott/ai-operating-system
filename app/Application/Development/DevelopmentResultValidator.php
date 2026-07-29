@@ -21,13 +21,15 @@ final class DevelopmentResultValidator
             throw new \InvalidArgumentException('Development request schema version is unsupported.');
         }
 
-        foreach ([$request->organizationId, $request->projectId, $request->roadmapId, $request->ticketId, $request->attemptNumber, $request->contextSnapshotId] as $identifier) {
+        foreach ([$request->organizationId, $request->projectId, $request->roadmapId, $request->attemptId, $request->attemptNumber, $request->contextSnapshotId] as $identifier) {
             if ($identifier < 1) {
                 throw new \InvalidArgumentException('Development request identifiers must be positive.');
             }
         }
 
-        foreach ([$request->executionId, $request->attemptId, $request->leaseId] as $identifier) {
+        $this->text($request->ticketId, 'ticket identifier', 191);
+
+        foreach ([$request->executionId, $request->leaseId] as $identifier) {
             if (! Str::isUlid($identifier)) {
                 throw new \InvalidArgumentException('Development request ULID is invalid.');
             }

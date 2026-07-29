@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Application\Development\DevelopmentProviderRegistry;
 use App\Application\Documents\Contracts\DocumentAnalyzer;
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\Contracts\MalwareScanner;
@@ -9,6 +10,7 @@ use App\Application\Planning\ExecutionProviderRegistry;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Application\Workflows\Contracts\WorkflowTransitionGuardEvaluator;
 use App\Infrastructure\AgentProviders\SimulationPlanningProvider;
+use App\Infrastructure\Development\SimulationDevelopmentProvider;
 use App\Infrastructure\Documents\DeterministicDocumentAnalyzer;
 use App\Infrastructure\Documents\DeterministicMalwareScanner;
 use App\Infrastructure\Documents\PlainTextDocumentParser;
@@ -55,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SimulationPlanningProvider::class);
         $this->app->singleton(ExecutionProviderRegistry::class, fn ($app): ExecutionProviderRegistry => new ExecutionProviderRegistry([$app->make(SimulationPlanningProvider::class)]));
+        $this->app->singleton(SimulationDevelopmentProvider::class);
+        $this->app->singleton(DevelopmentProviderRegistry::class, fn ($app): DevelopmentProviderRegistry => new DevelopmentProviderRegistry([$app->make(SimulationDevelopmentProvider::class)]));
     }
 
     /**

@@ -24,9 +24,9 @@ final readonly class DevelopmentExecutionRequest
         public int $organizationId,
         public int $projectId,
         public int $roadmapId,
-        public int $ticketId,
+        public string $ticketId,
         public string $executionId,
-        public string $attemptId,
+        public int $attemptId,
         public int $attemptNumber,
         public string $leaseId,
         public int $contextSnapshotId,
@@ -80,7 +80,7 @@ final readonly class DevelopmentExecutionRequest
     {
         return new self(
             (int) ($data['organization_id'] ?? 0), (int) ($data['project_id'] ?? 0), (int) ($data['roadmap_id'] ?? 0),
-            (int) ($data['ticket_id'] ?? 0), (string) ($data['execution_id'] ?? ''), (string) ($data['attempt_id'] ?? ''),
+            (string) ($data['ticket_id'] ?? ''), (string) ($data['execution_id'] ?? ''), (int) ($data['attempt_id'] ?? 0),
             (int) ($data['attempt_number'] ?? 0), (string) ($data['lease_id'] ?? ''), (int) ($data['context_snapshot_id'] ?? 0),
             (string) ($data['context_fingerprint'] ?? ''), (string) ($data['ticket_objective'] ?? ''), self::list($data['included_scope'] ?? null),
             self::list($data['excluded_scope'] ?? null), self::list($data['acceptance_criteria'] ?? null), self::list($data['dependency_references'] ?? null),

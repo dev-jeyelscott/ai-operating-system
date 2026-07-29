@@ -90,6 +90,14 @@ enum AuditEventType: string
     case TicketExternalStateReconciled =
         'ticket.state_reconciled';
 
+    case ImplementationStarted = 'implementation.started';
+    case ValidationStarted = 'validation.started';
+    case ValidationCompleted = 'validation.completed';
+    case SyntheticCommitCreated = 'synthetic.commit_created';
+    case SyntheticPushRecorded = 'synthetic.push_recorded';
+    case PullRequestCreated = 'pull_request.created';
+    case ImplementationCompleted = 'implementation.completed';
+
     case WorkflowTransitioned = 'workflow.transitioned';
 
     case ApprovalRequested = 'approval.requested';
