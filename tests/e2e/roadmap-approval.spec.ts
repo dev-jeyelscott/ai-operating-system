@@ -9,7 +9,7 @@ const roadmapPath = (action: string) =>
 const errorsByPage = new WeakMap<Page, string[]>();
 
 function artisan(arguments_: string[], stdio: 'inherit' | 'pipe'): void {
-    execFileSync('./vendor/bin/sail', ['artisan', ...arguments_], {
+    execFileSync('php', ['artisan', ...arguments_], {
         cwd: repositoryRoot,
         stdio,
     });

@@ -142,7 +142,7 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate
-          php artisan migrate:fresh --force
+          php artisan migrate --force
 
       - name: Validate environment
         run: php artisan app:check
@@ -155,6 +155,13 @@ jobs:
 
       - name: Audit PHP dependencies
         run: composer audit --no-interaction
+
+      - name: Run PostgreSQL concurrency suite
+        run: |
+          php artisan test \
+            --testsuite=Concurrency \
+            --fail-on-skipped \
+            --fail-on-warning
 
       - name: Run backend and frontend quality gates
         run: composer ci:check

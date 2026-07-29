@@ -7,9 +7,10 @@ export default defineConfig({
     testDir: './tests/e2e',
 
     /**
-     * Run independent browser tests concurrently.
+     * Browser fixtures share one database and must not race their seeders.
      */
-    fullyParallel: true,
+    fullyParallel: false,
+    workers: 1,
 
     /**
      * Prevent accidentally committed test.only calls from passing CI.
@@ -32,9 +33,7 @@ export default defineConfig({
          *
          * Laravel Sail currently exposes the application through port 80.
          */
-        baseURL:
-            process.env.PLAYWRIGHT_BASE_URL ??
-            'http://localhost',
+        baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost',
 
         /**
          * Preserve diagnostic evidence for failed or retried tests.
