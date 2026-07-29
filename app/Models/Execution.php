@@ -53,6 +53,7 @@ use LogicException;
  * @property-read WorkflowInstance|null $workflowInstance
  * @property-read ProjectContextSnapshot|null $projectContextSnapshot
  * @property-read Collection<int, ExecutionAttempt> $attempts
+ * @property-read Collection<int, TicketExecutionLease> $ticketLeases
  */
 #[DateFormat('Y-m-d H:i:s.u')]
 #[Fillable([
@@ -171,6 +172,12 @@ final class Execution extends Model
     {
         return $this->hasMany(ExecutionAttempt::class)
             ->orderBy('attempt_number');
+    }
+
+    /** @return HasMany<TicketExecutionLease, $this> */
+    public function ticketLeases(): HasMany
+    {
+        return $this->hasMany(TicketExecutionLease::class);
     }
 
     /** @return HasMany<PlanningExecutionDiagnostic, $this> */

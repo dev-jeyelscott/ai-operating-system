@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Application\Executions\ExecutionResilienceManager;
+use App\Application\Tickets\TicketLeaseManager;
 use Illuminate\Console\Command;
 
 /**
@@ -34,6 +35,7 @@ final class ProcessExecutionResilienceCommand extends Command
      */
     public function __construct(
         private readonly ExecutionResilienceManager $manager,
+        private readonly TicketLeaseManager $leases,
     ) {
         parent::__construct();
     }
@@ -70,10 +72,15 @@ final class ProcessExecutionResilienceCommand extends Command
                 limit: $limit,
             );
 
+        $recoveredLeaseCount = $this->leases->recoverExpired(
+            limit: $limit,
+        );
+
         $this->info(sprintf(
-            'Timed out %d attempt(s); released %d retry execution(s).',
+            'Timed out %d attempt(s); released %d retry execution(s); recovered %d ticket lease(s).',
             $timedOutCount,
             $releasedRetryCount,
+            $recoveredLeaseCount,
         ));
 
         return self::SUCCESS;

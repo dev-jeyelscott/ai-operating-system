@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Application\Planning\Consumers\DispatchPlanningExecution;
+use App\Application\Tickets\Consumers\ReleaseLeaseForTerminalExecution;
 
 return [
     /*
@@ -78,5 +79,6 @@ return [
 
     'consumers' => [
         DispatchPlanningExecution::class,
+        ReleaseLeaseForTerminalExecution::class,
     ],
 ];

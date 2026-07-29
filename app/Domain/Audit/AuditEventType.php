@@ -84,6 +84,8 @@ enum AuditEventType: string
 
     case TicketSelected = 'ticket.selected';
     case TicketLeaseAcquired = 'ticket.lease_acquired';
+    case TicketLeaseHeartbeat = 'ticket.lease_heartbeat';
+    case TicketLeaseReleased = 'ticket.lease_released';
     case TicketStatusTransitioned = 'ticket.status_transitioned';
     case TicketExternalStateReconciled =
         'ticket.state_reconciled';

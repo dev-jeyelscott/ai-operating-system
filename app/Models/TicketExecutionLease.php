@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Tickets\TicketLeaseReleaseReason;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\DateFormat;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,7 +29,7 @@ use LogicException;
  * @property CarbonImmutable $expires_at
  * @property CarbonImmutable $heartbeat_at
  * @property CarbonImmutable|null $released_at
- * @property string|null $release_reason
+ * @property TicketLeaseReleaseReason|null $release_reason
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  * @property-read Project $project
@@ -155,6 +156,7 @@ final class TicketExecutionLease extends Model
             'expires_at' => 'immutable_datetime',
             'heartbeat_at' => 'immutable_datetime',
             'released_at' => 'immutable_datetime',
+            'release_reason' => TicketLeaseReleaseReason::class,
         ];
     }
 }
