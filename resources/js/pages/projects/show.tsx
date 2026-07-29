@@ -9,7 +9,9 @@ import {
     Settings2,
     SlidersHorizontal,
     Map,
+    ListTodo,
 } from 'lucide-react';
+import DevelopmentQueueController from '@/actions/App/Http/Controllers/Development/DevelopmentQueueController';
 import { index as roadmapIndex } from '@/actions/App/Http/Controllers/Planning/RoadmapController';
 import { Button } from '@/components/ui/button';
 import {
@@ -89,6 +91,18 @@ export default function ShowProject({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        <Button asChild variant="outline">
+                            <Link
+                                href={DevelopmentQueueController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <ListTodo aria-hidden="true" />
+                                Development queue
+                            </Link>
+                        </Button>
+
                         <Button asChild variant="outline">
                             <Link
                                 href={roadmapIndex({

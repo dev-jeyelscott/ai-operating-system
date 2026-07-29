@@ -28,9 +28,25 @@ final class TicketExecutionPolicyResolver
         Project $project,
         Execution $execution,
     ): TicketExecutionPolicyFacts {
+        return $this->resolveForContext(
+            project: $project,
+            contextSnapshotId: (int) $execution->project_context_snapshot_id,
+            capability: $execution->capability,
+            attemptCount: $execution->attempt_count,
+            retryLimit: $execution->retry_limit,
+        );
+    }
+
+    public function resolveForContext(
+        Project $project,
+        int $contextSnapshotId,
+        string $capability = 'development.simulation',
+        int $attemptCount = 0,
+        int $retryLimit = 3,
+    ): TicketExecutionPolicyFacts {
         $contextSnapshot = ProjectContextSnapshot::query()
             ->where('project_id', $project->id)
-            ->whereKey($execution->project_context_snapshot_id)
+            ->whereKey($contextSnapshotId)
             ->firstOrFail();
 
         $configurationVersion = ProjectConfigurationVersion::query()
@@ -47,7 +63,7 @@ final class TicketExecutionPolicyResolver
             Arr::get($snapshot, 'policy.provider.fallback_order'),
         );
         $providerSupportsExecution = in_array(
-            $execution->capability,
+            $capability,
             ['development', 'development.simulation'],
             true,
         ) && in_array(
@@ -93,8 +109,8 @@ final class TicketExecutionPolicyResolver
         return new TicketExecutionPolicyFacts(
             providerSupportsExecution: $providerSupportsExecution,
             budgetPermitsExecution: $budgetPermitsExecution,
-            attemptCount: $execution->attempt_count,
-            retryLimit: $execution->retry_limit,
+            attemptCount: $attemptCount,
+            retryLimit: $retryLimit,
             approvedRoadmapTaskIds: $approvedRoadmapTaskIds,
             approvedStableTicketIds: $approvedStableTicketIds,
         );

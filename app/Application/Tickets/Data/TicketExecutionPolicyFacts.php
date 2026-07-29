@@ -36,4 +36,16 @@ final readonly class TicketExecutionPolicyFacts
         return isset($this->approvedRoadmapTaskIds[$ticket->id])
             || isset($this->approvedStableTicketIds[$ticket->stable_id]);
     }
+
+    public function withAttemptPolicy(int $attemptCount, int $retryLimit): self
+    {
+        return new self(
+            providerSupportsExecution: $this->providerSupportsExecution,
+            budgetPermitsExecution: $this->budgetPermitsExecution,
+            attemptCount: $attemptCount,
+            retryLimit: $retryLimit,
+            approvedRoadmapTaskIds: $this->approvedRoadmapTaskIds,
+            approvedStableTicketIds: $this->approvedStableTicketIds,
+        );
+    }
 }

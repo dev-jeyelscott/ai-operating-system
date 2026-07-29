@@ -30,4 +30,6 @@ enum TicketIneligibilityReason: string
     case BudgetUnavailable = 'budget_unavailable';
 
     case RetryPolicyExhausted = 'retry_policy_exhausted';
+
+    case ActiveLease = 'active_lease';
 }
