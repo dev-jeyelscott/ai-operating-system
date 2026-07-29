@@ -5,6 +5,7 @@ declare(strict_types=1);
 use BackedEnum;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Foundation\Application;
 use JsonSerializable;
 use Stringable;
 use Throwable;
@@ -72,7 +73,7 @@ $rootPath = dirname(__DIR__, 3);
 
 require $rootPath.'/vendor/autoload.php';
 
-/** @var \Illuminate\Foundation\Application $app */
+/** @var Application $app */
 $app = require $rootPath.'/bootstrap/app.php';
 
 $app->make(Kernel::class)->bootstrap();
