@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Application\Tickets;
+namespace Tests\Concurrency\Application\Tickets;
 
 use App\Application\Tickets\Data\TicketSelectionRequest;
 use App\Application\Tickets\SelectNextTicketAndAcquireLease;
@@ -198,6 +198,107 @@ final class SelectNextTicketAndAcquireLeaseTest extends TestCase
             $ticket->id,
             $resultAfterRelease->roadmapTaskId,
         );
+    }
+
+    /**
+     * Verify two independent Laravel workers cannot claim the same ticket.
+     */
+    public function test_two_concurrent_selectors_claim_distinct_tickets(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            $this->fail('AIOS-092 requires pcntl for independent workers.');
+        }
+
+        $fixture = $this->selectionFixture();
+        $firstTicket = $this->readyTicket(
+            roadmap: $fixture['roadmap'],
+            stableId: 'AIOS-CONCURRENT-FIRST',
+            position: 1,
+        );
+        $secondTicket = $this->readyTicket(
+            roadmap: $fixture['roadmap'],
+            stableId: 'AIOS-CONCURRENT-SECOND',
+            position: 2,
+        );
+        $executions = [
+            $fixture['developmentExecution'],
+            $this->developmentExecution($fixture),
+        ];
+
+        DB::disconnect();
+        $workers = [];
+
+        foreach ($executions as $index => $execution) {
+            $sockets = stream_socket_pair(
+                STREAM_PF_UNIX,
+                STREAM_SOCK_STREAM,
+                0,
+            );
+            $this->assertIsArray($sockets);
+            $pid = pcntl_fork();
+            $this->assertNotSame(-1, $pid);
+
+            if ($pid === 0) {
+                fclose($sockets[0]);
+                DB::purge();
+                fread($sockets[1], 1);
+
+                try {
+                    $result = $this->selector()->handle(
+                        $this->selectionRequest(
+                            project: $fixture['project'],
+                            execution: $execution,
+                        ),
+                    );
+                    fwrite($sockets[1], json_encode([
+                        'ticket_id' => $result->roadmapTaskId,
+                        'error' => null,
+                    ], JSON_THROW_ON_ERROR));
+                } catch (\Throwable $throwable) {
+                    fwrite($sockets[1], json_encode([
+                        'ticket_id' => null,
+                        'error' => $throwable::class.': '.$throwable->getMessage(),
+                    ], JSON_THROW_ON_ERROR));
+                }
+
+                fclose($sockets[1]);
+                exit(0);
+            }
+
+            fclose($sockets[1]);
+            $workers[] = [
+                'pid' => $pid,
+                'socket' => $sockets[0],
+            ];
+        }
+
+        foreach ($workers as $worker) {
+            fwrite($worker['socket'], '1');
+        }
+
+        $results = [];
+
+        foreach ($workers as $worker) {
+            $payload = stream_get_contents($worker['socket']);
+            fclose($worker['socket']);
+            pcntl_waitpid($worker['pid'], $status);
+            $this->assertTrue(pcntl_wifexited($status));
+            $this->assertSame(0, pcntl_wexitstatus($status));
+            $results[] = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        }
+
+        DB::reconnect();
+
+        $this->assertSame([null, null], array_column($results, 'error'));
+        $claimedTicketIds = array_column($results, 'ticket_id');
+        sort($claimedTicketIds);
+        $expectedTicketIds = [$firstTicket->id, $secondTicket->id];
+        sort($expectedTicketIds);
+        $this->assertSame($expectedTicketIds, $claimedTicketIds);
+        $this->assertSame(2, TicketExecutionLease::query()->active()->count());
+        $this->assertSame(2, TicketExecutionLease::query()->distinct('roadmap_task_id')->count('roadmap_task_id'));
+        $this->assertSame(4, DB::table('outbox_messages')->count());
+        $this->assertSame(4, DB::table('audit_events')->count());
     }
 
     /**

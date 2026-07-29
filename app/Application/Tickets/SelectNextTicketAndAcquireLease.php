@@ -9,6 +9,7 @@ use App\Application\Tickets\Data\TicketExecutionPolicyFacts;
 use App\Application\Tickets\Data\TicketRankingContext;
 use App\Application\Tickets\Data\TicketSelectionRequest;
 use App\Application\Tickets\Data\TicketSelectionResult;
+use App\Domain\Executions\ExecutionStatus;
 use App\Domain\Tickets\TicketStatus;
 use App\Models\Execution;
 use App\Models\Project;
@@ -64,6 +65,8 @@ final readonly class SelectNextTicketAndAcquireLease
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                $this->validateExecution($execution);
+
                 $policyFacts = $this->policyResolver->resolve(
                     project: $project,
                     execution: $execution,
@@ -90,6 +93,10 @@ final readonly class SelectNextTicketAndAcquireLease
                  */
                 $roadmap = Roadmap::query()
                     ->where('project_id', $project->id)
+                    ->where(
+                        'project_context_snapshot_id',
+                        $execution->project_context_snapshot_id,
+                    )
                     ->where('status', 'approved')
                     ->whereNotNull('approved_at')
                     ->orderByDesc('revision')
@@ -240,6 +247,40 @@ final readonly class SelectNextTicketAndAcquireLease
             },
             attempts: 3,
         );
+    }
+
+    /**
+     * Fail closed before replay or selection when execution cannot start work.
+     */
+    private function validateExecution(Execution $execution): void
+    {
+        if (! in_array(
+            $execution->capability,
+            ['development', 'development.simulation'],
+            true,
+        )) {
+            throw new \LogicException(
+                'Execution does not support development simulation.',
+            );
+        }
+
+        if ($execution->status !== ExecutionStatus::Queued) {
+            throw new \LogicException(
+                'Execution lifecycle does not permit ticket selection.',
+            );
+        }
+
+        if ($execution->cancel_requested_at !== null) {
+            throw new \LogicException(
+                'Cancelled execution cannot select a ticket.',
+            );
+        }
+
+        if ($execution->project_context_snapshot_id === null) {
+            throw new \LogicException(
+                'Execution has no immutable project context lineage.',
+            );
+        }
     }
 
     /**
