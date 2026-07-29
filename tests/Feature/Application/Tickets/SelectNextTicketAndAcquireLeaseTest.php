@@ -32,6 +32,24 @@ final class SelectNextTicketAndAcquireLeaseTest extends TestCase
     use DatabaseTruncation;
 
     /**
+     * Remove committed concurrency fixtures before another test class runs.
+     *
+     * These tests intentionally use committed PostgreSQL records so an
+     * independent PDO connection can observe row locks. DatabaseTruncation
+     * clears data before each test but does not clear the final test's data.
+     */
+    protected function tearDown(): void
+    {
+        try {
+            if ($this->app !== null) {
+                $this->truncateTablesForAllConnections();
+            }
+        } finally {
+            parent::tearDown();
+        }
+    }
+
+    /**
      * Verify the approved ranking policy determines the claimed ticket.
      */
     public function test_highest_ranked_eligible_ticket_is_selected_and_leased_atomically(): void
