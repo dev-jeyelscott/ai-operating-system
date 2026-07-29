@@ -37,6 +37,8 @@ use LogicException;
  * @property string|null $rejection_reason
  * @property string|null $confidence
  * @property array<string, mixed> $metadata
+ * @property string|null $provenance_key
+ * @property string|null $content_fingerprint_sha256
  * @property CarbonImmutable $created_at
  * @property-read Artifact $artifact
  */
@@ -56,6 +58,8 @@ use LogicException;
     'rejection_reason',
     'confidence',
     'metadata',
+    'provenance_key',
+    'content_fingerprint_sha256',
 ])]
 final class Evidence extends Model
 {

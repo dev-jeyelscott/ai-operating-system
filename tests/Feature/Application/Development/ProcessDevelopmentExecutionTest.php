@@ -225,6 +225,8 @@ test('artifact persistence failure rolls back the terminal stage and schedules d
     $fixture = aios096Fixture();
     app()->instance(DevelopmentArtifactRecorder::class, new class extends DevelopmentArtifactRecorder
     {
+        public function __construct() {}
+
         public function record(
             Execution $execution,
             ExecutionAttempt $attempt,

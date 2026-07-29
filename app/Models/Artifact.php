@@ -44,6 +44,8 @@ use LogicException;
  * @property bool $evidence_still_required
  * @property string $actual_state
  * @property array<string, mixed> $metadata
+ * @property string|null $idempotency_key
+ * @property string|null $content_fingerprint_sha256
  * @property CarbonImmutable $created_at
  * @property-read Project $project
  * @property-read Execution $execution
@@ -71,6 +73,8 @@ use LogicException;
     'evidence_still_required',
     'actual_state',
     'metadata',
+    'idempotency_key',
+    'content_fingerprint_sha256',
 ])]
 final class Artifact extends Model
 {
