@@ -340,6 +340,10 @@ final readonly class SelectNextTicketAndAcquireLease
         /*
          * status_changed_at is an authoritative non-null fallback when the
          * ticket does not have a dedicated ready_at timestamp.
+         *
+         * The approved MVP roadmap stores one authoritative position. It is
+         * intentionally used for both approved roadmap order and explicit
+         * sequence instead of introducing a redundant sequencing column.
          */
         $readyAt = $ticket->ready_at
             ?? $ticket->status_changed_at;

@@ -265,6 +265,31 @@ test(
 );
 
 test(
+    'ranking remains stable for every input permutation',
+    function (): void {
+        $tickets = [
+            aios091RankingContext('AIOS-C'),
+            aios091RankingContext('AIOS-A'),
+            aios091RankingContext('AIOS-B'),
+        ];
+
+        $permutations = [
+            [$tickets[0], $tickets[1], $tickets[2]],
+            [$tickets[0], $tickets[2], $tickets[1]],
+            [$tickets[1], $tickets[0], $tickets[2]],
+            [$tickets[1], $tickets[2], $tickets[0]],
+            [$tickets[2], $tickets[0], $tickets[1]],
+            [$tickets[2], $tickets[1], $tickets[0]],
+        ];
+
+        foreach ($permutations as $permutation) {
+            expect(aios091TicketIds((new TicketRanker)->rank($permutation)))
+                ->toBe(['AIOS-A', 'AIOS-B', 'AIOS-C']);
+        }
+    },
+);
+
+test(
     'ranker rejects invalid candidate collections',
     function (): void {
         $candidate = aios091RankingContext('AIOS-VALID');
@@ -354,6 +379,16 @@ test(
             fn (): TicketRankingContext => aios091RankingContext(
                 ticketId: 'AIOS-INVALID',
                 estimatedEffort: 14,
+            ),
+        )->toThrow(
+            InvalidArgumentException::class,
+            'Estimated effort must be between 1 and 13.',
+        );
+
+        expect(
+            fn (): TicketRankingContext => aios091RankingContext(
+                ticketId: 'AIOS-INVALID',
+                estimatedEffort: 0,
             ),
         )->toThrow(
             InvalidArgumentException::class,
