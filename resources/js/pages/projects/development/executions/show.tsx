@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { index as developmentIndex } from '@/routes/organizations/projects/development';
 
 type Attempt = {
     id: number;
@@ -182,14 +183,12 @@ export type DevelopmentInspector = {
 export type DevelopmentInspectorPageProps = {
     organization: { id: number; name: string; slug: string };
     project: { id: number; name: string; slug: string };
-    queueUrl: string;
     inspector?: DevelopmentInspector;
 };
 
 export default function DevelopmentExecutionInspectorPage({
     organization,
     project,
-    queueUrl,
     inspector,
 }: DevelopmentInspectorPageProps) {
     usePoll(
@@ -205,7 +204,13 @@ export default function DevelopmentExecutionInspectorPage({
                 <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                         <Button asChild variant="ghost" size="sm">
-                            <Link href={queueUrl} preserveScroll>
+                            <Link
+                                href={developmentIndex.url({
+                                    organization,
+                                    project,
+                                })}
+                                preserveScroll
+                            >
                                 <ArrowLeft aria-hidden="true" />
                                 Back to development queue
                             </Link>

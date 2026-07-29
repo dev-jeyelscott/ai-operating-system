@@ -46,7 +46,11 @@ final readonly class TicketLeaseManager
                 throw new \LogicException('Expired lease cannot be revived by heartbeat.');
             }
 
-            if ($heartbeatAt->lessThanOrEqualTo($lease->heartbeat_at)) {
+            if ($heartbeatAt->equalTo($lease->heartbeat_at)) {
+                return $lease;
+            }
+
+            if ($heartbeatAt->lessThan($lease->heartbeat_at)) {
                 throw new \LogicException('Lease heartbeat must move forward.');
             }
 
@@ -91,6 +95,44 @@ final readonly class TicketLeaseManager
 
             return $lease;
         });
+    }
+
+    /**
+     * Release a lease whose project, execution, and lease rows are already
+     * locked by an enclosing orchestration transaction.
+     */
+    public function releaseLocked(
+        Project $project,
+        Execution $execution,
+        TicketExecutionLease $lease,
+        string $owner,
+        TicketLeaseReleaseReason $reason,
+    ): TicketExecutionLease {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('A locked lease release requires an active transaction.');
+        }
+
+        if ($execution->project_id !== $project->id
+            || $lease->project_id !== $project->id
+            || $lease->execution_id !== $execution->id
+            || $lease->owner !== $owner) {
+            throw new \LogicException('Locked lease release lineage is invalid.');
+        }
+
+        if (! $lease->isActive()) {
+            if ($lease->release_reason === $reason) {
+                return $lease;
+            }
+
+            throw new \LogicException('Lease was released for a different reason.');
+        }
+
+        $this->assertReleasePermitted($execution, $lease, $reason);
+        $releasedAt = CarbonImmutable::now();
+        $lease->forceFill(['released_at' => $releasedAt, 'release_reason' => $reason])->save();
+        $this->events->record($project, $execution, $lease, AuditEventType::TicketLeaseReleased, $releasedAt);
+
+        return $lease;
     }
 
     public function recoverExpired(int $limit = 200): int

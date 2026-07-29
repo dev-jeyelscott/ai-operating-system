@@ -108,6 +108,8 @@ test('DevelopmentQueue excludes an active lease and changes the queue fingerprin
         ->and($after['metadata']['noWorkableTicket'])->toBeTrue()
         ->and($after['metadata']['queueFingerprint'])->not->toBe($before['metadata']['queueFingerprint'])
         ->and($after['activeLeases'])->toHaveCount(1)
+        ->and(array_keys($after['activeLeases'][0]))->toBe(['ticketId', 'expiresAt', 'expired'])
+        ->and($after['ineligible'][1]['inspectorExecutionId'])->toBe($execution->id)
         ->and($after['ineligible'][1]['ineligibilityReasonCodes'])->toContain('active_lease');
 });
 

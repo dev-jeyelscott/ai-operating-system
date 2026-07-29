@@ -30,7 +30,6 @@ final class DevelopmentQueueController extends Controller
                 'id' => $project->id, 'name' => $project->name, 'slug' => $project->slug,
                 'status' => $project->status->value, 'terminal' => $project->status->isTerminal(),
             ],
-            'projectUrl' => route('organizations.projects.show', compact('organization', 'project')),
             'queue' => Inertia::defer(function () use ($read): array {
                 $data = $read();
 

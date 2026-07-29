@@ -186,8 +186,6 @@ function props(
             name: 'AI Operating System',
             slug: 'ai-operating-system',
         },
-        queueUrl:
-            '/organizations/aios-engineering/projects/ai-operating-system/development',
         inspector: inspector(),
         ...overrides,
     };
@@ -206,6 +204,34 @@ describe('DevelopmentExecutionInspectorPage', () => {
             5_000,
             { only: ['inspector'] },
             { autoStart: false },
+        );
+        expect(
+            screen.getByRole('link', { name: 'Back to development queue' }),
+        ).toHaveAttribute(
+            'href',
+            '/organizations/aios-engineering/projects/ai-operating-system/development',
+        );
+    });
+
+    it('keeps inspector polling active for a nonterminal execution', () => {
+        render(
+            <DevelopmentExecutionInspectorPage
+                {...props({
+                    inspector: inspector({
+                        execution: {
+                            ...inspector().execution,
+                            status: 'running',
+                            terminal: false,
+                        },
+                    }),
+                })}
+            />,
+        );
+
+        expect(poll).toHaveBeenCalledWith(
+            5_000,
+            { only: ['inspector'] },
+            { autoStart: true },
         );
     });
 

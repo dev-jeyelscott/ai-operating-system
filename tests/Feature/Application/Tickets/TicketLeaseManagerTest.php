@@ -75,6 +75,33 @@ test('heartbeat uses server time and preserves the lease interval', function ():
     CarbonImmutable::setTestNow();
 });
 
+test('an exact heartbeat replay returns current state without duplicate events', function (): void {
+    CarbonImmutable::setTestNow('2026-07-29 12:00:00.000000');
+    $fixture = aios093LeaseFixture();
+    CarbonImmutable::setTestNow('2026-07-29 12:01:00.123456');
+    $manager = app(TicketLeaseManager::class);
+
+    $first = $manager->heartbeat(
+        $fixture['project']->organization_id,
+        $fixture['project']->id,
+        $fixture['lease']->id,
+        $fixture['execution']->id,
+        'aios-093-worker',
+    );
+    $second = $manager->heartbeat(
+        $fixture['project']->organization_id,
+        $fixture['project']->id,
+        $fixture['lease']->id,
+        $fixture['execution']->id,
+        'aios-093-worker',
+    );
+
+    expect($second->heartbeat_at)->toEqual($first->heartbeat_at)
+        ->and(DB::table('outbox_messages')->where('event_name', 'ticket.lease_heartbeat')->count())->toBe(1)
+        ->and(DB::table('audit_events')->where('event_type', 'ticket.lease_heartbeat')->count())->toBe(1);
+    CarbonImmutable::setTestNow();
+});
+
 test('heartbeat rejects wrong owner released lease and terminal execution', function (string $case): void {
     CarbonImmutable::setTestNow('2026-07-29 12:00:00');
     $fixture = aios093LeaseFixture();

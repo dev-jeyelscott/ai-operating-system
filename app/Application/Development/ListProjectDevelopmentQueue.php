@@ -20,7 +20,6 @@ use App\Models\RoadmapTask;
 use App\Models\TaskDependency;
 use App\Models\TicketExecutionLease;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Route;
 
 final readonly class ListProjectDevelopmentQueue
 {
@@ -36,7 +35,6 @@ final readonly class ListProjectDevelopmentQueue
         $asOf = CarbonImmutable::now();
         $project = Project::query()
             ->forOrganization($organizationId)
-            ->with('organization')
             ->whereKey($projectId)
             ->firstOrFail();
         $roadmap = Roadmap::query()
@@ -91,7 +89,6 @@ final readonly class ListProjectDevelopmentQueue
                 ticket: $ticket,
                 lease: $lease instanceof TicketExecutionLease ? $lease : null,
                 execution: $execution,
-                project: $project,
                 policy: $policy,
                 reasons: array_values(array_unique($reasons)),
             );
@@ -205,7 +202,6 @@ final readonly class ListProjectDevelopmentQueue
         RoadmapTask $ticket,
         ?TicketExecutionLease $lease,
         ?Execution $execution,
-        Project $project,
         TicketExecutionPolicyFacts $policy,
         array $reasons,
     ): array {
@@ -229,10 +225,7 @@ final readonly class ListProjectDevelopmentQueue
             'providerAvailable' => $policy->providerSupportsExecution,
             'budgetAvailable' => $policy->budgetPermitsExecution,
             'ineligibilityReasonCodes' => $reasons,
-            'inspectorUrl' => $execution !== null && Route::has('organizations.projects.development.executions.show')
-                ? route('organizations.projects.development.executions.show', [
-                    'organization' => $project->organization, 'project' => $project, 'execution' => $execution,
-                ]) : null,
+            'inspectorExecutionId' => $execution?->id,
         ];
     }
 
@@ -240,10 +233,8 @@ final readonly class ListProjectDevelopmentQueue
     private function serializeLease(TicketExecutionLease $lease): array
     {
         return [
-            'id' => $lease->id, 'ticketId' => $lease->ticket->stable_id,
-            'executionId' => $lease->execution_id, 'owner' => $lease->owner,
+            'ticketId' => $lease->ticket->stable_id,
             'expiresAt' => $lease->expires_at->toISOString(),
-            'heartbeatAt' => $lease->heartbeat_at->toISOString(),
             'expired' => $lease->expires_at->isPast(),
         ];
     }

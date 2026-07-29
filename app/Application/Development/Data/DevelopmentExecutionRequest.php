@@ -79,18 +79,18 @@ final readonly class DevelopmentExecutionRequest
     public static function fromArray(array $data): self
     {
         return new self(
-            (int) ($data['organization_id'] ?? 0), (int) ($data['project_id'] ?? 0), (int) ($data['roadmap_id'] ?? 0),
-            (string) ($data['ticket_id'] ?? ''), (string) ($data['execution_id'] ?? ''), (int) ($data['attempt_id'] ?? 0),
-            (int) ($data['attempt_number'] ?? 0), (string) ($data['lease_id'] ?? ''), (int) ($data['context_snapshot_id'] ?? 0),
-            (string) ($data['context_fingerprint'] ?? ''), (string) ($data['ticket_objective'] ?? ''), self::list($data['included_scope'] ?? null),
+            self::integer($data, 'organization_id'), self::integer($data, 'project_id'), self::integer($data, 'roadmap_id'),
+            self::string($data, 'ticket_id'), self::string($data, 'execution_id'), self::integer($data, 'attempt_id'),
+            self::integer($data, 'attempt_number'), self::string($data, 'lease_id'), self::integer($data, 'context_snapshot_id'),
+            self::string($data, 'context_fingerprint'), self::string($data, 'ticket_objective'), self::list($data['included_scope'] ?? null),
             self::list($data['excluded_scope'] ?? null), self::list($data['acceptance_criteria'] ?? null), self::list($data['dependency_references'] ?? null),
-            self::list($data['evidence_requirements'] ?? null), (string) ($data['risk'] ?? ''), (int) ($data['complexity'] ?? 0),
-            self::map($data['repository_provider_metadata'] ?? null), (string) ($data['repository_base_reference'] ?? ''),
-            (string) ($data['integration_target'] ?? ''), self::list($data['validation_commands'] ?? null),
-            (string) ($data['requested_reasoning'] ?? ''), (string) ($data['effective_reasoning'] ?? ''),
-            (string) ($data['reasoning_resolution_source'] ?? ''), self::map($data['provider_policy'] ?? null),
+            self::list($data['evidence_requirements'] ?? null), self::string($data, 'risk'), self::integer($data, 'complexity'),
+            self::map($data['repository_provider_metadata'] ?? null), self::string($data, 'repository_base_reference'),
+            self::string($data, 'integration_target'), self::list($data['validation_commands'] ?? null),
+            self::string($data, 'requested_reasoning'), self::string($data, 'effective_reasoning'),
+            self::string($data, 'reasoning_resolution_source'), self::map($data['provider_policy'] ?? null),
             self::map($data['budget_policy'] ?? null), self::map($data['retry_policy'] ?? null),
-            (string) ($data['simulation_scenario'] ?? ''), (int) ($data['deterministic_seed'] ?? 0), (int) ($data['schema_version'] ?? 0),
+            self::string($data, 'simulation_scenario'), self::integer($data, 'deterministic_seed'), self::integer($data, 'schema_version'),
         );
     }
 
@@ -128,5 +128,25 @@ final readonly class DevelopmentExecutionRequest
         }
 
         return $value;
+    }
+
+    /** @param array<string, mixed> $data */
+    private static function string(array $data, string $key): string
+    {
+        if (! array_key_exists($key, $data) || ! is_string($data[$key])) {
+            throw new \InvalidArgumentException("Development request {$key} field is malformed.");
+        }
+
+        return $data[$key];
+    }
+
+    /** @param array<string, mixed> $data */
+    private static function integer(array $data, string $key): int
+    {
+        if (! array_key_exists($key, $data) || ! is_int($data[$key])) {
+            throw new \InvalidArgumentException("Development request {$key} field is malformed.");
+        }
+
+        return $data[$key];
     }
 }

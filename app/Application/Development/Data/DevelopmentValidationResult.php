@@ -19,6 +19,11 @@ final readonly class DevelopmentValidationResult
     /** @param array<string, mixed> $data */
     public static function fromArray(array $data): self
     {
-        return new self((string) ($data['command'] ?? ''), DevelopmentValidationStatus::from((string) ($data['status'] ?? '')), (string) ($data['summary'] ?? ''));
+        if (! isset($data['command'], $data['status'], $data['summary'])
+            || ! is_string($data['command']) || ! is_string($data['status']) || ! is_string($data['summary'])) {
+            throw new \InvalidArgumentException('Development validation result field is malformed.');
+        }
+
+        return new self($data['command'], DevelopmentValidationStatus::from($data['status']), $data['summary']);
     }
 }

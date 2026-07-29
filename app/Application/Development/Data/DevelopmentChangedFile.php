@@ -19,6 +19,11 @@ final readonly class DevelopmentChangedFile
     /** @param array<string, mixed> $data */
     public static function fromArray(array $data): self
     {
-        return new self((string) ($data['path'] ?? ''), DevelopmentChangeType::from((string) ($data['change_type'] ?? '')), (string) ($data['summary'] ?? ''));
+        if (! isset($data['path'], $data['change_type'], $data['summary'])
+            || ! is_string($data['path']) || ! is_string($data['change_type']) || ! is_string($data['summary'])) {
+            throw new \InvalidArgumentException('Development changed-file field is malformed.');
+        }
+
+        return new self($data['path'], DevelopmentChangeType::from($data['change_type']), $data['summary']);
     }
 }

@@ -9,6 +9,7 @@ use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
 use App\Application\Development\DevelopmentArtifactRecorder;
 use App\Application\Development\DevelopmentProviderRegistry;
+use App\Application\Development\DevelopmentResultValidator;
 use App\Application\Development\ProcessDevelopmentExecution;
 use App\Application\Events\Data\StoredDomainEvent;
 use App\Application\Events\DeduplicatedDomainEventConsumer;
@@ -168,6 +169,46 @@ test('provider failure schedules domain retry without releasing lease or reachin
         ->and($fixture['ticket']->refresh()->status)->toBe(TicketStatus::InProgress)
         ->and($fixture['lease']->refresh()->isActive())->toBeTrue();
     $this->assertDatabaseCount('artifacts', 0);
+});
+
+test('wrong pull request target creates no artifact and cannot reach for qa', function (): void {
+    $fixture = aios096Fixture();
+    $delegate = app(SimulationDevelopmentProvider::class);
+    $provider = new class($delegate) implements DevelopmentExecutionProvider
+    {
+        public function __construct(private SimulationDevelopmentProvider $delegate) {}
+
+        public function id(): string
+        {
+            return 'simulation';
+        }
+
+        public function supports(string $capability): bool
+        {
+            return true;
+        }
+
+        public function execute(DevelopmentExecutionRequest $request): DevelopmentExecutionResult
+        {
+            $result = $this->delegate->execute($request);
+            $data = $result->toArray();
+            $data['target_branch'] = 'main';
+            $data['synthetic_pull_request_result']['target_branch'] = 'main';
+            $data['canonical_result_fingerprint'] = '';
+            $temporary = DevelopmentExecutionResult::fromArray($data);
+            $data['canonical_result_fingerprint'] = (new DevelopmentResultValidator)->fingerprint($temporary);
+
+            return DevelopmentExecutionResult::fromArray($data);
+        }
+    };
+    app()->instance(DevelopmentProviderRegistry::class, new DevelopmentProviderRegistry([$provider]));
+
+    app(ProcessDevelopmentExecution::class)->handle($fixture['execution']);
+
+    expect($fixture['execution']->refresh()->status)->toBe(ExecutionStatus::Failed)
+        ->and($fixture['ticket']->refresh()->status)->toBe(TicketStatus::InProgress);
+    $this->assertDatabaseCount('artifacts', 0);
+    $this->assertDatabaseCount('evidence', 0);
 });
 
 test('cancellation racing successful provider completion wins before artifacts persist', function (): void {

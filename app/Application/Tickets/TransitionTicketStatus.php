@@ -80,69 +80,145 @@ final readonly class TransitionTicketStatus
                 ->lock('for share')
                 ->firstOrFail();
 
-            Roadmap::query()
-                ->where('project_id', $project->id)
-                ->whereKey($roadmapId)
-                ->lock('for share')
-                ->firstOrFail();
-
             $execution = $this->lockedExecution(
                 project: $project,
                 target: $target,
                 executionId: $executionId,
             );
 
+            $roadmap = Roadmap::query()
+                ->where('project_id', $project->id)
+                ->whereKey($roadmapId)
+                ->lock('for share')
+                ->firstOrFail();
+
             $ticket = RoadmapTask::query()
-                ->where('roadmap_id', $roadmapId)
+                ->where('roadmap_id', $roadmap->id)
                 ->whereKey($ticketId)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $deduplicationKey = RecordTicketLifecycleEvents::deduplicationKey(
-                eventType: AuditEventType::TicketStatusTransitioned,
-                ticketId: $ticket->id,
-                idempotencyKeyHash: $idempotencyKeyHash,
-            );
-
-            if ($this->isExactReplay(
+            return $this->applyLocked(
                 project: $project,
-                deduplicationKey: $deduplicationKey,
-                requestFingerprint: $requestFingerprint,
-            )) {
-                return $ticket;
-            }
-
-            $from = $ticket->status;
-            $this->assertTransitionAllowed(
+                roadmap: $roadmap,
                 ticket: $ticket,
-                from: $from,
-                to: $target,
-                projectId: $project->id,
-                execution: $execution,
-            );
-
-            $occurredAt = CarbonImmutable::now();
-            $ticket->applyAuthoritativeStatusTransition(
                 target: $target,
-                occurredAt: $occurredAt,
-            );
-            $ticket->refresh();
-
-            $this->events->transitioned(
-                project: $project,
-                ticket: $ticket,
-                from: $from,
-                to: $target,
+                idempotencyKeyHash: $idempotencyKeyHash,
+                requestFingerprint: $requestFingerprint,
+                execution: $execution,
                 actorId: $actorId,
                 correlationId: $correlationId,
-                idempotencyKeyHash: $idempotencyKeyHash,
-                requestFingerprint: $requestFingerprint,
                 executionId: $executionId,
-                occurredAt: $occurredAt,
             );
-
-            return $ticket;
         }, attempts: 3);
+    }
+
+    /**
+     * Apply a transition using lineage rows already locked by an enclosing
+     * orchestration transaction in Project, Execution, Roadmap, Ticket order.
+     */
+    public function handleLocked(
+        Project $project,
+        Roadmap $roadmap,
+        RoadmapTask $ticket,
+        TicketStatus $target,
+        string $idempotencyKey,
+        string $actorId,
+        string $correlationId,
+        ?Execution $execution = null,
+    ): RoadmapTask {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('A locked ticket transition requires an active transaction.');
+        }
+
+        $executionId = $execution?->id;
+        $this->assertIdentifiers(
+            organizationId: $project->organization_id,
+            projectId: $project->id,
+            roadmapId: $roadmap->id,
+            ticketId: $ticket->id,
+            idempotencyKey: $idempotencyKey,
+            actorId: $actorId,
+            correlationId: $correlationId,
+        );
+
+        if ($roadmap->project_id !== $project->id
+            || $ticket->roadmap_id !== $roadmap->id
+            || ($execution !== null && $execution->project_id !== $project->id)) {
+            throw new \LogicException('Locked ticket transition lineage is invalid.');
+        }
+
+        $idempotencyKeyHash = hash('sha256', $idempotencyKey);
+        $requestFingerprint = TicketCommandFingerprint::make([
+            'organization_id' => $project->organization_id,
+            'project_id' => $project->id,
+            'roadmap_id' => $roadmap->id,
+            'ticket_id' => $ticket->id,
+            'target' => $target->value,
+            'actor_id' => $actorId,
+            'execution_id' => $executionId,
+        ]);
+
+        return $this->applyLocked(
+            project: $project,
+            roadmap: $roadmap,
+            ticket: $ticket,
+            target: $target,
+            idempotencyKeyHash: $idempotencyKeyHash,
+            requestFingerprint: $requestFingerprint,
+            execution: $execution,
+            actorId: $actorId,
+            correlationId: $correlationId,
+            executionId: $executionId,
+        );
+    }
+
+    private function applyLocked(
+        Project $project,
+        Roadmap $roadmap,
+        RoadmapTask $ticket,
+        TicketStatus $target,
+        string $idempotencyKeyHash,
+        string $requestFingerprint,
+        ?Execution $execution,
+        string $actorId,
+        string $correlationId,
+        ?string $executionId,
+    ): RoadmapTask {
+        if ($roadmap->project_id !== $project->id || $ticket->roadmap_id !== $roadmap->id) {
+            throw new \LogicException('Ticket transition lineage is invalid.');
+        }
+
+        $deduplicationKey = RecordTicketLifecycleEvents::deduplicationKey(
+            eventType: AuditEventType::TicketStatusTransitioned,
+            ticketId: $ticket->id,
+            idempotencyKeyHash: $idempotencyKeyHash,
+        );
+
+        if ($this->isExactReplay($project, $deduplicationKey, $requestFingerprint)) {
+            return $ticket;
+        }
+
+        $from = $ticket->status;
+        $this->assertTransitionAllowed($ticket, $from, $target, $project->id, $execution);
+        $occurredAt = CarbonImmutable::now();
+        $ticket->applyAuthoritativeStatusTransition($target, $occurredAt);
+        $ticket->refresh();
+
+        $this->events->transitioned(
+            project: $project,
+            ticket: $ticket,
+            from: $from,
+            to: $target,
+            actorId: $actorId,
+            correlationId: $correlationId,
+            idempotencyKeyHash: $idempotencyKeyHash,
+            requestFingerprint: $requestFingerprint,
+            executionId: $executionId,
+            occurredAt: $occurredAt,
+        );
+
+        return $ticket;
     }
 
     private function lockedExecution(

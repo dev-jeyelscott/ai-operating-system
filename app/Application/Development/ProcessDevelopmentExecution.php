@@ -19,6 +19,7 @@ use App\Domain\Tickets\TicketLeaseReleaseReason;
 use App\Domain\Tickets\TicketStatus;
 use App\Models\Execution;
 use App\Models\ExecutionAttempt;
+use App\Models\Project;
 use App\Models\Roadmap;
 use App\Models\RoadmapTask;
 use App\Models\TicketExecutionLease;
@@ -41,16 +42,26 @@ final readonly class ProcessDevelopmentExecution
     public function handle(Execution $execution, string $scenario = 'happy_path', int $seed = 1): void
     {
         $started = DB::transaction(function () use ($execution, $seed): array {
-            $lockedExecution = Execution::query()->forProject($execution->project_id)->whereKey($execution->id)->lockForUpdate()->firstOrFail();
+            $leaseIdentity = TicketExecutionLease::query()
+                ->where('execution_id', $execution->id)
+                ->active()
+                ->firstOrFail(['id', 'project_id', 'roadmap_task_id']);
+            $ticketIdentity = RoadmapTask::query()->whereKey($leaseIdentity->roadmap_task_id)->firstOrFail(['id', 'roadmap_id']);
+            $project = Project::query()
+                ->forOrganization($execution->project->organization_id)
+                ->whereKey($execution->project_id)
+                ->lock('for share')
+                ->firstOrFail();
+            $lockedExecution = Execution::query()->forProject($project->id)->whereKey($execution->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedExecution->capability !== 'development.simulation' || $lockedExecution->status !== ExecutionStatus::Queued || $lockedExecution->cancel_requested_at !== null) {
                 throw new \LogicException('Development execution cannot start.');
             }
 
-            $leaseIdentity = TicketExecutionLease::query()->where('execution_id', $lockedExecution->id)->active()->firstOrFail();
-            $ticket = RoadmapTask::query()->whereKey($leaseIdentity->roadmap_task_id)->lockForUpdate()->firstOrFail();
-            $lease = TicketExecutionLease::query()->whereKey($leaseIdentity->id)->active()->lockForUpdate()->firstOrFail();
-            $roadmap = Roadmap::query()->whereKey($ticket->roadmap_id)->where('project_id', $lockedExecution->project_id)->where('project_context_snapshot_id', $lockedExecution->project_context_snapshot_id)->firstOrFail();
+            $roadmap = Roadmap::query()->whereKey($ticketIdentity->roadmap_id)->where('project_id', $project->id)->where('project_context_snapshot_id', $lockedExecution->project_context_snapshot_id)->lock('for share')->firstOrFail();
+            $ticket = RoadmapTask::query()->whereKey($ticketIdentity->id)->where('roadmap_id', $roadmap->id)->lockForUpdate()->firstOrFail();
+            $lease = TicketExecutionLease::query()->whereKey($leaseIdentity->id)->where('project_id', $project->id)->where('execution_id', $lockedExecution->id)->where('roadmap_task_id', $ticket->id)->active()->lockForUpdate()->firstOrFail();
+            $lockedExecution->setRelation('project', $project);
 
             $isRetry = $ticket->status === TicketStatus::InProgress && $lockedExecution->attempt_count > 0;
             if ($lease->project_id !== $lockedExecution->project_id || $lease->roadmap_task_id !== $ticket->id || (! $isRetry && ! in_array($ticket->status, [TicketStatus::Ready, TicketStatus::ChangesRequested], true))) {
@@ -64,11 +75,10 @@ final readonly class ProcessDevelopmentExecution
                 reasoningResolutionSource: 'immutable_configuration_snapshot', simulationMode: 'simulated', simulationSeed: (string) $seed,
             ));
             if (! $isRetry) {
-                $ticket = $this->tickets->handle(
-                    organizationId: $lockedExecution->project->organization_id, projectId: $lockedExecution->project_id,
-                    roadmapId: $roadmap->id, ticketId: $ticket->id, target: TicketStatus::InProgress,
+                $ticket = $this->tickets->handleLocked(
+                    project: $project, roadmap: $roadmap, ticket: $ticket, target: TicketStatus::InProgress,
                     idempotencyKey: "development:start:{$lockedExecution->id}:{$attempt->id}", actorId: 'development-orchestrator',
-                    correlationId: $lockedExecution->correlation_id, executionId: $lockedExecution->id,
+                    correlationId: $lockedExecution->correlation_id, execution: $lockedExecution,
                 );
             }
             $startedEventId = $this->events->record(AuditEventType::ImplementationStarted, $lockedExecution, $attempt, $ticket, $lease);
@@ -112,15 +122,19 @@ final readonly class ProcessDevelopmentExecution
 
         try {
             DB::transaction(function () use ($lockedExecution, $attempt, $ticket, $lease, $result, $startedEventId): void {
-                $execution = Execution::query()->forProject($lockedExecution->project_id)->whereKey($lockedExecution->id)->lockForUpdate()->firstOrFail();
-                $lockedTicket = RoadmapTask::query()->whereKey($ticket->id)->lockForUpdate()->firstOrFail();
-                $lockedLease = TicketExecutionLease::query()->whereKey($lease->id)->where('execution_id', $execution->id)->active()->lockForUpdate()->firstOrFail();
+                $project = Project::query()->forOrganization($lockedExecution->project->organization_id)->whereKey($lockedExecution->project_id)->lock('for share')->firstOrFail();
+                $execution = Execution::query()->forProject($project->id)->whereKey($lockedExecution->id)->lockForUpdate()->firstOrFail();
+                $roadmap = Roadmap::query()->whereKey($ticket->roadmap_id)->where('project_id', $project->id)->lock('for share')->firstOrFail();
+                $lockedTicket = RoadmapTask::query()->whereKey($ticket->id)->where('roadmap_id', $roadmap->id)->lockForUpdate()->firstOrFail();
+                $lockedLease = TicketExecutionLease::query()->whereKey($lease->id)->where('project_id', $project->id)->where('execution_id', $execution->id)->where('roadmap_task_id', $lockedTicket->id)->active()->lockForUpdate()->firstOrFail();
                 $lockedAttempt = ExecutionAttempt::query()->where('execution_id', $execution->id)->whereKey($attempt->id)->lockForUpdate()->firstOrFail();
+                $execution->setRelation('project', $project);
 
                 if ($execution->cancel_requested_at !== null) {
                     $this->attempts->completeAttempt($lockedAttempt, causationId: $startedEventId);
                     $execution->refresh();
-                    $this->leases->releaseForExecution($execution->project->organization_id, $execution->project_id, $lockedLease->id, $execution->id, $lockedLease->owner, TicketLeaseReleaseReason::Cancellation);
+                    $execution->setRelation('project', $project);
+                    $this->leases->releaseLocked($project, $execution, $lockedLease, $lockedLease->owner, TicketLeaseReleaseReason::Cancellation);
 
                     return;
                 }
@@ -133,14 +147,14 @@ final readonly class ProcessDevelopmentExecution
                 $causationId = $this->events->record(AuditEventType::PullRequestCreated, $execution, $lockedAttempt, $lockedTicket, $lockedLease, $causationId);
                 $this->attempts->completeAttempt($lockedAttempt, causationId: $causationId);
                 $execution->refresh();
-                $this->tickets->handle(
-                    organizationId: $execution->project->organization_id, projectId: $execution->project_id,
-                    roadmapId: $lockedTicket->roadmap_id, ticketId: $lockedTicket->id, target: TicketStatus::ForQa,
+                $execution->setRelation('project', $project);
+                $this->tickets->handleLocked(
+                    project: $project, roadmap: $roadmap, ticket: $lockedTicket, target: TicketStatus::ForQa,
                     idempotencyKey: "development:complete:{$execution->id}:{$lockedAttempt->id}", actorId: 'development-orchestrator',
-                    correlationId: $execution->correlation_id, executionId: $execution->id,
+                    correlationId: $execution->correlation_id, execution: $execution,
                 );
                 $this->events->record(AuditEventType::ImplementationCompleted, $execution, $lockedAttempt, $lockedTicket->refresh(), $lockedLease, $causationId);
-                $this->leases->releaseForExecution($execution->project->organization_id, $execution->project_id, $lockedLease->id, $execution->id, $lockedLease->owner, TicketLeaseReleaseReason::Completion);
+                $this->leases->releaseLocked($project, $execution, $lockedLease, $lockedLease->owner, TicketLeaseReleaseReason::Completion);
             });
         } catch (\Throwable $exception) {
             $this->failAndReleaseIfTerminal($lockedExecution, $attempt, $lease, 'development.terminal_persistence_failure', $exception->getMessage(), true, $startedEventId);
@@ -150,6 +164,7 @@ final readonly class ProcessDevelopmentExecution
     private function request(Execution $execution, ExecutionAttempt $attempt, RoadmapTask $ticket, TicketExecutionLease $lease, string $scenario, int $seed): DevelopmentExecutionRequest
     {
         $execution->loadMissing('project', 'projectContextSnapshot.configurationVersion');
+        $ticket->loadMissing('dependencies.dependsOn');
         $snapshot = $execution->projectContextSnapshot;
         $configuration = $snapshot->configurationVersion->snapshot;
         $scope = $ticket->scope;
@@ -162,9 +177,14 @@ final readonly class ProcessDevelopmentExecution
             contextSnapshotId: $snapshot->id, contextFingerprint: $snapshot->approved_document_set_fingerprint,
             ticketObjective: $ticket->objective, includedScope: $this->strings($scope['included']),
             excludedScope: $this->strings($scope['excluded']), acceptanceCriteria: $this->strings($ticket->acceptance_criteria),
-            dependencyReferences: [], evidenceRequirements: $this->strings($ticket->evidence_requirements),
+            dependencyReferences: array_values($ticket->dependencies
+                ->map(static fn ($dependency): string => $dependency->dependsOn->stable_id)
+                ->sort()
+                ->values()
+                ->all()),
+            evidenceRequirements: $this->strings($ticket->evidence_requirements),
             risk: $ticket->risk, complexity: $ticket->estimated_complexity,
-            repositoryProviderMetadata: ['provider' => 'simulation'],
+            repositoryProviderMetadata: ['provider' => 'simulation', 'ticket_type' => $ticket->ticket_type],
             repositoryBaseReference: "simulation://projects/{$execution->project_id}/base/develop", integrationTarget: 'develop',
             validationCommands: $this->strings($validationCommands), requestedReasoning: $execution->requested_reasoning_level->value,
             effectiveReasoning: $attempt->effective_reasoning_level->value, reasoningResolutionSource: $attempt->reasoning_resolution_source,

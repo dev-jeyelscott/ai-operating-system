@@ -31,7 +31,6 @@ final class DevelopmentExecutionInspectorController extends Controller
         return Inertia::render('projects/development/executions/show', [
             'organization' => ['id' => $organization->id, 'name' => $organization->name, 'slug' => $organization->slug],
             'project' => ['id' => $project->id, 'name' => $project->name, 'slug' => $project->slug],
-            'queueUrl' => route('organizations.projects.development.index', compact('organization', 'project')),
             'inspector' => Inertia::defer($read, rescue: true),
         ]);
     }

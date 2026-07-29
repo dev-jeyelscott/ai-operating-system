@@ -20,6 +20,11 @@ final readonly class DevelopmentStageResult
     /** @param array<string, mixed> $data */
     public static function fromArray(array $data): self
     {
-        return new self(DevelopmentStage::from((string) ($data['stage'] ?? '')), DevelopmentStageStatus::from((string) ($data['status'] ?? '')), (string) ($data['summary'] ?? ''));
+        if (! isset($data['stage'], $data['status'], $data['summary'])
+            || ! is_string($data['stage']) || ! is_string($data['status']) || ! is_string($data['summary'])) {
+            throw new \InvalidArgumentException('Development stage result field is malformed.');
+        }
+
+        return new self(DevelopmentStage::from($data['stage']), DevelopmentStageStatus::from($data['status']), $data['summary']);
     }
 }

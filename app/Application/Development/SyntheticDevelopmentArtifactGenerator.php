@@ -21,7 +21,13 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             throw new DevelopmentProviderTimeout('The simulated development provider timed out.');
         }
 
-        $branch = $this->repositoryPolicy->sourceBranch('feature', $request->ticketId, $request->ticketObjective);
+        $ticketType = $request->repositoryProviderMetadata['ticket_type'] ?? null;
+
+        if (! is_string($ticketType)) {
+            throw new \InvalidArgumentException('Development repository ticket type is invalid.');
+        }
+
+        $branch = $this->repositoryPolicy->sourceBranch($ticketType, $request->ticketId, $request->ticketObjective);
         $root = "simulation://projects/{$request->projectId}/executions/{$request->executionId}";
         $commit = hash('sha1', implode('|', [
             (string) $request->projectId, $request->ticketId, $request->executionId,

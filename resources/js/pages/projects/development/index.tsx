@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { show as projectShow } from '@/routes/organizations/projects';
+import { show as executionShow } from '@/routes/organizations/projects/development/executions';
 
 export type DevelopmentQueueTicket = {
     id: string;
@@ -37,7 +39,7 @@ export type DevelopmentQueueTicket = {
     providerAvailable: boolean;
     budgetAvailable: boolean;
     ineligibilityReasonCodes: string[];
-    inspectorUrl: string | null;
+    inspectorExecutionId: string | null;
 };
 
 export type DevelopmentQueue = {
@@ -54,12 +56,8 @@ export type DevelopmentQueue = {
 };
 
 export type DevelopmentLease = {
-    id: string;
     ticketId: string;
-    executionId: string;
-    owner: string;
     expiresAt: string;
-    heartbeatAt: string;
     expired: boolean;
 };
 
@@ -72,7 +70,6 @@ export type DevelopmentQueuePageProps = {
         status: string;
         terminal: boolean;
     };
-    projectUrl: string;
     queue?: DevelopmentQueue;
     leases?: DevelopmentLease[];
 };
@@ -80,7 +77,6 @@ export type DevelopmentQueuePageProps = {
 export default function DevelopmentQueuePage({
     organization,
     project,
-    projectUrl,
     queue,
     leases,
 }: DevelopmentQueuePageProps) {
@@ -97,7 +93,12 @@ export default function DevelopmentQueuePage({
                 <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                         <Button asChild variant="ghost" size="sm">
-                            <Link href={projectUrl}>
+                            <Link
+                                href={projectShow.url({
+                                    organization,
+                                    project,
+                                })}
+                            >
                                 <ArrowLeft aria-hidden="true" />
                                 Back to project
                             </Link>
@@ -130,7 +131,11 @@ export default function DevelopmentQueuePage({
                     fallback={<QueueSkeleton />}
                 >
                     {queue ? (
-                        <QueueContent queue={queue} leases={leases ?? []} />
+                        <QueueContent
+                            queue={queue}
+                            leases={leases ?? []}
+                            routeContext={{ organization, project }}
+                        />
                     ) : (
                         <DeferredRescue />
                     )}
@@ -143,9 +148,14 @@ export default function DevelopmentQueuePage({
 export function QueueContent({
     queue,
     leases,
+    routeContext,
 }: {
     queue: DevelopmentQueue;
     leases: DevelopmentLease[];
+    routeContext?: {
+        organization: DevelopmentQueuePageProps['organization'];
+        project: DevelopmentQueuePageProps['project'];
+    };
 }) {
     const [currentTime, setCurrentTime] = useState(0);
 
@@ -195,6 +205,7 @@ export function QueueContent({
                 description="Eligible tickets in deterministic selection order."
                 tickets={queue.workable}
                 empty="No ticket currently passes every execution policy."
+                routeContext={routeContext}
             />
             <TicketSection
                 id="blocked-tickets"
@@ -203,6 +214,7 @@ export function QueueContent({
                 tickets={queue.ineligible}
                 empty="No blocked or ineligible tickets."
                 showReasons
+                routeContext={routeContext}
             />
             <LeaseSection leases={leases} />
             <TicketSection
@@ -211,6 +223,7 @@ export function QueueContent({
                 description="Development executions waiting for their next domain retry."
                 tickets={queue.retryScheduled}
                 empty="No development retry is scheduled."
+                routeContext={routeContext}
             />
         </div>
     );
@@ -223,6 +236,7 @@ function TicketSection({
     tickets,
     empty,
     showReasons = false,
+    routeContext,
 }: {
     id: string;
     title: string;
@@ -230,6 +244,10 @@ function TicketSection({
     tickets: DevelopmentQueueTicket[];
     empty: string;
     showReasons?: boolean;
+    routeContext?: {
+        organization: DevelopmentQueuePageProps['organization'];
+        project: DevelopmentQueuePageProps['project'];
+    };
 }) {
     return (
         <section
@@ -255,6 +273,7 @@ function TicketSection({
                             key={ticket.id}
                             ticket={ticket}
                             showReasons={showReasons}
+                            routeContext={routeContext}
                         />
                     ))}
                 </div>
@@ -266,9 +285,14 @@ function TicketSection({
 function TicketCard({
     ticket,
     showReasons,
+    routeContext,
 }: {
     ticket: DevelopmentQueueTicket;
     showReasons: boolean;
+    routeContext?: {
+        organization: DevelopmentQueuePageProps['organization'];
+        project: DevelopmentQueuePageProps['project'];
+    };
 }) {
     return (
         <Card>
@@ -344,9 +368,15 @@ function TicketCard({
                         Next attempt {formatDate(ticket.nextAttemptAt)}
                     </p>
                 )}
-                {ticket.inspectorUrl && (
+                {ticket.inspectorExecutionId && routeContext && (
                     <Button asChild variant="outline" className="self-start">
-                        <Link href={ticket.inspectorUrl}>
+                        <Link
+                            href={executionShow.url({
+                                organization: routeContext.organization,
+                                project: routeContext.project,
+                                execution: ticket.inspectorExecutionId,
+                            })}
+                        >
                             <GitPullRequestArrow aria-hidden="true" />
                             Inspect execution
                         </Link>
@@ -384,7 +414,7 @@ function LeaseSection({ leases }: { leases: DevelopmentLease[] }) {
             ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {leases.map((lease) => (
-                        <Card key={lease.id}>
+                        <Card key={lease.ticketId}>
                             <CardContent className="flex flex-col gap-2 py-5 text-sm">
                                 <div className="flex items-center justify-between gap-2">
                                     <span className="font-medium">
@@ -402,9 +432,6 @@ function LeaseSection({ leases }: { leases: DevelopmentLease[] }) {
                                             : 'Active'}
                                     </Badge>
                                 </div>
-                                <p className="text-muted-foreground">
-                                    Owner {lease.owner}
-                                </p>
                                 <p className="text-muted-foreground">
                                     Expires {formatDate(lease.expiresAt)}
                                 </p>

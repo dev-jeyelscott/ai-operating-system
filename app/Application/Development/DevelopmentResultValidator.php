@@ -8,6 +8,7 @@ use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
 use App\Application\Development\Data\DevelopmentRepositoryArtifact;
 use App\Domain\Development\DevelopmentExecutionOutcome;
+use App\Domain\Development\DevelopmentFailureClassification;
 use App\Domain\Development\DevelopmentStage;
 use App\Domain\Development\DevelopmentStageStatus;
 use App\Domain\Development\DevelopmentValidationStatus;
@@ -46,6 +47,11 @@ final class DevelopmentResultValidator
         $this->stringList($request->dependencyReferences, 'dependency references');
         $this->stringList($request->evidenceRequirements, 'evidence requirements');
         $this->stringList($request->validationCommands, 'validation commands');
+        $this->text($request->risk, 'risk', 100);
+        $this->text($request->requestedReasoning, 'requested reasoning', 100);
+        $this->text($request->effectiveReasoning, 'effective reasoning', 100);
+        $this->text($request->reasoningResolutionSource, 'reasoning resolution source', 200);
+        $this->text($request->simulationScenario, 'simulation scenario', 100);
 
         if ($request->integrationTarget !== 'develop') {
             throw new \InvalidArgumentException('Development integration target must be develop.');
@@ -56,6 +62,25 @@ final class DevelopmentResultValidator
         }
 
         $this->text($request->repositoryBaseReference, 'repository base reference', 500);
+
+        if (! str_starts_with($request->repositoryBaseReference, 'simulation://')) {
+            throw new \InvalidArgumentException('Development repository base reference must be simulated.');
+        }
+
+        if ($request->deterministicSeed < 0) {
+            throw new \InvalidArgumentException('Development deterministic seed is invalid.');
+        }
+
+        $ticketType = $request->repositoryProviderMetadata['ticket_type'] ?? null;
+        if (! is_string($ticketType) || trim($ticketType) !== $ticketType || $ticketType === '') {
+            throw new \InvalidArgumentException('Development repository ticket type is invalid.');
+        }
+
+        foreach ([$request->repositoryProviderMetadata, $request->providerPolicy, $request->budgetPolicy, $request->retryPolicy] as $policy) {
+            if (count($policy) > 100) {
+                throw new \InvalidArgumentException('Development policy exceeds the item limit.');
+            }
+        }
         $this->rejectSecrets($request->toArray());
         $this->boundedPayload($request->toArray());
     }
@@ -83,6 +108,10 @@ final class DevelopmentResultValidator
             throw new \InvalidArgumentException('Development stages are missing or out of order.');
         }
 
+        foreach ($result->stageResults as $stage) {
+            $this->text($stage->summary, 'stage summary', 4_000);
+        }
+
         $paths = [];
 
         foreach ($result->changedFiles as $file) {
@@ -106,8 +135,9 @@ final class DevelopmentResultValidator
             $result->syntheticPushResult, $result->syntheticPullRequestResult,
         ]);
 
-        foreach ($artifacts as $artifact) {
-            $this->validateArtifact($artifact);
+        $expectedArtifactKinds = ['branch', 'commit', 'push', 'pull_request'];
+        foreach (array_values($artifacts) as $index => $artifact) {
+            $this->validateArtifact($artifact, $expectedArtifactKinds[$index]);
         }
 
         if ($result->targetBranch !== 'develop') {
@@ -127,9 +157,12 @@ final class DevelopmentResultValidator
         }
 
         $this->stringList($result->implementationPlan, 'implementation plan');
+        $this->text($result->diffSummary, 'diff summary', 10_000);
         $this->stringList($result->assumptions, 'assumptions');
         $this->stringList($result->risks, 'risks');
         $this->stringList($result->evidenceGaps, 'evidence gaps');
+        $this->text($result->recommendedNextAction, 'recommended next action', 4_000);
+        $this->assertOutcomeClassification($result);
         $this->rejectSecrets($result->toArray(false));
         $this->boundedPayload($result->toArray(false));
 
@@ -178,8 +211,15 @@ final class DevelopmentResultValidator
         }
     }
 
-    private function validateArtifact(DevelopmentRepositoryArtifact $artifact): void
+    private function validateArtifact(DevelopmentRepositoryArtifact $artifact, string $expectedKind): void
     {
+        if ($artifact->kind !== $expectedKind) {
+            throw new \InvalidArgumentException('Repository artifact kind is invalid.');
+        }
+
+        $this->text($artifact->identifier, 'repository artifact identifier', 255);
+        $this->text($artifact->reference, 'repository artifact reference', 1_000);
+
         if (! $artifact->synthetic || ! $artifact->evidenceStillRequired || ! str_starts_with($artifact->reference, 'simulation://')) {
             throw new \InvalidArgumentException('Repository artifacts must remain simulated and unverified.');
         }
@@ -190,6 +230,21 @@ final class DevelopmentResultValidator
 
         if ($artifact->kind === 'pull_request' && $artifact->targetBranch !== 'develop') {
             throw new \InvalidArgumentException('Synthetic pull request target must be develop.');
+        }
+    }
+
+    private function assertOutcomeClassification(DevelopmentExecutionResult $result): void
+    {
+        $allowed = match ($result->outcome) {
+            DevelopmentExecutionOutcome::Succeeded => [DevelopmentFailureClassification::None],
+            DevelopmentExecutionOutcome::ValidationFailed => [DevelopmentFailureClassification::Validation],
+            DevelopmentExecutionOutcome::ProviderFailed => [DevelopmentFailureClassification::Provider, DevelopmentFailureClassification::RetryExhausted],
+            DevelopmentExecutionOutcome::TimedOut => [DevelopmentFailureClassification::Timeout, DevelopmentFailureClassification::RetryExhausted],
+            DevelopmentExecutionOutcome::Cancelled => [DevelopmentFailureClassification::Cancellation],
+        };
+
+        if (! in_array($result->retryClassification, $allowed, true)) {
+            throw new \InvalidArgumentException('Development result outcome contradicts its retry classification.');
         }
     }
 

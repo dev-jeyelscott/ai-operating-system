@@ -16,7 +16,7 @@ function aios094Request(): DevelopmentExecutionRequest
         'included_scope' => ['Application development boundary'], 'excluded_scope' => ['Real repository writes'],
         'acceptance_criteria' => ['Produces simulated artifacts'], 'dependency_references' => ['AIOS-093'],
         'evidence_requirements' => ['Automated tests'], 'risk' => 'high', 'complexity' => 8,
-        'repository_provider_metadata' => ['provider' => 'simulation'], 'repository_base_reference' => 'simulation://base/develop',
+        'repository_provider_metadata' => ['provider' => 'simulation', 'ticket_type' => 'feature'], 'repository_base_reference' => 'simulation://base/develop',
         'integration_target' => 'develop', 'validation_commands' => ['php artisan test'],
         'requested_reasoning' => 'high', 'effective_reasoning' => 'high', 'reasoning_resolution_source' => 'project_policy',
         'provider_policy' => ['allowed' => ['simulation']], 'budget_policy' => ['limit_minor' => 5000],
@@ -122,4 +122,22 @@ test('request rejects malformed nested list and policy values', function (): voi
     $data = aios094Request()->toArray();
     $data['provider_policy'] = ['allowed' => [['nested']]];
     expect(fn () => DevelopmentExecutionRequest::fromArray($data))->toThrow(InvalidArgumentException::class);
+});
+
+test('contracts reject malformed scalar nested artifact and contradictory outcome fields', function (): void {
+    $request = aios094Request()->toArray();
+    $request['project_id'] = '2';
+    expect(fn () => DevelopmentExecutionRequest::fromArray($request))->toThrow(InvalidArgumentException::class);
+
+    $result = aios094Result()->toArray();
+    $result['confidence'] = '0.9';
+    expect(fn () => DevelopmentExecutionResult::fromArray($result))->toThrow(InvalidArgumentException::class);
+
+    $result = aios094Result()->toArray();
+    $result['synthetic_branch_result']['synthetic'] = 1;
+    expect(fn () => DevelopmentExecutionResult::fromArray($result))->toThrow(InvalidArgumentException::class);
+
+    expect(fn () => (new DevelopmentResultValidator)->validateResult(aios094Result([
+        'retry_classification' => 'provider',
+    ])))->toThrow(InvalidArgumentException::class);
 });

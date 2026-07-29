@@ -16,6 +16,7 @@ use App\Models\TicketExecutionLease;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\TicketTestFixture;
 
@@ -117,6 +118,25 @@ test('DevelopmentExecutionInspector redacts arbitrary artifact metadata and secr
         ->not->toContain('must-not-leak')
         ->not->toContain('private-stack-trace')
         ->and(collect($inspector['artifacts'])->firstWhere('type', 'unknown_provider_payload')['details'])->toBe([]);
+});
+
+test('DevelopmentExecutionInspector query count stays bounded as artifacts grow', function (): void {
+    $fixture = aios101InspectorFixture();
+    $inspector = app(GetDevelopmentExecutionInspector::class);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $inspector->handle($fixture['project']->organization_id, $fixture['project']->id, $fixture['execution']->id);
+    $baseline = count(DB::getQueryLog());
+
+    $attempt = ExecutionAttempt::query()->where('execution_id', $fixture['execution']->id)->firstOrFail();
+    Artifact::factory()->count(12)->forAttempt($attempt)->create();
+    DB::flushQueryLog();
+    $inspector->handle($fixture['project']->organization_id, $fixture['project']->id, $fixture['execution']->id);
+    $expanded = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect($expanded)->toBeLessThanOrEqual($baseline + 1);
 });
 
 test('DevelopmentExecutionInspector exposes stable attempt order and retry failure state', function (): void {

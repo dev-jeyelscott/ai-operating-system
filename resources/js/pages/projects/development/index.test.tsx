@@ -65,7 +65,7 @@ function ticket(
         providerAvailable: true,
         budgetAvailable: true,
         ineligibilityReasonCodes: [],
-        inspectorUrl: null,
+        inspectorExecutionId: null,
         ...overrides,
     };
 }
@@ -102,8 +102,6 @@ function pageProps(
             status: 'active',
             terminal: false,
         },
-        projectUrl:
-            '/organizations/aios-engineering/projects/ai-operating-system',
         queue: queue(),
         leases: [],
         ...overrides,
@@ -176,12 +174,8 @@ describe('DevelopmentQueuePage', () => {
                 })}
                 leases={[
                     {
-                        id: 'lease-1',
                         ticketId: 'AIOS-099',
-                        executionId: 'execution-1',
-                        owner: 'development-worker',
                         expiresAt: new Date(Date.now() + 60_000).toISOString(),
-                        heartbeatAt: new Date().toISOString(),
                         expired: false,
                     },
                 ]}
@@ -221,6 +215,36 @@ describe('DevelopmentQueuePage', () => {
             5_000,
             { only: ['queue', 'leases'] },
             { autoStart: false },
+        );
+    });
+
+    it('builds project and inspector links with typed route parameters', () => {
+        render(
+            <DevelopmentQueuePage
+                {...pageProps({
+                    queue: queue({
+                        workable: [
+                            ticket({
+                                inspectorExecutionId:
+                                    '01KYPAB5S2ETWGGMB4TFTVWX1E',
+                            }),
+                        ],
+                    }),
+                })}
+            />,
+        );
+
+        expect(
+            screen.getByRole('link', { name: 'Back to project' }),
+        ).toHaveAttribute(
+            'href',
+            '/organizations/aios-engineering/projects/ai-operating-system',
+        );
+        expect(
+            screen.getByRole('link', { name: 'Inspect execution' }),
+        ).toHaveAttribute(
+            'href',
+            '/organizations/aios-engineering/projects/ai-operating-system/development/executions/01KYPAB5S2ETWGGMB4TFTVWX1E',
         );
     });
 });

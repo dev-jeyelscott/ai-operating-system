@@ -17,7 +17,7 @@ function aios097Request(int $seed = 97): DevelopmentExecutionRequest
         'included_scope' => ['Synthetic development output'], 'excluded_scope' => ['Real repository writes'],
         'acceptance_criteria' => ['All references are simulated'], 'dependency_references' => ['AIOS-096'],
         'evidence_requirements' => ['Real evidence later'], 'risk' => 'medium', 'complexity' => 5,
-        'repository_provider_metadata' => ['provider' => 'simulation'], 'repository_base_reference' => 'simulation://projects/2/base/develop',
+        'repository_provider_metadata' => ['provider' => 'simulation', 'ticket_type' => 'feature'], 'repository_base_reference' => 'simulation://projects/2/base/develop',
         'integration_target' => 'develop', 'validation_commands' => ['php artisan test'],
         'requested_reasoning' => 'medium', 'effective_reasoning' => 'medium', 'reasoning_resolution_source' => 'immutable_configuration_snapshot',
         'provider_policy' => ['allowed' => ['simulation']], 'budget_policy' => ['limit_minor' => 5000],

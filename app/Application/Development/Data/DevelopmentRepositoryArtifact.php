@@ -24,6 +24,18 @@ final readonly class DevelopmentRepositoryArtifact
     /** @param array<string, mixed> $data */
     public static function fromArray(array $data): self
     {
-        return new self((string) ($data['kind'] ?? ''), (string) ($data['identifier'] ?? ''), (string) ($data['reference'] ?? ''), isset($data['target_branch']) ? (string) $data['target_branch'] : null, (bool) ($data['synthetic'] ?? false), (bool) ($data['evidence_still_required'] ?? false));
+        foreach (['kind', 'identifier', 'reference'] as $key) {
+            if (! array_key_exists($key, $data) || ! is_string($data[$key])) {
+                throw new \InvalidArgumentException('Development repository artifact field is malformed.');
+            }
+        }
+
+        if (! array_key_exists('target_branch', $data) || ($data['target_branch'] !== null && ! is_string($data['target_branch']))
+            || ! array_key_exists('synthetic', $data) || ! is_bool($data['synthetic'])
+            || ! array_key_exists('evidence_still_required', $data) || ! is_bool($data['evidence_still_required'])) {
+            throw new \InvalidArgumentException('Development repository artifact field is malformed.');
+        }
+
+        return new self($data['kind'], $data['identifier'], $data['reference'], $data['target_branch'], $data['synthetic'], $data['evidence_still_required']);
     }
 }
