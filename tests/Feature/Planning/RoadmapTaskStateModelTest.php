@@ -185,14 +185,16 @@ test(
         $task = aios089RoadmapTaskFixture();
         $readyAt = now();
 
+        $task->applyAuthoritativeStatusTransition(
+            target: TicketStatus::Ready,
+            occurredAt: $readyAt->toImmutable(),
+        );
+
         $task->forceFill([
-            'status' => TicketStatus::Ready,
             'desired_state' => TicketStatus::InProgress,
             'reported_state' => 'tests_passed',
             'observed_state' => 'ci_run_missing',
             'actual_state' => TicketActualState::Unverified,
-            'status_changed_at' => $readyAt,
-            'ready_at' => $readyAt,
         ])->save();
 
         $task->refresh();

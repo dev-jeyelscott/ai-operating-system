@@ -7,10 +7,12 @@ namespace App\Models;
 use App\Domain\Tickets\TicketActualState;
 use App\Domain\Tickets\TicketStatus;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Attributes\DateFormat;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use LogicException;
 
 /**
  * @property int $id
@@ -51,9 +53,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read Collection<int, RoadmapTraceabilityLink> $traceabilityLinks
  * @property-read Collection<int, ExternalTicketMapping> $externalTicketMappings
  */
+#[DateFormat('Y-m-d H:i:s.u')]
 final class RoadmapTask extends Model
 {
     protected $guarded = [];
+
+    private bool $authoritativeStatusTransition = false;
 
     /**
      * Keep model-created tasks aligned with database defaults.
@@ -65,6 +70,46 @@ final class RoadmapTask extends Model
         'desired_state' => 'backlog',
         'actual_state' => 'unverified',
     ];
+
+    protected static function booted(): void
+    {
+        self::updating(static function (self $ticket): void {
+            if ($ticket->isDirty([
+                'status',
+                'status_changed_at',
+                'ready_at',
+            ]) && ! $ticket->authoritativeStatusTransition) {
+                throw new LogicException(
+                    'Authoritative ticket status must be changed through TransitionTicketStatus.',
+                );
+            }
+        });
+    }
+
+    /**
+     * Persist fields already approved by the authoritative transition service.
+     */
+    public function applyAuthoritativeStatusTransition(
+        TicketStatus $target,
+        CarbonImmutable $occurredAt,
+    ): void {
+        $this->authoritativeStatusTransition = true;
+
+        try {
+            $updates = [
+                'status' => $target,
+                'status_changed_at' => $occurredAt,
+            ];
+
+            if ($target === TicketStatus::Ready && $this->ready_at === null) {
+                $updates['ready_at'] = $occurredAt;
+            }
+
+            $this->forceFill($updates)->save();
+        } finally {
+            $this->authoritativeStatusTransition = false;
+        }
+    }
 
     /**
      * Return the roadmap that owns this ticket.
