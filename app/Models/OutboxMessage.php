@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -12,6 +13,21 @@ use Illuminate\Database\Eloquent\Model;
  * Event identity and envelope fields are immutable after insertion. Dispatcher
  * and recovery fields may change only while reserving, publishing, failing, or
  * manually replaying a message.
+ *
+ * @property int $sequence
+ * @property string $event_id
+ * @property string $event_name
+ * @property string $aggregate_type
+ * @property string $aggregate_id
+ * @property int $organization_id
+ * @property int|null $project_id
+ * @property CarbonImmutable $occurred_at
+ * @property string $correlation_id
+ * @property string|null $causation_id
+ * @property string|null $execution_id
+ * @property int $schema_version
+ * @property array<string, mixed> $envelope
+ * @property CarbonImmutable $created_at
  */
 final class OutboxMessage extends Model
 {

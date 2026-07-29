@@ -4,6 +4,7 @@ use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Http\Controllers\Audit\ProjectAuditTimelineController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Development\DevelopmentExecutionInspectorController;
 use App\Http\Controllers\Development\DevelopmentQueueController;
 use App\Http\Controllers\Documents\ProjectDocumentController;
 use App\Http\Controllers\Documents\RetryDocumentVersionProcessingController;
@@ -205,6 +206,10 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                     Route::get('/{project}/development', DevelopmentQueueController::class)
                         ->can('view', 'project')
                         ->name('development.index');
+
+                    Route::get('/{project}/development/executions/{execution}', DevelopmentExecutionInspectorController::class)
+                        ->can('view', 'project')
+                        ->name('development.executions.show');
 
                     Route::prefix('/{project}/roadmaps')
                         ->name('roadmaps.')
