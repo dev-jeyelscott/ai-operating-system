@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Domain\QualityAssurance\MergeDecisionAction;
+use App\Domain\Tickets\TicketStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\DateFormat;
 use Illuminate\Database\Eloquent\Builder;
@@ -86,6 +87,41 @@ final class MergeDecision extends Model
             $query->getModel()->qualifyColumn('project_id'),
             $projectId,
         );
+    }
+
+    /**
+     * Scope terminal request-changes decisions that authorize another
+     * simulated Layer 2 execution for the affected ticket.
+     *
+     * @param  Builder<MergeDecision>  $query
+     * @return Builder<MergeDecision>
+     */
+    public function scopeAuthorizesChangesRequestedRework(
+        Builder $query,
+    ): Builder {
+        $model = $query->getModel();
+
+        return $query
+            ->where(
+                $model->qualifyColumn('action'),
+                MergeDecisionAction::RequestChanges->value,
+            )
+            ->where(
+                $model->qualifyColumn('ticket_status_before'),
+                TicketStatus::ForQa->value,
+            )
+            ->where(
+                $model->qualifyColumn('ticket_status_after'),
+                TicketStatus::ChangesRequested->value,
+            )
+            ->where(
+                $model->qualifyColumn('terminal_marker'),
+                'T',
+            )
+            ->where(
+                $model->qualifyColumn('simulated'),
+                true,
+            );
     }
 
     /**

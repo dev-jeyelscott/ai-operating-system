@@ -13,6 +13,7 @@ use App\Domain\Tickets\TicketStatus;
 use App\Models\Approval;
 use App\Models\AuditEvent;
 use App\Models\Execution;
+use App\Models\MergeDecision;
 use App\Models\Project;
 use App\Models\Roadmap;
 use App\Models\RoadmapTask;
@@ -26,10 +27,16 @@ use InvalidArgumentException;
  */
 final readonly class TransitionTicketStatus
 {
+    /**
+     * Inject the lifecycle event recorder used by every successful transition.
+     */
     public function __construct(
         private RecordTicketLifecycleEvents $events,
     ) {}
 
+    /**
+     * Lock the complete ticket lineage and apply one replay-safe transition.
+     */
     public function handle(
         int $organizationId,
         int $projectId,
@@ -51,7 +58,11 @@ final readonly class TransitionTicketStatus
             correlationId: $correlationId,
         );
 
-        $idempotencyKeyHash = hash('sha256', $idempotencyKey);
+        $idempotencyKeyHash = hash(
+            'sha256',
+            $idempotencyKey,
+        );
+
         $requestFingerprint = TicketCommandFingerprint::make([
             'organization_id' => $organizationId,
             'project_id' => $projectId,
@@ -62,55 +73,58 @@ final readonly class TransitionTicketStatus
             'execution_id' => $executionId,
         ]);
 
-        return DB::transaction(function () use (
-            $organizationId,
-            $projectId,
-            $roadmapId,
-            $ticketId,
-            $target,
-            $idempotencyKeyHash,
-            $requestFingerprint,
-            $actorId,
-            $correlationId,
-            $executionId,
-        ): RoadmapTask {
-            $project = Project::query()
-                ->forOrganization($organizationId)
-                ->whereKey($projectId)
-                ->lock('for share')
-                ->firstOrFail();
+        return DB::transaction(
+            function () use (
+                $organizationId,
+                $projectId,
+                $roadmapId,
+                $ticketId,
+                $target,
+                $idempotencyKeyHash,
+                $requestFingerprint,
+                $actorId,
+                $correlationId,
+                $executionId,
+            ): RoadmapTask {
+                $project = Project::query()
+                    ->forOrganization($organizationId)
+                    ->whereKey($projectId)
+                    ->lock('for share')
+                    ->firstOrFail();
 
-            $execution = $this->lockedExecution(
-                project: $project,
-                target: $target,
-                executionId: $executionId,
-            );
+                $execution = $this->lockedExecution(
+                    project: $project,
+                    target: $target,
+                    executionId: $executionId,
+                );
 
-            $roadmap = Roadmap::query()
-                ->where('project_id', $project->id)
-                ->whereKey($roadmapId)
-                ->lock('for share')
-                ->firstOrFail();
+                $roadmap = Roadmap::query()
+                    ->where('project_id', $project->id)
+                    ->whereKey($roadmapId)
+                    ->lock('for share')
+                    ->firstOrFail();
 
-            $ticket = RoadmapTask::query()
-                ->where('roadmap_id', $roadmap->id)
-                ->whereKey($ticketId)
-                ->lockForUpdate()
-                ->firstOrFail();
+                $ticket = RoadmapTask::query()
+                    ->where('roadmap_id', $roadmap->id)
+                    ->whereKey($ticketId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            return $this->applyLocked(
-                project: $project,
-                roadmap: $roadmap,
-                ticket: $ticket,
-                target: $target,
-                idempotencyKeyHash: $idempotencyKeyHash,
-                requestFingerprint: $requestFingerprint,
-                execution: $execution,
-                actorId: $actorId,
-                correlationId: $correlationId,
-                executionId: $executionId,
-            );
-        }, attempts: 3);
+                return $this->applyLocked(
+                    project: $project,
+                    roadmap: $roadmap,
+                    ticket: $ticket,
+                    target: $target,
+                    idempotencyKeyHash: $idempotencyKeyHash,
+                    requestFingerprint: $requestFingerprint,
+                    execution: $execution,
+                    actorId: $actorId,
+                    correlationId: $correlationId,
+                    executionId: $executionId,
+                );
+            },
+            attempts: 3,
+        );
     }
 
     /**
@@ -128,10 +142,13 @@ final readonly class TransitionTicketStatus
         ?Execution $execution = null,
     ): RoadmapTask {
         if (DB::transactionLevel() < 1) {
-            throw new \LogicException('A locked ticket transition requires an active transaction.');
+            throw new \LogicException(
+                'A locked ticket transition requires an active transaction.',
+            );
         }
 
         $executionId = $execution?->id;
+
         $this->assertIdentifiers(
             organizationId: $project->organization_id,
             projectId: $project->id,
@@ -142,13 +159,24 @@ final readonly class TransitionTicketStatus
             correlationId: $correlationId,
         );
 
-        if ($roadmap->project_id !== $project->id
+        if (
+            $roadmap->project_id !== $project->id
             || $ticket->roadmap_id !== $roadmap->id
-            || ($execution !== null && $execution->project_id !== $project->id)) {
-            throw new \LogicException('Locked ticket transition lineage is invalid.');
+            || (
+                $execution !== null
+                && $execution->project_id !== $project->id
+            )
+        ) {
+            throw new \LogicException(
+                'Locked ticket transition lineage is invalid.',
+            );
         }
 
-        $idempotencyKeyHash = hash('sha256', $idempotencyKey);
+        $idempotencyKeyHash = hash(
+            'sha256',
+            $idempotencyKey,
+        );
+
         $requestFingerprint = TicketCommandFingerprint::make([
             'organization_id' => $project->organization_id,
             'project_id' => $project->id,
@@ -173,6 +201,9 @@ final readonly class TransitionTicketStatus
         );
     }
 
+    /**
+     * Validate policy, persist the status, and append the lifecycle event.
+     */
     private function applyLocked(
         Project $project,
         Roadmap $roadmap,
@@ -185,24 +216,49 @@ final readonly class TransitionTicketStatus
         string $correlationId,
         ?string $executionId,
     ): RoadmapTask {
-        if ($roadmap->project_id !== $project->id || $ticket->roadmap_id !== $roadmap->id) {
-            throw new \LogicException('Ticket transition lineage is invalid.');
+        if (
+            $roadmap->project_id !== $project->id
+            || $ticket->roadmap_id !== $roadmap->id
+        ) {
+            throw new \LogicException(
+                'Ticket transition lineage is invalid.',
+            );
         }
 
-        $deduplicationKey = RecordTicketLifecycleEvents::deduplicationKey(
-            eventType: AuditEventType::TicketStatusTransitioned,
-            ticketId: $ticket->id,
-            idempotencyKeyHash: $idempotencyKeyHash,
-        );
+        $deduplicationKey =
+            RecordTicketLifecycleEvents::deduplicationKey(
+                eventType: AuditEventType::TicketStatusTransitioned,
+                ticketId: $ticket->id,
+                idempotencyKeyHash: $idempotencyKeyHash,
+            );
 
-        if ($this->isExactReplay($project, $deduplicationKey, $requestFingerprint)) {
+        if (
+            $this->isExactReplay(
+                project: $project,
+                deduplicationKey: $deduplicationKey,
+                requestFingerprint: $requestFingerprint,
+            )
+        ) {
             return $ticket;
         }
 
         $from = $ticket->status;
-        $this->assertTransitionAllowed($ticket, $from, $target, $project->id, $execution);
+
+        $this->assertTransitionAllowed(
+            ticket: $ticket,
+            from: $from,
+            to: $target,
+            projectId: $project->id,
+            execution: $execution,
+        );
+
         $occurredAt = CarbonImmutable::now();
-        $ticket->applyAuthoritativeStatusTransition($target, $occurredAt);
+
+        $ticket->applyAuthoritativeStatusTransition(
+            target: $target,
+            occurredAt: $occurredAt,
+        );
+
         $ticket->refresh();
 
         $this->events->transitioned(
@@ -221,6 +277,10 @@ final readonly class TransitionTicketStatus
         return $ticket;
     }
 
+    /**
+     * Lock and validate the development execution required for a For QA
+     * transition.
+     */
     private function lockedExecution(
         Project $project,
         TicketStatus $target,
@@ -230,7 +290,10 @@ final readonly class TransitionTicketStatus
             return null;
         }
 
-        if ($executionId === null || trim($executionId) === '') {
+        if (
+            $executionId === null
+            || trim($executionId) === ''
+        ) {
             throw new InvalidArgumentException(
                 'A successful development execution is required before For QA.',
             );
@@ -243,6 +306,9 @@ final readonly class TransitionTicketStatus
             ->firstOrFail();
     }
 
+    /**
+     * Enforce the authoritative ticket state machine and required evidence.
+     */
     private function assertTransitionAllowed(
         RoadmapTask $ticket,
         TicketStatus $from,
@@ -252,11 +318,20 @@ final readonly class TransitionTicketStatus
     ): void {
         $allowed = match ($from) {
             TicketStatus::Backlog => $to === TicketStatus::Ready,
+
             TicketStatus::Ready => $to === TicketStatus::InProgress,
+
             TicketStatus::ChangesRequested => $to === TicketStatus::InProgress
-                && $this->hasExecutionApproval($ticket, $projectId),
+                && $this->hasExecutionApproval(
+                    ticket: $ticket,
+                    projectId: $projectId,
+                ),
+
             TicketStatus::InProgress => $to === TicketStatus::ForQa
-                && $this->isSuccessfulDevelopmentExecution($execution),
+                && $this->isSuccessfulDevelopmentExecution(
+                    $execution,
+                ),
+
             default => false,
         };
 
@@ -269,51 +344,105 @@ final readonly class TransitionTicketStatus
         }
     }
 
+    /**
+     * Confirm that the supplied Layer 2 execution completed successfully.
+     */
     private function isSuccessfulDevelopmentExecution(
         ?Execution $execution,
     ): bool {
         return $execution !== null
-            && Str::startsWith($execution->capability, 'development.')
+            && Str::startsWith(
+                $execution->capability,
+                'development.',
+            )
             && $execution->status === ExecutionStatus::Completed
             && $execution->cancel_requested_at === null
             && $execution->cancelled_at === null;
     }
 
+    /**
+     * Determine whether an explicit execution approval or an authorized
+     * request-changes decision permits another Layer 2 cycle.
+     */
     private function hasExecutionApproval(
         RoadmapTask $ticket,
         int $projectId,
     ): bool {
-        return Approval::query()
+        $explicitApproval = Approval::query()
             ->forProject($projectId)
-            ->where('type', ApprovalType::Execution)
-            ->where('status', ApprovalStatus::Approved)
-            ->get(['request_payload'])
-            ->contains(static function (Approval $approval) use ($ticket): bool {
-                $payload = $approval->request_payload;
+            ->where(
+                'type',
+                ApprovalType::Execution->value,
+            )
+            ->where(
+                'status',
+                ApprovalStatus::Approved->value,
+            )
+            ->get([
+                'request_payload',
+            ])
+            ->contains(
+                static function (
+                    Approval $approval,
+                ) use ($ticket): bool {
+                    $payload = $approval->request_payload;
 
-                return ($payload['roadmap_task_id'] ?? null) === $ticket->id
-                    || ($payload['ticket_id'] ?? null) === $ticket->stable_id;
-            });
+                    return (
+                        $payload['roadmap_task_id'] ?? null
+                    ) === $ticket->id
+                        || (
+                            $payload['ticket_id'] ?? null
+                        ) === $ticket->stable_id;
+                },
+            );
+
+        if ($explicitApproval) {
+            return true;
+        }
+
+        return MergeDecision::query()
+            ->forProject($projectId)
+            ->authorizesChangesRequestedRework()
+            ->where(
+                'roadmap_task_id',
+                $ticket->id,
+            )
+            ->exists();
     }
 
+    /**
+     * Return true only when the same transition request was already committed.
+     */
     private function isExactReplay(
         Project $project,
         string $deduplicationKey,
         string $requestFingerprint,
     ): bool {
         $existing = AuditEvent::query()
-            ->where('organization_id', $project->organization_id)
-            ->where('deduplication_key', $deduplicationKey)
+            ->where(
+                'organization_id',
+                $project->organization_id,
+            )
+            ->where(
+                'deduplication_key',
+                $deduplicationKey,
+            )
             ->first();
 
         if ($existing === null) {
             return false;
         }
 
-        $existingFingerprint = $existing->metadata['request_fingerprint'] ?? null;
+        $existingFingerprint =
+            $existing->metadata['request_fingerprint'] ?? null;
 
-        if (! is_string($existingFingerprint)
-            || ! hash_equals($existingFingerprint, $requestFingerprint)) {
+        if (
+            ! is_string($existingFingerprint)
+            || ! hash_equals(
+                $existingFingerprint,
+                $requestFingerprint,
+            )
+        ) {
             throw new ConflictException(
                 'The ticket transition idempotency key was reused with different input.',
             );
@@ -322,6 +451,9 @@ final readonly class TransitionTicketStatus
         return true;
     }
 
+    /**
+     * Validate bounded identifiers before any authoritative state is queried.
+     */
     private function assertIdentifiers(
         int $organizationId,
         int $projectId,
@@ -331,23 +463,40 @@ final readonly class TransitionTicketStatus
         string $actorId,
         string $correlationId,
     ): void {
-        if (min($organizationId, $projectId, $roadmapId, $ticketId) < 1) {
+        if (
+            min(
+                $organizationId,
+                $projectId,
+                $roadmapId,
+                $ticketId,
+            ) < 1
+        ) {
             throw new InvalidArgumentException(
                 'Ticket transition identifiers must be positive.',
             );
         }
 
-        foreach ([
-            'idempotency key' => $idempotencyKey,
-            'actor identifier' => $actorId,
-            'correlation identifier' => $correlationId,
-        ] as $name => $value) {
-            if ($value === ''
+        foreach (
+            [
+                'idempotency key' => $idempotencyKey,
+                'actor identifier' => $actorId,
+                'correlation identifier' => $correlationId,
+            ] as $name => $value
+        ) {
+            if (
+                $value === ''
                 || trim($value) !== $value
                 || mb_strlen($value) > 128
-                || preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/', $value) !== 1) {
+                || preg_match(
+                    '/\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/',
+                    $value,
+                ) !== 1
+            ) {
                 throw new InvalidArgumentException(
-                    sprintf('The ticket transition %s is invalid.', $name),
+                    sprintf(
+                        'The ticket transition %s is invalid.',
+                        $name,
+                    ),
                 );
             }
         }
