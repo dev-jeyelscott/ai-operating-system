@@ -34,6 +34,7 @@ use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Projects\ProjectSetupController;
 use App\Http\Controllers\Projects\RestoreProjectController;
 use App\Http\Controllers\QualityAssurance\QualityAssuranceReportController;
+use App\Http\Controllers\QualityAssurance\SubmitSimulatedMergeDecisionController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -218,6 +219,15 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                     )
                         ->can('view', 'project')
                         ->name('quality-assurance.index');
+
+                    Route::post(
+                        '/{project}/quality-assurance/assessments/{assessment}/decisions',
+                        SubmitSimulatedMergeDecisionController::class,
+                    )
+                        ->whereUlid('assessment')
+                        ->middleware('throttle:project-commands')
+                        ->can('approve', 'project')
+                        ->name('quality-assurance.decisions.store');
 
                     Route::prefix('/{project}/roadmaps')
                         ->name('roadmaps.')

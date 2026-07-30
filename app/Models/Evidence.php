@@ -145,6 +145,58 @@ final class Evidence extends Model
     }
 
     /**
+     * Determine whether a classified verification has expired by this time.
+     */
+    public function isExpiredAt(CarbonImmutable $asOf): bool
+    {
+        return $this->isVerified()
+            && $this->expires_at !== null
+            && $this->expires_at->lessThanOrEqualTo($asOf);
+    }
+
+    /**
+     * Determine whether this record is current verified external evidence.
+     */
+    public function isCurrentlyVerifiedAt(CarbonImmutable $asOf): bool
+    {
+        return $this->isVerified()
+            && $this->provider !== 'simulation'
+            && $this->verified_at !== null
+            && ! $this->isExpiredAt($asOf);
+    }
+
+    /**
+     * Resolve the safe user-facing evidence state at one stable timestamp.
+     */
+    public function displayStateAt(CarbonImmutable $asOf): string
+    {
+        if (
+            $this->provider === 'simulation'
+            || $this->classification === EvidenceClassification::SimulatedOutput
+        ) {
+            return 'simulated';
+        }
+
+        if ($this->classification === EvidenceClassification::RejectedEvidence) {
+            return 'rejected';
+        }
+
+        if ($this->isExpiredAt($asOf)) {
+            return 'stale';
+        }
+
+        if ($this->isCurrentlyVerifiedAt($asOf)) {
+            return 'verified';
+        }
+
+        return match ($this->classification) {
+            EvidenceClassification::ReportedEvidence => 'reported',
+            EvidenceClassification::ObservedEvidence => 'observed',
+            default => 'unverified',
+        };
+    }
+
+    /**
      * Cast persisted classification, JSON, decimal, and date values safely.
      *
      * @return array<string, string>

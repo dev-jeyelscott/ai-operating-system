@@ -1,8 +1,13 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let renderDeferredFallback = false;
+let formProcessing = false;
+let formErrors: Record<string, string> = {};
+let formDataOverrides: Record<string, string> = {};
 
 vi.mock('@inertiajs/react', () => ({
     Deferred: ({
@@ -16,6 +21,32 @@ vi.mock('@inertiajs/react', () => ({
     Link: ({ children, href }: { children: ReactNode; href: string }) => (
         <a href={href}>{children}</a>
     ),
+    useForm: <T extends Record<string, string>>(initial: T) => {
+        const [data, setDataState] = useState({
+            ...initial,
+            ...formDataOverrides,
+        });
+
+        return {
+            data,
+            setData: (keyOrData: keyof T | T, value?: string) => {
+                if (typeof keyOrData === 'object') {
+                    setDataState(keyOrData);
+
+                    return;
+                }
+
+                setDataState((current) => ({
+                    ...current,
+                    [keyOrData]: value ?? '',
+                }));
+            },
+            post: vi.fn(),
+            processing: formProcessing,
+            errors: formErrors as Partial<Record<keyof T, string>>,
+            clearErrors: vi.fn(),
+        };
+    },
 }));
 
 import QualityAssuranceReportPage, { ReportContent } from './show';
@@ -26,6 +57,13 @@ import type {
 } from './show';
 
 const evidenceId = '01KYY3NGD80M9W1D3FQ3T32B5Q';
+
+beforeEach(() => {
+    renderDeferredFallback = false;
+    formProcessing = false;
+    formErrors = {};
+    formDataOverrides = {};
+});
 
 /**
  * Build one completed high-risk assessment for component tests.
@@ -93,12 +131,35 @@ function assessment(
                 id: evidenceId,
                 available: true,
                 classification: 'simulated_output',
+                state: 'simulated',
                 verified: false,
+                stale: false,
                 provider: 'simulation',
                 sourceReference: 'simulation://qa/evidence',
                 claims: ['Synthetic validation output only.'],
+                verifiedAt: null,
+                expiresAt: null,
+                reasonCode: 'evidence.simulated',
             },
         ],
+        evidenceSummary: {
+            total: 1,
+            verified: 0,
+            stale: 0,
+            missing: 0,
+            unverified: 1,
+            allCurrentlyVerified: false,
+        },
+        decisionCenter: {
+            submissionUrl:
+                '/organizations/aios-engineering/projects/ai-operating-system/quality-assurance/assessments/01KYY3N8EQ9T7V4ZXK8RCH2M6J/decisions',
+            expectedAssessmentFingerprint: 'a'.repeat(64),
+            allowedActions: ['approve', 'request_changes', 'escalate', 'defer'],
+            reasonRequiredActions: ['request_changes', 'escalate'],
+            terminal: false,
+            canSubmit: true,
+            latestDecision: null,
+        },
         provenance: {
             isSimulated: true,
             provider: 'simulation',
@@ -164,9 +225,11 @@ describe('QualityAssuranceReportPage', () => {
         expect(
             screen.getByText(/cannot authorize a real repository merge/i),
         ).toBeInTheDocument();
-        expect(screen.getByText('Merge Ready With Risks')).toBeInTheDocument();
+        expect(
+            screen.getAllByText('Merge Ready With Risks').length,
+        ).toBeGreaterThan(0);
         expect(screen.getByText('88%')).toBeInTheDocument();
-        expect(screen.getByText('develop')).toBeInTheDocument();
+        expect(screen.getAllByText('develop').length).toBeGreaterThan(0);
     });
 
     it('shows every required finding and merge-risk field', () => {
@@ -208,6 +271,252 @@ describe('QualityAssuranceReportPage', () => {
             }),
         ).toBeInTheDocument();
         expect(within(matrix).getAllByText('High')).toHaveLength(3);
+    });
+
+    it('shows all four authorized actions and required reason fields', async () => {
+        const user = userEvent.setup();
+        render(<ReportContent report={report()} />);
+
+        expect(
+            screen.getByRole('button', {
+                name: 'Approve simulated merge',
+            }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Request changes' }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Escalate for review' }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Defer decision' }),
+        ).toBeInTheDocument();
+
+        await user.click(
+            screen.getByRole('button', { name: 'Request changes' }),
+        );
+
+        expect(screen.getByLabelText('Reason (required)')).toBeRequired();
+        expect(
+            screen.getByRole('button', {
+                name: 'Confirm request changes',
+            }),
+        ).toBeDisabled();
+
+        await user.click(
+            screen.getByRole('button', { name: 'Escalate for review' }),
+        );
+
+        expect(screen.getByLabelText('Reason (required)')).toBeRequired();
+    });
+
+    it('shows validation, evidence, regression, and rollback summaries before actions', () => {
+        render(<ReportContent report={report()} />);
+
+        const decisionCenter = screen
+            .getByRole('heading', {
+                name: 'Simulated merge decision center',
+            })
+            .closest('section');
+
+        expect(decisionCenter).not.toBeNull();
+        expect(
+            within(decisionCenter!).getByText('develop'),
+        ).toBeInTheDocument();
+        expect(
+            within(decisionCenter!).getByText('4/4 checks passed'),
+        ).toBeInTheDocument();
+        expect(
+            within(decisionCenter!).getByText('0 current, 0 stale, 0 missing'),
+        ).toBeInTheDocument();
+        expect(within(decisionCenter!).getAllByText('High')).toHaveLength(2);
+    });
+
+    it('disables decision controls while processing', () => {
+        formProcessing = true;
+        formDataOverrides = {
+            action: 'defer',
+            idempotency_key: `merge-decision:${assessment().id}:processing`,
+            reason: '',
+        };
+
+        render(<ReportContent report={report()} />);
+
+        expect(
+            screen.getByRole('button', { name: 'Recording decision…' }),
+        ).toBeDisabled();
+        expect(
+            screen.getByRole('button', {
+                name: 'Approve simulated merge',
+            }),
+        ).toBeDisabled();
+        expect(screen.getByLabelText('Reason (optional)')).toBeDisabled();
+    });
+
+    it('renders server validation errors accessibly', () => {
+        formDataOverrides = {
+            action: 'request_changes',
+            idempotency_key: `merge-decision:${assessment().id}:errors`,
+            reason: 'Needs more evidence.',
+        };
+        formErrors = {
+            reason: 'The reason must be more specific.',
+            decision: 'The assessment changed before this decision.',
+        };
+
+        render(<ReportContent report={report()} />);
+
+        const reasonError = screen.getByText(
+            'The reason must be more specific.',
+        );
+        const decisionError = screen.getByText(
+            'The assessment changed before this decision.',
+        );
+
+        expect(reasonError.closest('[role="alert"]')).not.toBeNull();
+        expect(decisionError.closest('[role="alert"]')).not.toBeNull();
+    });
+
+    it('keeps the simulation warning persistent and non-dismissible', () => {
+        render(<ReportContent report={report()} />);
+
+        const warning = screen
+            .getByText('Simulated and unverified')
+            .closest<HTMLElement>('[role="alert"]');
+
+        expect(warning).not.toBeNull();
+        expect(within(warning!).queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    it('renders a terminal decision as read-only', () => {
+        render(
+            <ReportContent
+                report={report({
+                    assessment: assessment({
+                        decisionCenter: {
+                            ...assessment().decisionCenter,
+                            allowedActions: [],
+                            terminal: true,
+                            canSubmit: false,
+                            latestDecision: {
+                                action: 'approve',
+                                reason: null,
+                                decidedAt: '2026-07-30T09:03:00+08:00',
+                                ticketStatusAfter: 'approved_for_merge',
+                                terminal: true,
+                                simulated: true,
+                                actualState: 'unverified',
+                            },
+                        },
+                    }),
+                })}
+            />,
+        );
+
+        expect(
+            screen.getByText(/terminal human decision/i),
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByRole('button', {
+                name: 'Approve simulated merge',
+            }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('Approve simulated merge')).toBeInTheDocument();
+    });
+
+    it('renders stale, missing, simulated, and current evidence distinctly', () => {
+        const staleId = '01KYY3NGD80M9W1D3FQ3T32B5R';
+        const missingId = '01KYY3NGD80M9W1D3FQ3T32B5S';
+        const verifiedId = '01KYY3NGD80M9W1D3FQ3T32B5T';
+        const staleExpiry = '2026-07-30T08:00:00+08:00';
+
+        render(
+            <ReportContent
+                report={report({
+                    assessment: assessment({
+                        evidenceReferences: [
+                            {
+                                id: evidenceId,
+                                available: true,
+                                classification: 'simulated_output',
+                                state: 'simulated',
+                                verified: false,
+                                stale: false,
+                                provider: 'simulation',
+                                sourceReference: 'simulation://qa/evidence',
+                                claims: [],
+                                verifiedAt: null,
+                                expiresAt: null,
+                                reasonCode: 'evidence.simulated',
+                            },
+                            {
+                                id: staleId,
+                                available: true,
+                                classification: 'verified_evidence',
+                                state: 'stale',
+                                verified: false,
+                                stale: true,
+                                provider: 'github',
+                                sourceReference: 'github://checks/expired',
+                                claims: [],
+                                verifiedAt: '2026-07-29T08:00:00+08:00',
+                                expiresAt: staleExpiry,
+                                reasonCode: 'evidence.expired',
+                            },
+                            {
+                                id: missingId,
+                                available: false,
+                                classification: 'missing',
+                                state: 'missing',
+                                verified: false,
+                                stale: false,
+                                provider: null,
+                                sourceReference: null,
+                                claims: [],
+                                verifiedAt: null,
+                                expiresAt: null,
+                                reasonCode: 'evidence.missing',
+                            },
+                            {
+                                id: verifiedId,
+                                available: true,
+                                classification: 'verified_evidence',
+                                state: 'verified',
+                                verified: true,
+                                stale: false,
+                                provider: 'github',
+                                sourceReference: 'github://checks/current',
+                                claims: [],
+                                verifiedAt: '2026-07-30T07:00:00+08:00',
+                                expiresAt: '2026-07-31T07:00:00+08:00',
+                                reasonCode: 'evidence.currently_verified',
+                            },
+                        ],
+                        evidenceSummary: {
+                            total: 4,
+                            verified: 1,
+                            stale: 1,
+                            missing: 1,
+                            unverified: 1,
+                            allCurrentlyVerified: false,
+                        },
+                    }),
+                })}
+            />,
+        );
+
+        expect(screen.getByText('Stale')).toBeInTheDocument();
+        expect(screen.getAllByText('Missing').length).toBeGreaterThan(0);
+        expect(
+            screen.getByText('Simulated — not verified'),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Verified')).toBeInTheDocument();
+        expect(screen.getAllByText('Verified at')).toHaveLength(2);
+        expect(screen.getByText('Expired at')).toBeInTheDocument();
+        expect(screen.getByText('Expires at')).toBeInTheDocument();
+        expect(
+            screen.getByText('Simulated and unverified'),
+        ).toBeInTheDocument();
     });
 
     it('renders the empty, loading, and rescued deferred states', () => {

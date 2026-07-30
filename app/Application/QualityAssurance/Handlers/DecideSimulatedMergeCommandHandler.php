@@ -7,6 +7,7 @@ namespace App\Application\QualityAssurance\Handlers;
 use App\Application\Audit\RecordAuditEvent;
 use App\Application\Events\Contracts\DomainEventOutbox;
 use App\Application\QualityAssurance\Commands\DecideSimulatedMergeCommand;
+use App\Application\QualityAssurance\SimulatedMergeDecisionPolicy;
 use App\Application\Security\RedactSensitiveData;
 use App\Application\Shared\Commands\CommandResult;
 use App\Application\Shared\Exceptions\ConflictException;
@@ -18,7 +19,6 @@ use App\Domain\Events\DomainEventActor;
 use App\Domain\Events\DomainEventEnvelope;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\QualityAssurance\MergeDecisionAction;
-use App\Domain\QualityAssurance\QaDecision;
 use App\Domain\Tickets\TicketStatus;
 use App\Models\Execution;
 use App\Models\MergeDecision;
@@ -47,6 +47,7 @@ final readonly class DecideSimulatedMergeCommandHandler
         private RecordAuditEvent $auditEvents,
         private RecordTicketLifecycleEvents $ticketEvents,
         private RedactSensitiveData $redactor,
+        private SimulatedMergeDecisionPolicy $decisionPolicy,
     ) {}
 
     /**
@@ -59,7 +60,10 @@ final readonly class DecideSimulatedMergeCommandHandler
 
         $reason = $this->normalizeReason($command->reason);
 
-        if ($command->action->requiresReason() && $reason === null) {
+        if (
+            $this->decisionPolicy->reasonRequiredFor($command->action)
+            && $reason === null
+        ) {
             throw new InvalidArgumentException(sprintf(
                 'A reason is required for simulated merge action [%s].',
                 $command->action->value,
@@ -400,28 +404,21 @@ final readonly class DecideSimulatedMergeCommandHandler
             return;
         }
 
-        if (! in_array(
-            $assessment->decision,
-            [
-                QaDecision::MergeReady,
-                QaDecision::MergeReadyWithRisks,
-            ],
-            true,
-        )) {
+        if (! $this->decisionPolicy->canApprove($assessment)) {
+            $blockingCodes = $this->decisionPolicy->blockingFindingCodes(
+                $assessment->unresolved_findings,
+            );
+
+            if ($blockingCodes !== []) {
+                throw new ConflictException(sprintf(
+                    'Simulated merge approval is blocked by unresolved findings: %s.',
+                    implode(', ', $blockingCodes),
+                ));
+            }
+
             throw new ConflictException(sprintf(
                 'QA decision [%s] does not permit simulated merge approval.',
                 $assessment->decision->value,
-            ));
-        }
-
-        $blockingCodes = $this->blockingFindingCodes(
-            $assessment->unresolved_findings,
-        );
-
-        if ($blockingCodes !== []) {
-            throw new ConflictException(sprintf(
-                'Simulated merge approval is blocked by unresolved findings: %s.',
-                implode(', ', $blockingCodes),
             ));
         }
     }
@@ -441,40 +438,6 @@ final readonly class DecideSimulatedMergeCommandHandler
             MergeDecisionAction::Escalate,
             MergeDecisionAction::Defer => $current,
         };
-    }
-
-    /**
-     * Return stable codes for explicitly blocking persisted findings.
-     *
-     * @return list<string>
-     */
-    private function blockingFindingCodes(
-        mixed $findings,
-    ): array {
-        if (! is_array($findings)) {
-            return [];
-        }
-
-        $codes = [];
-
-        foreach ($findings as $finding) {
-            if (
-                ! is_array($finding)
-                || ($finding['blocking'] ?? false) !== true
-            ) {
-                continue;
-            }
-
-            $code = $finding['code'] ?? null;
-
-            if (is_string($code) && $code !== '') {
-                $codes[] = $code;
-            }
-        }
-
-        sort($codes, SORT_STRING);
-
-        return array_values(array_unique($codes));
     }
 
     /**

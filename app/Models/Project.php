@@ -76,6 +76,12 @@ final class Project extends Model
         return $this->hasMany(Roadmap::class)->orderBy('revision');
     }
 
+    /** @return HasMany<QaAssessment, $this> */
+    public function assessments(): HasMany
+    {
+        return $this->hasMany(QaAssessment::class);
+    }
+
     /**
      * Return the resumable project setup progress.
      *

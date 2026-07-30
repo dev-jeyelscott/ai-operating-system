@@ -4,28 +4,43 @@ declare(strict_types=1);
 
 namespace App\Application\QualityAssurance;
 
+use App\Domain\QualityAssurance\MergeDecisionAction;
 use App\Models\Evidence;
 use App\Models\ExecutionAttempt;
+use App\Models\MergeDecision;
 use App\Models\Project;
 use App\Models\QaAssessment;
 use App\Models\RoadmapTask;
+use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Builds the latest project-scoped Layer 3 QA report read model.
  */
 final readonly class GetProjectQualityAssuranceReport
 {
+    public function __construct(
+        private SimulatedMergeDecisionPolicy $decisionPolicy,
+    ) {}
+
     /**
      * Return the latest QA assessment without exposing raw provider metadata.
      *
      * @return array<string, mixed>
      */
-    public function handle(int $organizationId, int $projectId): array
-    {
-        Project::query()
+    public function handle(
+        int $organizationId,
+        int $projectId,
+        ?int $actorUserId = null,
+    ): array {
+        $asOf = CarbonImmutable::now();
+
+        $project = Project::query()
             ->where('organization_id', $organizationId)
             ->whereKey($projectId)
+            ->with('organization')
             ->firstOrFail();
 
         $assessment = QaAssessment::query()
@@ -39,7 +54,7 @@ final readonly class GetProjectQualityAssuranceReport
 
         if (! $assessment instanceof QaAssessment) {
             return [
-                'asOf' => now()->toIso8601String(),
+                'asOf' => $asOf->toIso8601String(),
                 'assessment' => null,
             ];
         }
@@ -51,11 +66,14 @@ final readonly class GetProjectQualityAssuranceReport
         );
 
         return [
-            'asOf' => now()->toIso8601String(),
+            'asOf' => $asOf->toIso8601String(),
             'assessment' => $this->serializeAssessment(
                 assessment: $assessment,
                 evidenceIds: $evidenceIds,
                 evidenceById: $evidenceById,
+                asOf: $asOf,
+                project: $project,
+                actorUserId: $actorUserId,
             ),
         ];
     }
@@ -71,12 +89,38 @@ final readonly class GetProjectQualityAssuranceReport
         QaAssessment $assessment,
         array $evidenceIds,
         Collection $evidenceById,
+        CarbonImmutable $asOf,
+        Project $project,
+        ?int $actorUserId,
     ): array {
         $ticket = $assessment->ticket;
         $reviewAttempt = $assessment->reviewAttempt;
-        $actualState = $reviewAttempt instanceof ExecutionAttempt
+        $storedActualState = $reviewAttempt instanceof ExecutionAttempt
             ? ($reviewAttempt->actual_state ?? 'unverified')
             : 'unverified';
+        $isSimulated = $reviewAttempt instanceof ExecutionAttempt
+            && $reviewAttempt->execution_provider === 'simulation';
+        $evidenceReferences = array_map(
+            fn (string $evidenceId): array => $this
+                ->serializeEvidenceReference(
+                    evidenceId: $evidenceId,
+                    evidence: $evidenceById->get($evidenceId),
+                    asOf: $asOf,
+                ),
+            $evidenceIds,
+        );
+        $evidenceSummary = $this->summarizeEvidence($evidenceReferences);
+        $actualState = ! $isSimulated
+            && $storedActualState === 'verified'
+            && $evidenceSummary['allCurrentlyVerified']
+                ? 'verified'
+                : 'unverified';
+        $decisionCenter = $this->decisionCenter(
+            assessment: $assessment,
+            project: $project,
+            ticket: $ticket,
+            actorUserId: $actorUserId,
+        );
 
         return [
             'id' => $assessment->id,
@@ -135,17 +179,11 @@ final readonly class GetProjectQualityAssuranceReport
                 $assessment->merge_risks,
             ),
             'recommendation' => $assessment->recommendation,
-            'evidenceReferences' => array_map(
-                fn (string $evidenceId): array => $this
-                    ->serializeEvidenceReference(
-                        evidenceId: $evidenceId,
-                        evidence: $evidenceById->get($evidenceId),
-                    ),
-                $evidenceIds,
-            ),
+            'evidenceReferences' => $evidenceReferences,
+            'evidenceSummary' => $evidenceSummary,
+            'decisionCenter' => $decisionCenter,
             'provenance' => [
-                'isSimulated' => $reviewAttempt instanceof ExecutionAttempt
-                    && $reviewAttempt->execution_provider === 'simulation',
+                'isSimulated' => $isSimulated,
                 'provider' => $reviewAttempt instanceof ExecutionAttempt
                     ? $reviewAttempt->execution_provider
                     : null,
@@ -159,6 +197,80 @@ final readonly class GetProjectQualityAssuranceReport
             ],
             'createdAt' => $assessment->created_at->toIso8601String(),
             'updatedAt' => $assessment->updated_at->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Build the safe human decision contract from authoritative state.
+     *
+     * @return array<string, mixed>
+     */
+    private function decisionCenter(
+        QaAssessment $assessment,
+        Project $project,
+        mixed $ticket,
+        ?int $actorUserId,
+    ): array {
+        $latestDecision = MergeDecision::query()
+            ->forProject($project->id)
+            ->where('qa_assessment_id', $assessment->id)
+            ->latest('decided_at')
+            ->first();
+        $terminal = $latestDecision?->terminal_marker === 'T';
+        $actor = $actorUserId === null
+            ? null
+            : User::query()->find($actorUserId);
+        $authorized = $actor instanceof User
+            && Gate::forUser($actor)->allows('approve', $project);
+        $canSubmit = $authorized
+            && ! $terminal
+            && $assessment->status === QaAssessment::STATUS_COMPLETED
+            && $assessment->target_branch === 'develop'
+            && $ticket instanceof RoadmapTask
+            && $ticket->status->value === 'for_qa';
+        $allowedActions = $canSubmit
+            ? $this->decisionPolicy->allowedActions($assessment)
+            : [];
+
+        return [
+            'submissionUrl' => route(
+                'organizations.projects.quality-assurance.decisions.store',
+                [
+                    'organization' => $project->organization,
+                    'project' => $project,
+                    'assessment' => $assessment,
+                ],
+            ),
+            'expectedAssessmentFingerprint' => $assessment
+                ->canonical_assessment_fingerprint,
+            'allowedActions' => array_map(
+                static fn (MergeDecisionAction $action): string => $action->value,
+                $allowedActions,
+            ),
+            'reasonRequiredActions' => array_values(array_map(
+                static fn (MergeDecisionAction $action): string => $action->value,
+                array_filter(
+                    $allowedActions,
+                    fn (MergeDecisionAction $action): bool => $this->decisionPolicy
+                        ->reasonRequiredFor($action),
+                ),
+            )),
+            'terminal' => $terminal,
+            'canSubmit' => $canSubmit,
+            'latestDecision' => $latestDecision === null
+                ? null
+                : [
+                    'action' => $latestDecision->action->value,
+                    'reason' => $latestDecision->reason,
+                    'decidedAt' => $latestDecision
+                        ->decided_at
+                        ->toIso8601String(),
+                    'ticketStatusAfter' => $latestDecision
+                        ->ticket_status_after,
+                    'terminal' => $terminal,
+                    'simulated' => $latestDecision->simulated,
+                    'actualState' => $latestDecision->actual_state,
+                ],
         ];
     }
 
@@ -283,28 +395,91 @@ final readonly class GetProjectQualityAssuranceReport
     private function serializeEvidenceReference(
         string $evidenceId,
         mixed $evidence,
+        CarbonImmutable $asOf,
     ): array {
         if (! $evidence instanceof Evidence) {
             return [
                 'id' => $evidenceId,
                 'available' => false,
                 'classification' => 'missing',
+                'state' => 'missing',
                 'verified' => false,
+                'stale' => false,
                 'provider' => null,
                 'sourceReference' => null,
                 'claims' => [],
+                'verifiedAt' => null,
+                'expiresAt' => null,
+                'reasonCode' => 'evidence.missing',
             ];
         }
+
+        $state = $evidence->displayStateAt($asOf);
 
         return [
             'id' => $evidence->id,
             'available' => true,
             'classification' => $evidence->classification->value,
-            'verified' => $evidence->isVerified(),
+            'state' => $state,
+            'verified' => $state === 'verified',
+            'stale' => $state === 'stale',
             'provider' => $evidence->provider,
             'sourceReference' => $evidence->source_reference,
             'claims' => $this->stringList($evidence->claims),
+            'verifiedAt' => $evidence->verified_at?->toIso8601String(),
+            'expiresAt' => $evidence->expires_at?->toIso8601String(),
+            'reasonCode' => $this->evidenceReasonCode($evidence, $state),
         ];
+    }
+
+    /**
+     * Summarize current evidence state for decision presentation.
+     *
+     * @param  list<array<string, mixed>>  $evidenceReferences
+     * @return array{total: int, verified: int, stale: int, missing: int, unverified: int, allCurrentlyVerified: bool}
+     */
+    private function summarizeEvidence(array $evidenceReferences): array
+    {
+        $total = count($evidenceReferences);
+        $verified = 0;
+        $stale = 0;
+        $missing = 0;
+
+        foreach ($evidenceReferences as $reference) {
+            match ($reference['state'] ?? null) {
+                'verified' => $verified++,
+                'stale' => $stale++,
+                'missing' => $missing++,
+                default => null,
+            };
+        }
+
+        return [
+            'total' => $total,
+            'verified' => $verified,
+            'stale' => $stale,
+            'missing' => $missing,
+            'unverified' => $total - $verified - $stale - $missing,
+            'allCurrentlyVerified' => $total > 0 && $verified === $total,
+        ];
+    }
+
+    /**
+     * Return a stable explanation code for one display state.
+     */
+    private function evidenceReasonCode(Evidence $evidence, string $state): string
+    {
+        if ($state === 'unverified' && $evidence->isVerified()) {
+            return 'evidence.verification_timestamp_missing';
+        }
+
+        return match ($state) {
+            'verified' => 'evidence.currently_verified',
+            'stale' => 'evidence.expired',
+            'simulated' => 'evidence.simulated',
+            'rejected' => 'evidence.rejected',
+            default => 'evidence.not_verified',
+        };
     }
 
     /**

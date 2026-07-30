@@ -8,6 +8,7 @@ use App\Application\QualityAssurance\GetProjectQualityAssuranceReport;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\Project;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,6 +21,7 @@ final class QualityAssuranceReportController extends Controller
      * Display the latest project-scoped Layer 3 assessment.
      */
     public function __invoke(
+        Request $request,
         Organization $organization,
         Project $project,
         GetProjectQualityAssuranceReport $report,
@@ -45,6 +47,7 @@ final class QualityAssuranceReportController extends Controller
                 fn (): array => $report->handle(
                     organizationId: $organization->id,
                     projectId: $project->id,
+                    actorUserId: $request->user()?->id,
                 ),
                 rescue: true,
             ),

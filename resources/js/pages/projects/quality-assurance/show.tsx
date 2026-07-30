@@ -1,4 +1,4 @@
-import { Deferred, Head, Link } from '@inertiajs/react';
+import { Deferred, Head, Link, useForm } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowLeft,
@@ -8,12 +8,14 @@ import {
     ShieldAlert,
     XCircle,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { FormEvent, ReactNode } from 'react';
+import SubmitSimulatedMergeDecisionController from '@/actions/App/Http/Controllers/QualityAssurance/SubmitSimulatedMergeDecisionController';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 
 export type QaFinding = {
     code: string;
@@ -39,10 +41,42 @@ export type EvidenceReference = {
     id: string;
     available: boolean;
     classification: string;
+    state: string;
     verified: boolean;
+    stale: boolean;
     provider: string | null;
     sourceReference: string | null;
     claims: string[];
+    verifiedAt: string | null;
+    expiresAt: string | null;
+    reasonCode: string;
+};
+
+export type EvidenceSummary = {
+    total: number;
+    verified: number;
+    stale: number;
+    missing: number;
+    unverified: number;
+    allCurrentlyVerified: boolean;
+};
+
+export type MergeDecisionCenterData = {
+    submissionUrl: string;
+    expectedAssessmentFingerprint: string | null;
+    allowedActions: string[];
+    reasonRequiredActions: string[];
+    terminal: boolean;
+    canSubmit: boolean;
+    latestDecision: {
+        action: string;
+        reason: string | null;
+        decidedAt: string;
+        ticketStatusAfter: string;
+        terminal: boolean;
+        simulated: boolean;
+        actualState: string;
+    } | null;
 };
 
 export type QualityAssuranceAssessment = {
@@ -66,6 +100,8 @@ export type QualityAssuranceAssessment = {
     mergeRisks: MergeRisk[];
     recommendation: string | null;
     evidenceReferences: EvidenceReference[];
+    evidenceSummary: EvidenceSummary;
+    decisionCenter: MergeDecisionCenterData;
     provenance: {
         isSimulated: boolean;
         provider: string | null;
@@ -138,14 +174,27 @@ export default function QualityAssuranceReportPage({
                     <div className="rounded-lg border bg-card px-4 py-3 text-sm">
                         <p className="font-medium">{organization.name}</p>
                         <p className="text-muted-foreground">
-                            Read-only assessment
+                            Independent QA decision gate
                         </p>
                     </div>
                 </header>
 
                 <Deferred data="report" fallback={<ReportSkeleton />}>
                     {report ? (
-                        <ReportContent report={report} />
+                        <ReportContent
+                            report={report}
+                            decisionSubmissionUrl={
+                                report.assessment
+                                    ? SubmitSimulatedMergeDecisionController.url(
+                                          {
+                                              organization,
+                                              project,
+                                              assessment: report.assessment,
+                                          },
+                                      )
+                                    : undefined
+                            }
+                        />
                     ) : (
                         <DeferredRescue />
                     )}
@@ -160,8 +209,10 @@ export default function QualityAssuranceReportPage({
  */
 export function ReportContent({
     report,
+    decisionSubmissionUrl,
 }: {
     report: QualityAssuranceReportData;
+    decisionSubmissionUrl?: string;
 }) {
     if (!report.assessment) {
         return <NoAssessmentState />;
@@ -187,12 +238,22 @@ export function ReportContent({
             )}
 
             <SummaryCards assessment={assessment} asOf={report.asOf} />
+            <MergeDecisionCenter
+                assessment={assessment}
+                submissionUrl={
+                    decisionSubmissionUrl ??
+                    assessment.decisionCenter.submissionUrl
+                }
+            />
             <ScopeAndReview assessment={assessment} />
             <RiskMatrix assessment={assessment} />
             <FindingsTable findings={assessment.findings} />
             <MergeRisksTable risks={assessment.mergeRisks} />
             <Recommendation assessment={assessment} />
-            <EvidenceList evidence={assessment.evidenceReferences} />
+            <EvidenceList
+                evidence={assessment.evidenceReferences}
+                summary={assessment.evidenceSummary}
+            />
         </div>
     );
 }
@@ -241,6 +302,253 @@ function SummaryCards({
                         }
                     />
                     <Detail label="Report as of" value={formatDate(asOf)} />
+                </CardContent>
+            </Card>
+        </section>
+    );
+}
+
+const decisionLabels: Record<string, string> = {
+    approve: 'Approve simulated merge',
+    request_changes: 'Request changes',
+    escalate: 'Escalate for review',
+    defer: 'Defer decision',
+};
+
+/**
+ * Render the authorized human decision interface for this simulated result.
+ */
+function MergeDecisionCenter({
+    assessment,
+    submissionUrl,
+}: {
+    assessment: QualityAssuranceAssessment;
+    submissionUrl: string;
+}) {
+    const center = assessment.decisionCenter;
+    const form = useForm({
+        action: '',
+        expected_assessment_fingerprint:
+            center.expectedAssessmentFingerprint ?? '',
+        idempotency_key: '',
+        reason: '',
+        decision: '',
+    });
+    const reasonRequired = center.reasonRequiredActions.includes(
+        form.data.action,
+    );
+
+    function selectAction(action: string) {
+        form.setData({
+            action,
+            expected_assessment_fingerprint:
+                center.expectedAssessmentFingerprint ?? '',
+            idempotency_key: `merge-decision:${assessment.id}:${crypto.randomUUID()}`,
+            reason: '',
+        });
+        form.clearErrors();
+    }
+
+    function submit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        form.post(submissionUrl, {
+            preserveScroll: true,
+        });
+    }
+
+    return (
+        <section aria-labelledby="merge-decision-heading">
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <CardTitle
+                                id="merge-decision-heading"
+                                role="heading"
+                                aria-level={2}
+                            >
+                                Simulated merge decision center
+                            </CardTitle>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                Human decisions update internal workflow state
+                                only. No repository merge will be performed.
+                            </p>
+                        </div>
+                        <Badge variant="secondary">
+                            Actual state:{' '}
+                            {humanize(assessment.provenance.actualState)}
+                        </Badge>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <Detail
+                            label="Recommendation"
+                            value={humanize(
+                                assessment.decision ?? 'unavailable',
+                            )}
+                        />
+                        <Detail
+                            label="Target branch"
+                            value={assessment.targetBranch ?? 'Not available'}
+                        />
+                        <Detail
+                            label="Validation summary"
+                            value={`${assessment.reviewStatuses.filter((review) => review.status === 'passed').length}/${assessment.reviewStatuses.length} checks passed`}
+                        />
+                        <Detail
+                            label="Evidence"
+                            value={`${assessment.evidenceSummary.verified} current, ${assessment.evidenceSummary.stale} stale, ${assessment.evidenceSummary.missing} missing`}
+                        />
+                        <Detail
+                            label="Regression risk"
+                            value={humanize(
+                                assessment.riskMatrix.find(
+                                    (risk) => risk.label === 'Regression risk',
+                                )?.level ?? 'unverified',
+                            )}
+                        />
+                        <Detail
+                            label="Rollback complexity"
+                            value={humanize(
+                                assessment.riskMatrix.find(
+                                    (risk) =>
+                                        risk.label === 'Rollback complexity',
+                                )?.level ?? 'unverified',
+                            )}
+                        />
+                    </div>
+
+                    {center.latestDecision && (
+                        <Alert>
+                            <CircleAlert aria-hidden="true" />
+                            <AlertTitle>
+                                {decisionLabels[center.latestDecision.action] ??
+                                    humanize(center.latestDecision.action)}
+                            </AlertTitle>
+                            <AlertDescription>
+                                Recorded{' '}
+                                {formatDate(center.latestDecision.decidedAt)}.
+                                Ticket status:{' '}
+                                {humanize(
+                                    center.latestDecision.ticketStatusAfter,
+                                )}
+                                . This remains simulated and{' '}
+                                {humanize(center.latestDecision.actualState)}.
+                                {center.latestDecision.reason && (
+                                    <span className="mt-2 block">
+                                        Reason: {center.latestDecision.reason}
+                                    </span>
+                                )}
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    {center.terminal ? (
+                        <p className="text-sm text-muted-foreground">
+                            This assessment has a terminal human decision and is
+                            now read-only.
+                        </p>
+                    ) : center.canSubmit ? (
+                        <form className="space-y-4" onSubmit={submit}>
+                            <fieldset
+                                className="space-y-3"
+                                disabled={form.processing}
+                            >
+                                <legend className="text-sm font-medium">
+                                    Available actions
+                                </legend>
+                                <div className="flex flex-wrap gap-2">
+                                    {center.allowedActions.map((action) => (
+                                        <Button
+                                            key={action}
+                                            type="button"
+                                            variant={
+                                                form.data.action === action
+                                                    ? 'default'
+                                                    : 'outline'
+                                            }
+                                            onClick={() => selectAction(action)}
+                                        >
+                                            {decisionLabels[action] ??
+                                                humanize(action)}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </fieldset>
+
+                            {form.data.action && (
+                                <div className="space-y-4 rounded-lg border p-4">
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor="merge-decision-reason"
+                                            className="text-sm font-medium"
+                                        >
+                                            Reason
+                                            {reasonRequired
+                                                ? ' (required)'
+                                                : ' (optional)'}
+                                        </label>
+                                        <Textarea
+                                            id="merge-decision-reason"
+                                            value={form.data.reason}
+                                            onChange={(event) =>
+                                                form.setData(
+                                                    'reason',
+                                                    event.target.value,
+                                                )
+                                            }
+                                            maxLength={2000}
+                                            required={reasonRequired}
+                                            disabled={form.processing}
+                                        />
+                                        {form.errors.reason && (
+                                            <p
+                                                role="alert"
+                                                className="text-sm text-destructive"
+                                            >
+                                                {form.errors.reason}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {form.errors.decision && (
+                                        <Alert variant="destructive">
+                                            <AlertTriangle aria-hidden="true" />
+                                            <AlertTitle>
+                                                Decision not recorded
+                                            </AlertTitle>
+                                            <AlertDescription>
+                                                {form.errors.decision}
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+
+                                    <Button
+                                        type="submit"
+                                        disabled={
+                                            form.processing ||
+                                            (reasonRequired &&
+                                                form.data.reason.trim() === '')
+                                        }
+                                    >
+                                        {form.processing
+                                            ? 'Recording decision…'
+                                            : `Confirm ${(
+                                                  decisionLabels[
+                                                      form.data.action
+                                                  ] ?? form.data.action
+                                              ).toLowerCase()}`}
+                                    </Button>
+                                </div>
+                            )}
+                        </form>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">
+                            Decision actions are unavailable for your role or
+                            the current authoritative assessment state.
+                        </p>
+                    )}
                 </CardContent>
             </Card>
         </section>
@@ -637,17 +945,41 @@ function Recommendation({
 /**
  * Render the project-scoped evidence records referenced by the report.
  */
-function EvidenceList({ evidence }: { evidence: EvidenceReference[] }) {
+function EvidenceList({
+    evidence,
+    summary,
+}: {
+    evidence: EvidenceReference[];
+    summary: EvidenceSummary;
+}) {
     return (
         <section aria-labelledby="evidence-heading">
-            <div className="mb-3">
-                <h2 id="evidence-heading" className="text-lg font-semibold">
-                    Evidence references
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                    Project-scoped records referenced by findings and merge
-                    risks.
-                </p>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 id="evidence-heading" className="text-lg font-semibold">
+                        Evidence references
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                        Project-scoped records evaluated at the report time.
+                    </p>
+                </div>
+                <div
+                    className="flex flex-wrap gap-2"
+                    aria-label="Evidence summary"
+                >
+                    <Badge variant="outline">{summary.verified} verified</Badge>
+                    <Badge variant="secondary">{summary.stale} stale</Badge>
+                    <Badge variant="secondary">
+                        {summary.unverified} unverified
+                    </Badge>
+                    <Badge
+                        variant={
+                            summary.missing > 0 ? 'destructive' : 'outline'
+                        }
+                    >
+                        {summary.missing} missing
+                    </Badge>
+                </div>
             </div>
             {evidence.length === 0 ? (
                 <Card>
@@ -664,7 +996,7 @@ function EvidenceList({ evidence }: { evidence: EvidenceReference[] }) {
                                     <CardTitle className="font-mono text-sm break-all">
                                         {reference.id}
                                     </CardTitle>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <Badge
                                             variant={
                                                 reference.available
@@ -679,15 +1011,14 @@ function EvidenceList({ evidence }: { evidence: EvidenceReference[] }) {
                                                 : 'Missing'}
                                         </Badge>
                                         <Badge
-                                            variant={
-                                                reference.verified
-                                                    ? 'default'
-                                                    : 'secondary'
-                                            }
+                                            variant={evidenceStateVariant(
+                                                reference.state,
+                                            )}
                                         >
-                                            {reference.verified
-                                                ? 'Verified'
-                                                : 'Not verified'}
+                                            <CircleAlert aria-hidden="true" />
+                                            {evidenceStateLabel(
+                                                reference.state,
+                                            )}
                                         </Badge>
                                     </div>
                                 </div>
@@ -706,6 +1037,22 @@ function EvidenceList({ evidence }: { evidence: EvidenceReference[] }) {
                                         'Not available inside this project boundary'
                                     }
                                 />
+                                {reference.verifiedAt && (
+                                    <Detail
+                                        label="Verified at"
+                                        value={formatDate(reference.verifiedAt)}
+                                    />
+                                )}
+                                {reference.expiresAt && (
+                                    <Detail
+                                        label={
+                                            reference.stale
+                                                ? 'Expired at'
+                                                : 'Expires at'
+                                        }
+                                        value={formatDate(reference.expiresAt)}
+                                    />
+                                )}
                                 {reference.claims.length > 0 && (
                                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                                         {reference.claims.map((claim) => (
@@ -838,6 +1185,43 @@ function reviewStatusVariant(status: string | null): BadgeVariant {
     }
 
     if (status === 'unverified') {
+        return 'secondary';
+    }
+
+    return 'outline';
+}
+
+/**
+ * Describe the report-time evidence state without relying on color.
+ */
+function evidenceStateLabel(state: string): string {
+    const labels: Record<string, string> = {
+        verified: 'Verified',
+        stale: 'Stale',
+        missing: 'Missing',
+        simulated: 'Simulated — not verified',
+        reported: 'Unverified',
+        observed: 'Unverified',
+        rejected: 'Rejected',
+        unverified: 'Unverified',
+    };
+
+    return labels[state] ?? 'Unverified';
+}
+
+/**
+ * Map evidence state to an existing badge variant.
+ */
+function evidenceStateVariant(state: string): BadgeVariant {
+    if (state === 'verified') {
+        return 'default';
+    }
+
+    if (state === 'missing' || state === 'rejected') {
+        return 'destructive';
+    }
+
+    if (state === 'stale' || state === 'simulated') {
         return 'secondary';
     }
 
