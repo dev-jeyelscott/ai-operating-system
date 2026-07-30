@@ -2,17 +2,19 @@ import { Form, Head, Link } from '@inertiajs/react';
 import {
     Archive,
     ArrowLeft,
+    ClipboardCheck,
     FileText,
+    ListTodo,
+    Map,
     Pencil,
     Plug,
     RotateCcw,
     Settings2,
     SlidersHorizontal,
-    Map,
-    ListTodo,
 } from 'lucide-react';
 import DevelopmentQueueController from '@/actions/App/Http/Controllers/Development/DevelopmentQueueController';
 import { index as roadmapIndex } from '@/actions/App/Http/Controllers/Planning/RoadmapController';
+import QualityAssuranceReportController from '@/actions/App/Http/Controllers/QualityAssurance/QualityAssuranceReportController';
 import { Button } from '@/components/ui/button';
 import {
     archive as archiveProject,
@@ -100,6 +102,18 @@ export default function ShowProject({
                             >
                                 <ListTodo aria-hidden="true" />
                                 Development queue
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link
+                                href={QualityAssuranceReportController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <ClipboardCheck aria-hidden="true" />
+                                QA report
                             </Link>
                         </Button>
 

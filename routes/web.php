@@ -33,6 +33,7 @@ use App\Http\Controllers\Projects\ProjectConfigurationController;
 use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Projects\ProjectSetupController;
 use App\Http\Controllers\Projects\RestoreProjectController;
+use App\Http\Controllers\QualityAssurance\QualityAssuranceReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -210,6 +211,13 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                     Route::get('/{project}/development/executions/{execution}', DevelopmentExecutionInspectorController::class)
                         ->can('view', 'project')
                         ->name('development.executions.show');
+
+                    Route::get(
+                        '/{project}/quality-assurance',
+                        QualityAssuranceReportController::class,
+                    )
+                        ->can('view', 'project')
+                        ->name('quality-assurance.index');
 
                     Route::prefix('/{project}/roadmaps')
                         ->name('roadmaps.')
