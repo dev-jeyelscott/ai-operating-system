@@ -14,6 +14,10 @@ use Illuminate\Support\Str;
  */
 final class QaAssessmentValidator
 {
+    public function __construct(
+        private readonly BlockingFindingPolicy $blockingFindings = new BlockingFindingPolicy,
+    ) {}
+
     /**
      * Validate one complete QA assessment contract before it is persisted or used.
      */
@@ -83,6 +87,10 @@ final class QaAssessmentValidator
                 'QA assessment fingerprint does not match canonical content.',
             );
         }
+
+        $this->blockingFindings->assertRecommendationAllowed(
+            $assessment,
+        );
     }
 
     /**
@@ -174,19 +182,16 @@ final class QaAssessmentValidator
                 'finding code',
                 100,
             );
-
             $this->text(
                 $finding->summary,
                 'finding summary',
                 2_000,
             );
-
             $this->text(
                 $finding->impact,
                 'finding impact',
                 4_000,
             );
-
             $this->text(
                 $finding->mitigation,
                 'finding mitigation',
@@ -233,19 +238,16 @@ final class QaAssessmentValidator
                 'merge-risk code',
                 100,
             );
-
             $this->text(
                 $risk->summary,
                 'merge-risk summary',
                 2_000,
             );
-
             $this->text(
                 $risk->impact,
                 'merge-risk impact',
                 4_000,
             );
-
             $this->text(
                 $risk->mitigation,
                 'merge-risk mitigation',
