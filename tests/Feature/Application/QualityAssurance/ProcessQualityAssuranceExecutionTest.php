@@ -24,16 +24,17 @@ use App\Models\Execution;
 use App\Models\ExecutionAttempt;
 use App\Models\QaAssessment;
 use App\Models\RoadmapTask;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\Support\TicketTestFixture;
 
-/**
+/*
  * Create a complete Layer 2 result and queued Layer 3 assessment.
  *
  * @return array<string, mixed>
  */
+
 function aios106Fixture(): array
 {
     $fixture = TicketTestFixture::create(
@@ -379,9 +380,11 @@ test(
 test(
     'implementation completion consumer dispatches one unique QA job',
     function (): void {
-        Bus::fake();
-
         $fixture = aios106Fixture();
+
+        Queue::fake([
+            ProcessQualityAssuranceExecutionJob::class,
+        ]);
 
         $event = new StoredDomainEvent(
             eventId: '01KYPAB5S2ETWGGMB4TFTVWX1Q',
@@ -398,15 +401,27 @@ test(
             ],
         );
 
-        app(DispatchQualityAssuranceExecution::class)
-            ->handle($event);
+        $consumer = app(
+            DispatchQualityAssuranceExecution::class,
+        );
 
-        Bus::assertDispatched(
+        /*
+         * Replay the same completion event to prove that the queued job's
+         * ShouldBeUnique lock prevents duplicate queue delivery.
+         */
+        $consumer->handle($event);
+        $consumer->handle($event);
+
+        Queue::assertPushed(
             ProcessQualityAssuranceExecutionJob::class,
             static fn (
                 ProcessQualityAssuranceExecutionJob $job,
             ): bool => $job->assessmentId
                 === $fixture['assessment']->id,
+        );
+
+        Queue::assertPushedOnce(
+            ProcessQualityAssuranceExecutionJob::class,
         );
     },
 );

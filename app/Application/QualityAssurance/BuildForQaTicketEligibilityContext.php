@@ -47,9 +47,7 @@ final class BuildForQaTicketEligibilityContext
                     executionId: $artifact->execution_id,
                     executionAttemptId: $artifact->execution_attempt_id,
                     hasEvidence: $artifact->evidence->isNotEmpty(),
-                    metadata: is_array($artifact->metadata)
-                        ? $artifact->metadata
-                        : [],
+                    metadata: $artifact->metadata,
                 );
             })
             ->values()

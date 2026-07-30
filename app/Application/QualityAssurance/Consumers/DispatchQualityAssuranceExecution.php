@@ -9,7 +9,6 @@ use App\Application\Events\Data\StoredDomainEvent;
 use App\Application\QualityAssurance\StartQualityAssuranceExecution;
 use App\Domain\Executions\ExecutionStatus;
 use App\Jobs\ProcessQualityAssuranceExecutionJob;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Str;
 use UnexpectedValueException;
 
@@ -47,7 +46,6 @@ final readonly class DispatchQualityAssuranceExecution implements DomainEventCon
     {
         if (
             $event->schemaVersion !== 1
-            || $event->organizationId === null
             || $event->projectId === null
         ) {
             throw new UnexpectedValueException(
@@ -94,10 +92,8 @@ final readonly class DispatchQualityAssuranceExecution implements DomainEventCon
             return;
         }
 
-        Bus::dispatch(
-            (new ProcessQualityAssuranceExecutionJob(
-                $assessment->id,
-            ))->afterCommit(),
-        );
+        ProcessQualityAssuranceExecutionJob::dispatch(
+            $assessment->id,
+        )->afterCommit();
     }
 }

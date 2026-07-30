@@ -161,7 +161,7 @@ final readonly class StartQualityAssuranceExecution
                 if (! $independence->allowed) {
                     throw new LogicException(sprintf(
                         'Layer 3 independence policy rejected the execution: %s',
-                        $independence->reason?->value ?? 'unknown',
+                        $independence->reason->value,
                     ));
                 }
 

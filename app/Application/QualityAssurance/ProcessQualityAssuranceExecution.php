@@ -76,7 +76,7 @@ final readonly class ProcessQualityAssuranceExecution
                  */
                 if (
                     $reviewExecution->status
-                        !== ExecutionStatus::Queued
+                    !== ExecutionStatus::Queued
                     || $reviewExecution->cancel_requested_at !== null
                 ) {
                     return null;
@@ -150,7 +150,7 @@ final readonly class ProcessQualityAssuranceExecution
                 if (! $independence->allowed) {
                     throw new LogicException(sprintf(
                         'Layer 3 independence policy failed: %s',
-                        $independence->reason?->value ?? 'unknown',
+                        $independence->reason->value,
                     ));
                 }
 
@@ -167,7 +167,7 @@ final readonly class ProcessQualityAssuranceExecution
                         reasoningEscalationReason: 'final_qa_and_merge_advisory',
                         simulationMode: 'simulated',
                         simulationSeed: (string)
-                            $lockedAssessment->simulation_seed,
+                        $lockedAssessment->simulation_seed,
                     ),
                 );
 
@@ -245,11 +245,11 @@ final readonly class ProcessQualityAssuranceExecution
 
             $provider = $this->providers->resolve(
                 fallbackOrder: is_array($fallbackOrder)
-                        ? array_values(array_filter(
-                            $fallbackOrder,
-                            is_string(...),
-                        ))
-                        : [],
+                    ? array_values(array_filter(
+                        $fallbackOrder,
+                        is_string(...),
+                    ))
+                    : [],
                 capability: $reviewExecution->capability,
             );
 
@@ -424,45 +424,39 @@ final readonly class ProcessQualityAssuranceExecution
             ->orderBy('id')
             ->get();
 
-        $evidenceIds = $artifacts
-            ->flatMap(
-                static fn (Artifact $artifact): array => $artifact->evidence
-                    ->pluck('id')
-                    ->all(),
-            )
-            ->filter(is_string(...))
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
+        $evidenceIds = [];
+        $implementationArtifacts = [];
 
-        $implementationArtifacts = $artifacts
-            ->map(static function (Artifact $artifact): array {
-                return [
-                    'artifact_id' => $artifact->id,
-                    'artifact_type' => $artifact->artifact_type,
-                    'name' => $artifact->name,
-                    'external_reference' => $artifact->external_reference,
-                    'actual_state' => $artifact->actual_state,
-                    'evidence_still_required' => $artifact->evidence_still_required,
-                    'metadata' => $artifact->metadata,
-                    'evidence_ids' => $artifact->evidence
-                        ->pluck('id')
-                        ->values()
-                        ->all(),
-                ];
-            })
-            ->values()
-            ->all();
+        foreach ($artifacts as $artifact) {
+            $artifactEvidenceIds = [];
+
+            foreach ($artifact->evidence as $evidence) {
+                $artifactEvidenceIds[] = $evidence->id;
+                $evidenceIds[] = $evidence->id;
+            }
+
+            $implementationArtifacts[] = [
+                'artifact_id' => $artifact->id,
+                'artifact_type' => $artifact->artifact_type,
+                'name' => $artifact->name,
+                'external_reference' => $artifact->external_reference,
+                'actual_state' => $artifact->actual_state,
+                'evidence_still_required' => $artifact
+                    ->evidence_still_required,
+                'metadata' => $artifact->metadata,
+                'evidence_ids' => $artifactEvidenceIds,
+            ];
+        }
+
+        $evidenceIds = array_values(array_unique($evidenceIds));
+        sort($evidenceIds, SORT_STRING);
 
         $pullRequest = $artifacts->firstWhere(
             'artifact_type',
             'synthetic_pull_request',
         );
 
-        $targetBranch = is_array($pullRequest?->metadata)
-            ? ($pullRequest->metadata['target_branch'] ?? null)
-            : null;
+        $targetBranch = $pullRequest?->metadata['target_branch'] ?? null;
 
         if ($targetBranch !== 'develop') {
             throw new InvalidArgumentException(
@@ -470,9 +464,7 @@ final readonly class ProcessQualityAssuranceExecution
             );
         }
 
-        $scope = is_array($ticket->scope)
-            ? $ticket->scope
-            : [];
+        $scope = $ticket->scope;
 
         $configuration = $reviewExecution
             ->projectContextSnapshot
@@ -494,26 +486,18 @@ final readonly class ProcessQualityAssuranceExecution
                 ->projectContextSnapshot
                 ->approved_document_set_fingerprint,
             ticketObjective: $ticket->objective,
-            includedScope: $this->stringList(
-                $scope['included'] ?? [],
-            ),
-            excludedScope: $this->stringList(
-                $scope['excluded'] ?? [],
-            ),
-            acceptanceCriteria: is_array($ticket->acceptance_criteria)
-                    ? array_values(
-                        $ticket->acceptance_criteria,
-                    )
-                    : [],
+            includedScope: $scope['included'],
+            excludedScope: $scope['excluded'],
+            acceptanceCriteria: $ticket->acceptance_criteria,
             requiredEvidence: $this->stringList(
                 $ticket->evidence_requirements,
             ),
             ticketRisk: $ticket->risk,
             targetBranch: $targetBranch,
             implementationLogicalRole: $implementationExecution->logical_role
-                    ?? 'unknown',
+                ?? 'unknown',
             reviewLogicalRole: $reviewExecution->logical_role
-                    ?? 'unknown',
+                ?? 'unknown',
             implementationArtifacts: $implementationArtifacts,
             evidenceIds: $evidenceIds,
             requestedReasoning: $reviewExecution
@@ -692,7 +676,7 @@ final readonly class ProcessQualityAssuranceExecution
 
             if (
                 $decision->executionStatus
-                    === ExecutionStatus::RetryScheduled
+                === ExecutionStatus::RetryScheduled
             ) {
                 $lockedAssessment->markRetryScheduled();
 
@@ -701,7 +685,7 @@ final readonly class ProcessQualityAssuranceExecution
 
             if (
                 $decision->executionStatus
-                    === ExecutionStatus::Failed
+                === ExecutionStatus::Failed
             ) {
                 $lockedAssessment->markFailed();
             }
