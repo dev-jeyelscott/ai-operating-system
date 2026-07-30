@@ -230,7 +230,7 @@ test(
 );
 
 test(
-    'a user outside the organization cannot view the QA report',
+    'a user outside the organization cannot discover the QA report',
     function (): void {
         $fixture = TicketTestFixture::create(
             stableId: sprintf(
@@ -252,6 +252,6 @@ test(
                     'project' => $project,
                 ],
             ))
-            ->assertForbidden();
+            ->assertNotFound();
     },
 );

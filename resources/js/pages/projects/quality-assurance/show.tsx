@@ -808,8 +808,8 @@ function DeferredRescue() {
  */
 function decisionVariant(decision: string | null): BadgeVariant {
     if (decision === 'merge_ready') {
-return 'default';
-}
+        return 'default';
+    }
 
     if (decision === 'changes_requested' || decision === 'blocked') {
         return 'destructive';
@@ -830,16 +830,16 @@ return 'default';
  */
 function reviewStatusVariant(status: string | null): BadgeVariant {
     if (status === 'passed') {
-return 'default';
-}
+        return 'default';
+    }
 
     if (status === 'failed') {
-return 'destructive';
-}
+        return 'destructive';
+    }
 
     if (status === 'unverified') {
-return 'secondary';
-}
+        return 'secondary';
+    }
 
     return 'outline';
 }
@@ -849,12 +849,12 @@ return 'secondary';
  */
 function impactVariant(level: string | null): BadgeVariant {
     if (level === 'critical' || level === 'high') {
-return 'destructive';
-}
+        return 'destructive';
+    }
 
     if (level === 'medium') {
-return 'secondary';
-}
+        return 'secondary';
+    }
 
     return 'outline';
 }
@@ -888,8 +888,8 @@ function formatConfidence(confidence: number | null): string {
  */
 function formatDate(value: string | null): string {
     if (!value) {
-return 'Not available';
-}
+        return 'Not available';
+    }
 
     const date = new Date(value);
 
