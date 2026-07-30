@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Application\Development\Consumers\DispatchDevelopmentExecution;
 use App\Application\Development\Consumers\RedispatchDevelopmentRetry;
 use App\Application\Planning\Consumers\DispatchPlanningExecution;
+use App\Application\QualityAssurance\Consumers\DispatchQualityAssuranceExecution;
+use App\Application\QualityAssurance\Consumers\RedispatchQualityAssuranceRetry;
 use App\Application\Tickets\Consumers\ReleaseLeaseForTerminalExecution;
 
 return [
@@ -68,21 +70,14 @@ return [
     |--------------------------------------------------------------------------
     | Registered consumers
     |--------------------------------------------------------------------------
-    |
-    | Phase 4 establishes the replaceable real-time event-stream contract.
-    | Projection and domain-event publishing consumers remain Phase 9 scope.
-    |
-    | Example:
-    |
-    | App\Application\Notifications\Consumers\
-    |     CreateProjectNotification::class,
-    |
     */
 
     'consumers' => [
         DispatchPlanningExecution::class,
         DispatchDevelopmentExecution::class,
         RedispatchDevelopmentRetry::class,
+        DispatchQualityAssuranceExecution::class,
+        RedispatchQualityAssuranceRetry::class,
         ReleaseLeaseForTerminalExecution::class,
     ],
 ];

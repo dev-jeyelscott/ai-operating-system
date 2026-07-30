@@ -37,15 +37,29 @@ enum AuditEventType: string
     case NotionConnectionTestFailed =
         'integration.notion.connection_test.failed';
 
-    case NotionTicketPublished = 'integration.notion.ticket.published';
-    case NotionTicketPublicationFailed = 'integration.notion.ticket.publication_failed';
-    case NotionTicketReconciled = 'integration.notion.ticket.reconciled';
-    case NotionConflictAccepted = 'integration.notion.conflict.accepted';
-    case NotionConflictRetainInternalRequested = 'integration.notion.conflict.retain_internal_requested';
-    case NotionConflictRetainInternalCompleted = 'integration.notion.conflict.retain_internal_completed';
-    case NotionConflictDeferred = 'integration.notion.conflict.deferred';
+    case NotionTicketPublished =
+        'integration.notion.ticket.published';
+
+    case NotionTicketPublicationFailed =
+        'integration.notion.ticket.publication_failed';
+
+    case NotionTicketReconciled =
+        'integration.notion.ticket.reconciled';
+
+    case NotionConflictAccepted =
+        'integration.notion.conflict.accepted';
+
+    case NotionConflictRetainInternalRequested =
+        'integration.notion.conflict.retain_internal_requested';
+
+    case NotionConflictRetainInternalCompleted =
+        'integration.notion.conflict.retain_internal_completed';
+
+    case NotionConflictDeferred =
+        'integration.notion.conflict.deferred';
 
     case DocumentUploaded = 'document.uploaded';
+
     case DocumentReplacementUploaded =
         'document.replacement.uploaded';
 
@@ -57,13 +71,21 @@ enum AuditEventType: string
     case DocumentParseCompleted = 'document.parse.completed';
     case DocumentParseFailed = 'document.parse.failed';
 
-    case DocumentAnalysisStarted = 'document.analysis.started';
+    case DocumentAnalysisStarted =
+        'document.analysis.started';
+
     case DocumentAnalysisCompleted =
         'document.analysis.completed';
-    case DocumentAnalysisFailed = 'document.analysis.failed';
 
-    case DocumentVersionApproved = 'document.version.approved';
-    case DocumentVersionRejected = 'document.version.rejected';
+    case DocumentAnalysisFailed =
+        'document.analysis.failed';
+
+    case DocumentVersionApproved =
+        'document.version.approved';
+
+    case DocumentVersionRejected =
+        'document.version.rejected';
+
     case DocumentVersionSuperseded =
         'document.version.superseded';
 
@@ -73,12 +95,14 @@ enum AuditEventType: string
     case ProjectContextSnapshotCreated =
         'project.context_snapshot.created';
 
-    case ProjectStartRequested = 'project.start_requested';
+    case ProjectStartRequested =
+        'project.start_requested';
 
     case RoadmapGenerated = 'roadmap.generated';
     case RoadmapEdited = 'roadmap.edited';
     case RoadmapApproved = 'roadmap.approved';
     case RoadmapRejected = 'roadmap.rejected';
+
     case RoadmapRegenerationRequested =
         'roadmap.regeneration_requested';
 
@@ -86,20 +110,38 @@ enum AuditEventType: string
     case TicketLeaseAcquired = 'ticket.lease_acquired';
     case TicketLeaseHeartbeat = 'ticket.lease_heartbeat';
     case TicketLeaseReleased = 'ticket.lease_released';
-    case TicketStatusTransitioned = 'ticket.status_transitioned';
+
+    case TicketStatusTransitioned =
+        'ticket.status_transitioned';
+
     case TicketExternalStateReconciled =
         'ticket.state_reconciled';
 
-    case ImplementationStarted = 'implementation.started';
+    case ImplementationStarted =
+        'implementation.started';
+
     case ValidationStarted = 'validation.started';
     case ValidationCompleted = 'validation.completed';
     case ValidationFailed = 'validation.failed';
-    case SyntheticCommitCreated = 'synthetic.commit_created';
-    case SyntheticPushRecorded = 'synthetic.push_recorded';
-    case PullRequestCreated = 'pull_request.created';
-    case ImplementationCompleted = 'implementation.completed';
 
-    case WorkflowTransitioned = 'workflow.transitioned';
+    case SyntheticCommitCreated =
+        'synthetic.commit_created';
+
+    case SyntheticPushRecorded =
+        'synthetic.push_recorded';
+
+    case PullRequestCreated = 'pull_request.created';
+
+    case ImplementationCompleted =
+        'implementation.completed';
+
+    case QaStarted = 'qa.started';
+
+    case MergeAssessmentCompleted =
+        'merge_assessment.completed';
+
+    case WorkflowTransitioned =
+        'workflow.transitioned';
 
     case ApprovalRequested = 'approval.requested';
     case ApprovalGranted = 'approval.granted';

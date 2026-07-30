@@ -7,6 +7,7 @@ use App\Application\Documents\Contracts\DocumentAnalyzer;
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\Contracts\MalwareScanner;
 use App\Application\Planning\ExecutionProviderRegistry;
+use App\Application\QualityAssurance\QualityAssuranceProviderRegistry;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Application\Workflows\Contracts\WorkflowTransitionGuardEvaluator;
 use App\Infrastructure\AgentProviders\SimulationPlanningProvider;
@@ -15,6 +16,7 @@ use App\Infrastructure\Documents\DeterministicDocumentAnalyzer;
 use App\Infrastructure\Documents\DeterministicMalwareScanner;
 use App\Infrastructure\Documents\PlainTextDocumentParser;
 use App\Infrastructure\Persistence\EloquentTransactionManager;
+use App\Infrastructure\QualityAssurance\SimulationQualityAssuranceProvider;
 use App\Infrastructure\Workflows\RoadmapWorkflowTransitionGuardEvaluator;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -55,10 +57,44 @@ class AppServiceProvider extends ServiceProvider
             RoadmapWorkflowTransitionGuardEvaluator::class,
         );
 
-        $this->app->singleton(SimulationPlanningProvider::class);
-        $this->app->singleton(ExecutionProviderRegistry::class, fn ($app): ExecutionProviderRegistry => new ExecutionProviderRegistry([$app->make(SimulationPlanningProvider::class)]));
-        $this->app->singleton(SimulationDevelopmentProvider::class);
-        $this->app->singleton(DevelopmentProviderRegistry::class, fn ($app): DevelopmentProviderRegistry => new DevelopmentProviderRegistry([$app->make(SimulationDevelopmentProvider::class)]));
+        $this->app->singleton(
+            SimulationPlanningProvider::class,
+        );
+
+        $this->app->singleton(
+            ExecutionProviderRegistry::class,
+            fn ($app): ExecutionProviderRegistry => new ExecutionProviderRegistry([
+                $app->make(
+                    SimulationPlanningProvider::class,
+                ),
+            ]),
+        );
+
+        $this->app->singleton(
+            SimulationDevelopmentProvider::class,
+        );
+
+        $this->app->singleton(
+            DevelopmentProviderRegistry::class,
+            fn ($app): DevelopmentProviderRegistry => new DevelopmentProviderRegistry([
+                $app->make(
+                    SimulationDevelopmentProvider::class,
+                ),
+            ]),
+        );
+
+        $this->app->singleton(
+            SimulationQualityAssuranceProvider::class,
+        );
+
+        $this->app->singleton(
+            QualityAssuranceProviderRegistry::class,
+            fn ($app): QualityAssuranceProviderRegistry => new QualityAssuranceProviderRegistry([
+                $app->make(
+                    SimulationQualityAssuranceProvider::class,
+                ),
+            ]),
+        );
     }
 
     /**
