@@ -14,6 +14,8 @@ use App\Application\Planning\Handlers\EditRoadmapHandler;
 use App\Application\Planning\Handlers\RegenerateRoadmapHandler;
 use App\Application\Projects\Commands\StartProject;
 use App\Application\Projects\Handlers\StartProjectHandler;
+use App\Application\QualityAssurance\Commands\DecideSimulatedMergeCommand;
+use App\Application\QualityAssurance\Handlers\DecideSimulatedMergeCommandHandler;
 
 return [
 
@@ -40,6 +42,8 @@ return [
         DecideRoadmapCommand::class => DecideRoadmapHandler::class,
 
         RegenerateRoadmapCommand::class => RegenerateRoadmapHandler::class,
+
+        DecideSimulatedMergeCommand::class => DecideSimulatedMergeCommandHandler::class,
     ],
 
 ];

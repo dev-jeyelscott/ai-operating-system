@@ -140,6 +140,18 @@ enum AuditEventType: string
     case MergeAssessmentCompleted =
         'merge_assessment.completed';
 
+    case SimulatedMergeApproved =
+        'simulated_merge.approved';
+
+    case SimulatedMergeChangesRequested =
+        'simulated_merge.changes_requested';
+
+    case SimulatedMergeEscalated =
+        'simulated_merge.escalated';
+
+    case SimulatedMergeDeferred =
+        'simulated_merge.deferred';
+
     case WorkflowTransitioned =
         'workflow.transitioned';
 
