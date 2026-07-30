@@ -214,12 +214,8 @@ test(
             ->toBe('unverified')
             ->and($first->data['real_merge_performed'])
             ->toBeFalse()
-            ->and($replay->status)
-            ->toBe(CommandResultStatus::Succeeded)
-            ->and($replay->data['merge_decision_id'])
-            ->toBe($first->data['merge_decision_id'])
-            ->and($replay->data['replayed'])
-            ->toBeTrue();
+            ->and($replay->toArray())
+            ->toBe($first->toArray());
 
         expect(
             RoadmapTask::query()
