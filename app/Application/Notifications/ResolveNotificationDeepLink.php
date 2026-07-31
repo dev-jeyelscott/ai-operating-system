@@ -280,10 +280,13 @@ final readonly class ResolveNotificationDeepLink
 
         $ticket = $query->first();
 
-        if (
-            ! $ticket instanceof RoadmapTask
-            || ! $ticket->roadmap instanceof Roadmap
-        ) {
+        if (! $ticket instanceof RoadmapTask) {
+            return $this->fallbackUrl($organization, $project);
+        }
+
+        $roadmap = $ticket->getRelation('roadmap');
+
+        if (! $roadmap instanceof Roadmap) {
             return $this->fallbackUrl($organization, $project);
         }
 
@@ -292,7 +295,7 @@ final readonly class ResolveNotificationDeepLink
             [
                 'organization' => $organization,
                 'project' => $project,
-                'roadmap' => $ticket->roadmap,
+                'roadmap' => $roadmap,
                 'task' => $ticket,
             ],
             false,

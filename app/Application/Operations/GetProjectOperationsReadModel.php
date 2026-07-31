@@ -86,7 +86,7 @@ final readonly class GetProjectOperationsReadModel
         );
 
         $latestAttempts = $this->latestAttempts(
-            $executions->modelKeys(),
+            array_values($executions->modelKeys()),
         );
 
         $activeLeases = TicketExecutionLease::query()
