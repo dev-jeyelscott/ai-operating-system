@@ -328,3 +328,5 @@ Route::get('/ready', ReadinessController::class)
     ->name('ready');
 
 require __DIR__.'/settings.php';
+
+require __DIR__.'/operations.php';

@@ -2,37 +2,31 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\Operations\ProjectOfficeProjectionController;
-use App\Http\Controllers\Operations\ProjectOperationsController;
+use App\Http\Controllers\Approvals\ProjectApprovalInboxController;
+use App\Http\Controllers\Operations\ProjectOperationsDashboardController;
 use Illuminate\Support\Facades\Route;
 
 /*
- * Operational read routes are isolated from mutation routes so dashboard and
- * office clients can depend on stable, tenant-authorized query contracts.
+ * Keep project operations pages inside the authenticated, tenant-scoped route
+ * boundary. Scoped bindings prevent a project from another organization from
+ * being resolved under the current organization URL.
  */
-Route::middleware([
-    'web',
-    'auth',
-    'auth.session',
-    'verified',
-])
-    ->prefix(
-        'organizations/{organization}/projects/{project}',
-    )
+Route::middleware(['auth', 'auth.session', 'verified'])
+    ->prefix('/organizations/{organization}/projects/{project}')
     ->name('organizations.projects.')
     ->scopeBindings()
     ->group(function (): void {
         Route::get(
             '/operations',
-            ProjectOperationsController::class,
+            ProjectOperationsDashboardController::class,
         )
             ->can('view', 'project')
-            ->name('operations.show');
+            ->name('operations.index');
 
         Route::get(
-            '/operations/office-projection',
-            ProjectOfficeProjectionController::class,
+            '/approvals',
+            ProjectApprovalInboxController::class,
         )
             ->can('view', 'project')
-            ->name('operations.office-projection.show');
+            ->name('approvals.index');
     });

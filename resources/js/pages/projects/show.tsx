@@ -1,9 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import {
+    Activity,
     Archive,
     ArrowLeft,
     ClipboardCheck,
     FileText,
+    Inbox,
     ListTodo,
     Map,
     Pencil,
@@ -12,7 +14,9 @@ import {
     Settings2,
     SlidersHorizontal,
 } from 'lucide-react';
+import ProjectApprovalInboxController from '@/actions/App/Http/Controllers/Approvals/ProjectApprovalInboxController';
 import DevelopmentQueueController from '@/actions/App/Http/Controllers/Development/DevelopmentQueueController';
+import ProjectOperationsDashboardController from '@/actions/App/Http/Controllers/Operations/ProjectOperationsDashboardController';
 import { index as roadmapIndex } from '@/actions/App/Http/Controllers/Planning/RoadmapController';
 import QualityAssuranceReportController from '@/actions/App/Http/Controllers/QualityAssurance/QualityAssuranceReportController';
 import { Button } from '@/components/ui/button';
@@ -93,6 +97,30 @@ export default function ShowProject({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        <Button asChild>
+                            <Link
+                                href={ProjectOperationsDashboardController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <Activity aria-hidden="true" />
+                                Operational dashboard
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link
+                                href={ProjectApprovalInboxController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <Inbox aria-hidden="true" />
+                                Approval inbox
+                            </Link>
+                        </Button>
+
                         <Button asChild variant="outline">
                             <Link
                                 href={DevelopmentQueueController({
@@ -149,6 +177,7 @@ export default function ShowProject({
                                 Integrations
                             </Link>
                         </Button>
+
                         {permissions.update && !isArchived && (
                             <Button asChild>
                                 <Link href={setupUrl}>
