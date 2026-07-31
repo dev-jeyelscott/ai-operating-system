@@ -6,16 +6,8 @@ import {
     LoaderCircle,
     ShieldAlert,
 } from 'lucide-react';
-import {
-    Component,
-    lazy,
-    Suspense,
-    useState,
-} from 'react';
-import type {
-    ErrorInfo,
-    ReactNode,
-} from 'react';
+import { Component, lazy, Suspense, useState } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,7 +18,8 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import type { OfficeProjection } from '@/features/office/types';
+import { OfficeNavigation } from '@/features/office/components/office-navigation';
+import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 
 const LazyOfficeCanvas = lazy(() => import('./office-canvas'));
 
@@ -36,11 +29,12 @@ type Props = {
 };
 
 /**
- * Render the DOM-first office shell and load Three.js only after an explicit
- * user action.
+ * Render the DOM-first office shell and coordinate presentation-only room
+ * selection between the accessible navigator and the lazy 3D scene.
  */
 export function OfficeShell({ projection, operationsUrl }: Props) {
     const [canvasRequested, setCanvasRequested] = useState(false);
+    const [selectedRoom, setSelectedRoom] = useState<OfficeRoomKey>('lobby');
 
     return (
         <div className="space-y-6">
@@ -49,9 +43,9 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                     <ShieldAlert aria-hidden="true" />
                     <AlertTitle>Simulation remains unverified</AlertTitle>
                     <AlertDescription>
-                        This office visualizes simulated workflow activity.
-                        It does not represent verified repository execution,
-                        CI, QA, merge, or deployment evidence.
+                        This office visualizes simulated workflow activity. It
+                        does not represent verified repository execution, CI,
+                        QA, merge, or deployment evidence.
                     </AlertDescription>
                 </Alert>
             )}
@@ -60,10 +54,7 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                 aria-labelledby="office-projection-summary-heading"
                 className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
             >
-                <h2
-                    id="office-projection-summary-heading"
-                    className="sr-only"
-                >
+                <h2 id="office-projection-summary-heading" className="sr-only">
                     Office projection summary
                 </h2>
 
@@ -89,15 +80,20 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                 />
             </section>
 
+            <OfficeNavigation
+                rooms={projection.rooms}
+                selectedRoom={selectedRoom}
+                onSelectRoom={setSelectedRoom}
+            />
+
             <Card>
                 <CardHeader className="gap-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <CardTitle>Interactive office</CardTitle>
                             <CardDescription>
-                                The 3D renderer is isolated from the
-                                operational dashboard and loaded only when
-                                requested.
+                                Select a room through the keyboard-accessible
+                                zone controls or the 3D floor plan.
                             </CardDescription>
                         </div>
 
@@ -123,9 +119,9 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                         3D renderer not loaded
                                     </h3>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Load the office only when needed.
-                                        The accessible dashboard remains
-                                        available independently.
+                                        The room navigator is already usable.
+                                        Load the scene only when the visual
+                                        office is needed.
                                     </p>
                                 </div>
                                 <Button
@@ -144,6 +140,8 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                     >
                                         <LazyOfficeCanvas
                                             projection={projection}
+                                            selectedRoom={selectedRoom}
+                                            onSelectRoom={setSelectedRoom}
                                         />
                                     </div>
                                 </Suspense>
@@ -153,10 +151,14 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
 
                     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                         <p>
-                            Projected{' '}
+                            Selected room:{' '}
+                            {selectedRoom
+                                .replaceAll('_', ' ')
+                                .replace(/\b\w/g, (character) =>
+                                    character.toUpperCase(),
+                                )}
+                            . Projected{' '}
                             {formatDate(projection.metadata.projectedAt)}.
-                            Fingerprint{' '}
-                            {projection.metadata.fingerprint.slice(0, 12)}…
                         </p>
 
                         <Button asChild variant="outline">
@@ -187,18 +189,14 @@ function SummaryCard({
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
-                <CardTitle className="text-sm font-medium">
-                    {label}
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">{label}</CardTitle>
                 <Icon
                     className="size-4 text-muted-foreground"
                     aria-hidden="true"
                 />
             </CardHeader>
             <CardContent>
-                <p className="text-3xl font-semibold tabular-nums">
-                    {value}
-                </p>
+                <p className="text-3xl font-semibold tabular-nums">{value}</p>
             </CardContent>
         </Card>
     );
@@ -206,8 +204,6 @@ function SummaryCard({
 
 /**
  * Preserve the page shell if the lazy 3D module fails to render.
- *
- * AIOS-133 will add complete WebGL capability detection and fallback behavior.
  */
 class OfficeCanvasBoundary extends Component<
     { children: ReactNode },
@@ -218,7 +214,7 @@ class OfficeCanvasBoundary extends Component<
     };
 
     /**
-     * Mark the 3D region as failed while leaving the surrounding page usable.
+     * Mark only the 3D region as failed.
      */
     static getDerivedStateFromError() {
         return {
@@ -227,13 +223,12 @@ class OfficeCanvasBoundary extends Component<
     }
 
     /**
-     * Keep the boundary intentionally quiet because the application error
-     * pipeline owns structured exception reporting.
+     * Leave structured reporting to the application error pipeline.
      */
     componentDidCatch(_error: Error, _info: ErrorInfo) {}
 
     /**
-     * Render either the lazy Canvas or a local non-WebGL fallback.
+     * Render the lazy Canvas or a local fallback.
      */
     render() {
         if (this.state.failed) {
@@ -246,8 +241,8 @@ class OfficeCanvasBoundary extends Component<
                         The 3D office could not be loaded
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                        Continue through the accessible operational dashboard.
-                        No workflow operation depends on the renderer.
+                        Continue through the room navigator or accessible
+                        operational dashboard.
                     </p>
                 </div>
             );
@@ -258,7 +253,7 @@ class OfficeCanvasBoundary extends Component<
 }
 
 /**
- * Render an accessible Suspense fallback while the Three.js chunk downloads.
+ * Render an accessible Suspense fallback.
  */
 function CanvasLoadingState() {
     return (
@@ -266,10 +261,7 @@ function CanvasLoadingState() {
             role="status"
             className="flex min-h-96 flex-col items-center justify-center gap-3"
         >
-            <LoaderCircle
-                className="size-7 animate-spin"
-                aria-hidden="true"
-            />
+            <LoaderCircle className="size-7 animate-spin" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
                 Loading the 3D office renderer…
             </p>
@@ -278,7 +270,7 @@ function CanvasLoadingState() {
 }
 
 /**
- * Format an ISO date without changing the underlying projection value.
+ * Format an ISO date without modifying projection truth.
  */
 function formatDate(value: string) {
     return new Intl.DateTimeFormat(undefined, {

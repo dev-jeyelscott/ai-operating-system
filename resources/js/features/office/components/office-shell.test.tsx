@@ -1,32 +1,18 @@
-import {
-    render,
-    screen,
-} from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import {
-    describe,
-    expect,
-    it,
-    vi,
-} from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { officeProjectionFixture } from '@/tests/fixtures/office-projection';
 
 vi.mock('@inertiajs/react', () => ({
-    Link: ({
-        children,
-        href,
-    }: {
-        children: ReactNode;
-        href: string;
-    }) => <a href={href}>{children}</a>,
+    Link: ({ children, href }: { children: ReactNode; href: string }) => (
+        <a href={href}>{children}</a>
+    ),
 }));
 
 vi.mock('./office-canvas', () => ({
     default: () => (
-        <div data-testid="mock-office-canvas">
-            Mock office Canvas
-        </div>
+        <div data-testid="mock-office-canvas">Mock office Canvas</div>
     ),
 }));
 

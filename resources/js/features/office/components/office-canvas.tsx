@@ -1,26 +1,36 @@
-import { Grid } from '@react-three/drei';
+import { CameraControls, Grid } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import type { OfficeProjection } from '@/features/office/types';
+import { useEffect, useMemo, useRef } from 'react';
+import type { ElementRef } from 'react';
+import { OfficeZone } from '@/features/office/components/office-zone';
+import {
+    OFFICE_ZONE_ORDER,
+    officeZone,
+} from '@/features/office/office-zone-layout';
+import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 
 type Props = {
     projection: OfficeProjection;
+    selectedRoom: OfficeRoomKey;
+    onSelectRoom: (room: OfficeRoomKey) => void;
 };
 
 /**
- * Render the minimal React Three Fiber office shell.
- *
- * Rooms, navigation, agents, and animation are intentionally deferred to
- * AIOS-126 through AIOS-128.
+ * Render the navigable low-poly office.
  */
-export default function OfficeCanvas({ projection }: Props) {
+export default function OfficeCanvas({
+    projection,
+    selectedRoom,
+    onSelectRoom,
+}: Props) {
     return (
         <Canvas
             aria-label={`Interactive office for ${projection.project.name}`}
             camera={{
-                position: [12, 10, 14],
+                position: [0, 8, 15],
                 fov: 45,
                 near: 0.1,
-                far: 100,
+                far: 120,
             }}
             dpr={[1, 1.5]}
             frameloop="demand"
@@ -32,36 +42,37 @@ export default function OfficeCanvas({ projection }: Props) {
             <color attach="background" args={['#09090b']} />
 
             <ambientLight intensity={0.8} />
-            <directionalLight position={[8, 12, 6]} intensity={1.4} />
+            <directionalLight position={[10, 14, 8]} intensity={1.5} />
 
-            <OfficeShellScene />
+            <OfficeScene
+                projection={projection}
+                selectedRoom={selectedRoom}
+                onSelectRoom={onSelectRoom}
+            />
+
+            <OfficeCamera selectedRoom={selectedRoom} />
         </Canvas>
     );
 }
 
 /**
- * Render only lightweight primitives so the first 3D ticket introduces no
- * external asset, texture, font, or network dependency.
+ * Render every room emitted by the authoritative projection.
  */
-function OfficeShellScene() {
+function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
+    const roomsByKey = useMemo(
+        () => new Map(projection.rooms.map((room) => [room.key, room])),
+        [projection.rooms],
+    );
+
     return (
         <group>
-            <mesh position={[0, -0.2, 0]}>
-                <boxGeometry args={[24, 0.35, 18]} />
+            <mesh position={[0, -0.25, 0]}>
+                <boxGeometry args={[26, 0.35, 20]} />
                 <meshStandardMaterial color="#18181b" />
             </mesh>
 
-            <mesh position={[0, 0.45, 0]}>
-                <boxGeometry args={[2.4, 0.9, 2.4]} />
-                <meshStandardMaterial
-                    color="#3f3f46"
-                    emissive="#18181b"
-                    emissiveIntensity={0.4}
-                />
-            </mesh>
-
             <Grid
-                args={[24, 18]}
+                args={[26, 20]}
                 position={[0, 0.01, 0]}
                 cellColor="#3f3f46"
                 cellSize={1}
@@ -69,9 +80,57 @@ function OfficeShellScene() {
                 sectionColor="#71717a"
                 sectionSize={4}
                 sectionThickness={1}
-                fadeDistance={28}
+                fadeDistance={32}
                 fadeStrength={1}
             />
+
+            {OFFICE_ZONE_ORDER.map((roomKey) => {
+                const room = roomsByKey.get(roomKey);
+
+                if (!room) {
+                    return null;
+                }
+
+                return (
+                    <OfficeZone
+                        key={roomKey}
+                        room={room}
+                        definition={officeZone(roomKey)}
+                        selected={selectedRoom === roomKey}
+                        onSelect={() => onSelectRoom(roomKey)}
+                    />
+                );
+            })}
         </group>
+    );
+}
+
+/**
+ * Move the camera immediately to the selected room.
+ *
+ * Smooth motion and reduced-motion handling are introduced by AIOS-128.
+ */
+function OfficeCamera({ selectedRoom }: { selectedRoom: OfficeRoomKey }) {
+    const controls = useRef<ElementRef<typeof CameraControls>>(null);
+
+    useEffect(() => {
+        const definition = officeZone(selectedRoom);
+
+        void controls.current?.setLookAt(
+            ...definition.cameraPosition,
+            ...definition.cameraTarget,
+            false,
+        );
+    }, [selectedRoom]);
+
+    return (
+        <CameraControls
+            ref={controls}
+            makeDefault
+            minDistance={4}
+            maxDistance={24}
+            maxPolarAngle={Math.PI / 2.08}
+            dollyToCursor={false}
+        />
     );
 }

@@ -1,14 +1,5 @@
-import {
-    Head,
-    Link,
-    router,
-    usePoll,
-} from '@inertiajs/react';
-import {
-    ArrowLeft,
-    LayoutDashboard,
-    RefreshCw,
-} from 'lucide-react';
+import { Head, Link, router, usePoll } from '@inertiajs/react';
+import { ArrowLeft, LayoutDashboard, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -92,10 +83,9 @@ export default function ProjectOffice({
                         </div>
 
                         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                            Projection-driven visualization for{' '}
-                            {project.name} in {organization.name}. The
-                            accessible dashboard remains the authoritative
-                            control surface.
+                            Projection-driven visualization for {project.name}{' '}
+                            in {organization.name}. The accessible dashboard
+                            remains the authoritative control surface.
                         </p>
                     </div>
 
@@ -115,9 +105,7 @@ export default function ProjectOffice({
                         >
                             <RefreshCw
                                 aria-hidden="true"
-                                className={
-                                    refreshing ? 'animate-spin' : ''
-                                }
+                                className={refreshing ? 'animate-spin' : ''}
                             />
                             {refreshing ? 'Refreshing…' : 'Refresh'}
                         </Button>

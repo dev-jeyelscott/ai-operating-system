@@ -1,21 +1,11 @@
 import { Head, Link, router, usePoll } from '@inertiajs/react';
-import {
-    ArrowLeft,
-    Clock3,
-    RotateCcw,
-    ShieldAlert,
-} from 'lucide-react';
-import type { FormEvent} from 'react';
+import { ArrowLeft, Clock3, RotateCcw, ShieldAlert } from 'lucide-react';
+import type { FormEvent } from 'react';
 import { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 type RecoveryExecution = {
     id: string;
@@ -270,7 +260,9 @@ export default function ProjectRecoveryCenter({
                                                             <span className="font-medium">
                                                                 Error:
                                                             </span>{' '}
-                                                            {execution.errorCode}
+                                                            {
+                                                                execution.errorCode
+                                                            }
                                                         </p>
                                                     )}
 
@@ -326,8 +318,7 @@ export default function ProjectRecoveryCenter({
                                     {recovery.deadLetters.map((deadLetter) => {
                                         const key = `${deadLetter.source}:${deadLetter.id}`;
                                         const reason = reasons[key] ?? '';
-                                        const isReplaying =
-                                            replaying === key;
+                                        const isReplaying = replaying === key;
 
                                         return (
                                             <li
@@ -341,9 +332,7 @@ export default function ProjectRecoveryCenter({
                                                         )}
                                                     </Badge>
                                                     <Badge variant="outline">
-                                                        {
-                                                            deadLetter.eventName
-                                                        }
+                                                        {deadLetter.eventName}
                                                     </Badge>
                                                 </div>
 
@@ -353,9 +342,7 @@ export default function ProjectRecoveryCenter({
                                                             Event
                                                         </dt>
                                                         <dd className="break-all text-muted-foreground">
-                                                            {
-                                                                deadLetter.eventId
-                                                            }
+                                                            {deadLetter.eventId}
                                                         </dd>
                                                     </div>
                                                     <div>
@@ -415,10 +402,9 @@ export default function ProjectRecoveryCenter({
                                                                         current,
                                                                     ) => ({
                                                                         ...current,
-                                                                        [key]:
-                                                                            event
-                                                                                .target
-                                                                                .value,
+                                                                        [key]: event
+                                                                            .target
+                                                                            .value,
                                                                     }),
                                                                 )
                                                             }
@@ -467,8 +453,7 @@ export default function ProjectRecoveryCenter({
                 </section>
 
                 <p className="text-xs text-muted-foreground">
-                    Fingerprint{' '}
-                    {recovery.metadata.fingerprint.slice(0, 12)}…
+                    Fingerprint {recovery.metadata.fingerprint.slice(0, 12)}…
                 </p>
             </main>
         </>
@@ -478,24 +463,14 @@ export default function ProjectRecoveryCenter({
 /**
  * Render one recovery count.
  */
-function SummaryCard({
-    label,
-    value,
-}: {
-    label: string;
-    value: number;
-}) {
+function SummaryCard({ label, value }: { label: string; value: number }) {
     return (
         <Card>
             <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">
-                    {label}
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">{label}</CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="text-3xl font-semibold tabular-nums">
-                    {value}
-                </p>
+                <p className="text-3xl font-semibold tabular-nums">{value}</p>
             </CardContent>
         </Card>
     );
