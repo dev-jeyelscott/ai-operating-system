@@ -36,9 +36,7 @@ export function NotificationMenu() {
      * The server marks the notification read and returns a 303 redirect to the
      * exact authorized context. The client never resolves destination metadata.
      */
-    const openNotification = (
-        notification: InAppNotification,
-    ): void => {
+    const openNotification = (notification: InAppNotification): void => {
         router.post(
             notification.actionUrl,
             {},

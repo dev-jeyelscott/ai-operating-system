@@ -69,9 +69,7 @@ describe('NotificationMenu', () => {
             }),
         );
 
-        await user.click(
-            screen.getByText('Project planning started'),
-        );
+        await user.click(screen.getByText('Project planning started'));
 
         expect(inertia.post).toHaveBeenCalledWith(
             '/organizations/example-organization/notifications/01K00000000000000000000000/open',
