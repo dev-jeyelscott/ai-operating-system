@@ -10,6 +10,7 @@ use App\Providers\IdempotencyServiceProvider;
 use App\Providers\IdentityServiceProvider;
 use App\Providers\IntegrationsServiceProvider;
 use App\Providers\NotificationsServiceProvider;
+use App\Providers\OperationsServiceProvider;
 use App\Providers\ProjectsServiceProvider;
 use App\Providers\RateLimitServiceProvider;
 
@@ -24,6 +25,7 @@ return [
     IdentityServiceProvider::class,
     IntegrationsServiceProvider::class,
     NotificationsServiceProvider::class,
+    OperationsServiceProvider::class,
     ProjectsServiceProvider::class,
     RateLimitServiceProvider::class,
 ];
