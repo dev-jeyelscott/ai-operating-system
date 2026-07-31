@@ -51,6 +51,27 @@ final class ProjectOperationsDashboardController extends Controller
                     'project' => $project,
                 ],
             ),
+            'recoveryCenterUrl' => route(
+                'organizations.projects.operations.recovery.index',
+                [
+                    'organization' => $organization,
+                    'project' => $project,
+                ],
+            ),
+            'usageUrl' => route(
+                'organizations.projects.operations.usage.index',
+                [
+                    'organization' => $organization,
+                    'project' => $project,
+                ],
+            ),
+            'officeProjectionUrl' => route(
+                'organizations.projects.operations.office-projection.show',
+                [
+                    'organization' => $organization,
+                    'project' => $project,
+                ],
+            ),
             'operations' => $operations->handle(
                 organizationId: $organization->id,
                 projectId: $project->id,

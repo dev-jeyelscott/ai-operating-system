@@ -158,6 +158,9 @@ type Props = {
     };
     projectUrl: string;
     approvalInboxUrl: string;
+    recoveryCenterUrl: string;
+    usageUrl: string;
+    officeProjectionUrl: string;
     operations: OperationsData;
 };
 
@@ -169,6 +172,8 @@ export default function ProjectOperationsDashboard({
     project,
     projectUrl,
     approvalInboxUrl,
+    recoveryCenterUrl,
+    usageUrl,
     operations,
 }: Props) {
     const [refreshing, setRefreshing] = useState(false);
@@ -228,6 +233,21 @@ export default function ProjectOperationsDashboard({
                                 Approval inbox
                             </Link>
                         </Button>
+
+                        <Button asChild variant="outline">
+                            <Link href={recoveryCenterUrl}>
+                                <RotateCcw aria-hidden="true" />
+                                Recovery center
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link href={usageUrl}>
+                                <Activity aria-hidden="true" />
+                                Usage & costs
+                            </Link>
+                        </Button>
+
                         <Button
                             type="button"
                             variant="outline"

@@ -55,6 +55,53 @@ final readonly class DeadLetterManager
         ?DeadLetterSource $source = null,
         int $limit = 50,
     ): array {
+        return $this->inspectScoped(
+            source: $source,
+            limit: $limit,
+            organizationId: null,
+            projectId: null,
+        );
+    }
+
+    /**
+     * Return dead letters owned by one explicit organization and project.
+     *
+     * This method is the only dead-letter query that project-facing HTTP
+     * interfaces should use.
+     *
+     * @return list<DeadLetterRecord>
+     */
+    public function inspectForProject(
+        int $organizationId,
+        int $projectId,
+        ?DeadLetterSource $source = null,
+        int $limit = 50,
+    ): array {
+        if ($organizationId < 1 || $projectId < 1) {
+            throw new InvalidArgumentException(
+                'Organization and project identifiers must be positive integers.',
+            );
+        }
+
+        return $this->inspectScoped(
+            source: $source,
+            limit: $limit,
+            organizationId: $organizationId,
+            projectId: $projectId,
+        );
+    }
+
+    /**
+     * Return a bounded and optionally tenant-scoped dead-letter list.
+     *
+     * @return list<DeadLetterRecord>
+     */
+    private function inspectScoped(
+        ?DeadLetterSource $source,
+        int $limit,
+        ?int $organizationId,
+        ?int $projectId,
+    ): array {
         if ($limit < 1 || $limit > self::MAX_LIST_LIMIT) {
             throw new InvalidArgumentException(
                 'The dead-letter list limit must be between 1 and 100.',
@@ -70,7 +117,11 @@ final readonly class DeadLetterManager
         ) {
             $records = array_merge(
                 $records,
-                $this->listOutboxDeadLetters($limit),
+                $this->listOutboxDeadLetters(
+                    limit: $limit,
+                    organizationId: $organizationId,
+                    projectId: $projectId,
+                ),
             );
         }
 
@@ -80,7 +131,11 @@ final readonly class DeadLetterManager
         ) {
             $records = array_merge(
                 $records,
-                $this->listQueueDeadLetters($limit),
+                $this->listQueueDeadLetters(
+                    limit: $limit,
+                    organizationId: $organizationId,
+                    projectId: $projectId,
+                ),
             );
         }
 
@@ -144,14 +199,27 @@ final readonly class DeadLetterManager
      *
      * @return list<DeadLetterRecord>
      */
-    private function listOutboxDeadLetters(int $limit): array
-    {
+    private function listOutboxDeadLetters(
+        int $limit,
+        ?int $organizationId = null,
+        ?int $projectId = null,
+    ): array {
         /** @var list<DeadLetterRecord> $records */
         $records = [];
 
-        $messages = OutboxMessage::query()
+        $query = OutboxMessage::query()
             ->whereNull('published_at')
-            ->whereNotNull('dead_lettered_at')
+            ->whereNotNull('dead_lettered_at');
+
+        if ($organizationId !== null) {
+            $query->where('organization_id', $organizationId);
+        }
+
+        if ($projectId !== null) {
+            $query->where('project_id', $projectId);
+        }
+
+        $messages = $query
             ->orderByDesc('dead_lettered_at')
             ->limit($limit)
             ->get();
@@ -181,9 +249,14 @@ final readonly class DeadLetterManager
      *
      * @return list<DeadLetterRecord>
      */
-    private function listQueueDeadLetters(int $limit): array
-    {
+    private function listQueueDeadLetters(
+        int $limit,
+        ?int $organizationId = null,
+        ?int $projectId = null,
+    ): array {
+        /** @var list<DeadLetterRecord> $records */
         $records = [];
+
         $scanLimit = min(
             self::MAX_QUEUE_SCAN,
             max($limit, $limit * 5),
@@ -217,6 +290,27 @@ final readonly class DeadLetterManager
             $message = OutboxMessage::query()
                 ->where('event_id', $job->eventId)
                 ->first();
+
+            if (
+                ($organizationId !== null || $projectId !== null)
+                && $message === null
+            ) {
+                continue;
+            }
+
+            if (
+                $organizationId !== null
+                && $message?->organization_id !== $organizationId
+            ) {
+                continue;
+            }
+
+            if (
+                $projectId !== null
+                && $message?->project_id !== $projectId
+            ) {
+                continue;
+            }
 
             $failedAt = CarbonImmutable::parse(
                 (string) ($attributes['failed_at'] ?? 'now'),
@@ -407,8 +501,8 @@ final readonly class DeadLetterManager
         if (! $this->failedJobs->forget($failedJobId)) {
             throw new RuntimeException(
                 'The event was requeued, but the failed-job record could not '
-                    .'be removed. Consumer deduplication makes a later duplicate '
-                    .'replay safe, but operator review is required.',
+                    . 'be removed. Consumer deduplication makes a later duplicate '
+                    . 'replay safe, but operator review is required.',
             );
         }
 
@@ -499,7 +593,7 @@ final readonly class DeadLetterManager
         }
 
         set_error_handler(
-            static fn (
+            static fn(
                 int $_severity,
                 string $_message,
             ): bool => true,
