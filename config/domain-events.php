@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Application\Development\Consumers\DispatchDevelopmentExecution;
 use App\Application\Development\Consumers\RedispatchDevelopmentRetry;
+use App\Application\Operations\Consumers\RefreshOfficeProjection;
 use App\Application\Planning\Consumers\DispatchPlanningExecution;
 use App\Application\QualityAssurance\Consumers\DispatchQualityAssuranceExecution;
 use App\Application\QualityAssurance\Consumers\RedispatchQualityAssuranceRetry;
@@ -79,5 +80,6 @@ return [
         DispatchQualityAssuranceExecution::class,
         RedispatchQualityAssuranceRetry::class,
         ReleaseLeaseForTerminalExecution::class,
+        RefreshOfficeProjection::class,
     ],
 ];

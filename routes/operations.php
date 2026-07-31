@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Operations\ProjectOfficeProjectionController;
 use App\Http\Controllers\Operations\ProjectOperationsController;
 use Illuminate\Support\Facades\Route;
 
 /*
- * Operational read routes are isolated from mutation routes so the future
- * dashboard and office projection can depend on a stable query contract.
+ * Operational read routes are isolated from mutation routes so dashboard and
+ * office clients can depend on stable, tenant-authorized query contracts.
  */
 Route::middleware([
     'web',
@@ -27,4 +28,11 @@ Route::middleware([
         )
             ->can('view', 'project')
             ->name('operations.show');
+
+        Route::get(
+            '/operations/office-projection',
+            ProjectOfficeProjectionController::class,
+        )
+            ->can('view', 'project')
+            ->name('operations.office-projection.show');
     });
