@@ -15,14 +15,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Assigns one notification event to one authenticated organization member.
+ * Assigns one persistent notification event to one organization member.
  *
- * Delivery state and read state are intentionally deferred to AIOS-115.
+ * Delivery occurs when the assignment becomes durable. Read state belongs to
+ * this recipient row because each user reads a shared event independently.
  *
  * @property string $id
  * @property string $notification_event_id
  * @property int $organization_id
  * @property int $recipient_user_id
+ * @property CarbonImmutable $delivered_at
+ * @property CarbonImmutable|null $read_at
  * @property CarbonImmutable $created_at
  * @property-read NotificationEvent $notificationEvent
  * @property-read Organization $organization
@@ -33,6 +36,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'notification_event_id',
     'organization_id',
     'recipient_user_id',
+    'delivered_at',
+    'read_at',
 ])]
 final class NotificationRecipient extends Model
 {
@@ -42,12 +47,13 @@ final class NotificationRecipient extends Model
     use HasUlids;
 
     /**
-     * Recipient assignments store created_at but have no updated_at yet.
+     * Recipient assignments store created_at but intentionally have no
+     * updated_at. Read state has its own explicit timestamp.
      */
     public $timestamps = false;
 
     /**
-     * Return the notification event assigned to this recipient.
+     * Return the sanitized notification event assigned to this recipient.
      *
      * @return BelongsTo<NotificationEvent, $this>
      */
@@ -57,7 +63,7 @@ final class NotificationRecipient extends Model
     }
 
     /**
-     * Return the organization that scopes this recipient assignment.
+     * Return the organization that owns this recipient assignment.
      *
      * @return BelongsTo<Organization, $this>
      */
@@ -67,7 +73,7 @@ final class NotificationRecipient extends Model
     }
 
     /**
-     * Return the authenticated user receiving the notification.
+     * Return the authenticated user receiving this notification.
      *
      * @return BelongsTo<User, $this>
      */
@@ -80,7 +86,34 @@ final class NotificationRecipient extends Model
     }
 
     /**
-     * Scope recipient assignments to one explicit organization.
+     * Mark the notification as read exactly once.
+     *
+     * Returning false for an already-read row makes replay idempotent and
+     * preserves the original read timestamp.
+     */
+    public function markAsRead(): bool
+    {
+        if ($this->read_at !== null) {
+            return false;
+        }
+
+        $this->forceFill([
+            'read_at' => CarbonImmutable::now(),
+        ]);
+
+        return $this->save();
+    }
+
+    /**
+     * Determine whether this recipient has read the notification.
+     */
+    public function isRead(): bool
+    {
+        return $this->read_at !== null;
+    }
+
+    /**
+     * Scope assignments to one explicit organization.
      *
      * @param  Builder<NotificationRecipient>  $query
      * @return Builder<NotificationRecipient>
@@ -96,7 +129,7 @@ final class NotificationRecipient extends Model
     }
 
     /**
-     * Scope recipient assignments to one authenticated user.
+     * Scope assignments to one authenticated recipient.
      *
      * @param  Builder<NotificationRecipient>  $query
      * @return Builder<NotificationRecipient>
@@ -112,7 +145,33 @@ final class NotificationRecipient extends Model
     }
 
     /**
-     * Cast persisted identifiers and timestamps safely.
+     * Scope assignments to unread notifications.
+     *
+     * @param  Builder<NotificationRecipient>  $query
+     * @return Builder<NotificationRecipient>
+     */
+    public function scopeUnread(Builder $query): Builder
+    {
+        return $query->whereNull(
+            $query->getModel()->qualifyColumn('read_at'),
+        );
+    }
+
+    /**
+     * Scope assignments to read notifications.
+     *
+     * @param  Builder<NotificationRecipient>  $query
+     * @return Builder<NotificationRecipient>
+     */
+    public function scopeRead(Builder $query): Builder
+    {
+        return $query->whereNotNull(
+            $query->getModel()->qualifyColumn('read_at'),
+        );
+    }
+
+    /**
+     * Cast persisted identifiers and timestamps into stable PHP types.
      *
      * @return array<string, string>
      */
@@ -121,6 +180,8 @@ final class NotificationRecipient extends Model
         return [
             'organization_id' => 'integer',
             'recipient_user_id' => 'integer',
+            'delivered_at' => 'immutable_datetime',
+            'read_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
         ];
     }

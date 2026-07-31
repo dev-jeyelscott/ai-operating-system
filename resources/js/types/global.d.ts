@@ -1,4 +1,5 @@
 import type { Auth } from '@/types/auth';
+import type { NotificationInbox } from '@/types/notification';
 import type { OrganizationContext } from '@/types/organization';
 
 declare module 'react' {
@@ -14,6 +15,7 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             organizationContext: OrganizationContext;
+            notifications: NotificationInbox;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };
