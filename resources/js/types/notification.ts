@@ -8,7 +8,13 @@ export type InAppNotification = {
     projectId: number | null;
     title: string;
     message: string;
-    actionUrl: string | null;
+
+    /**
+     * Server-owned POST endpoint that marks the notification read and safely
+     * redirects to its resolved application context.
+     */
+    actionUrl: string;
+
     deliveredAt: string;
     readAt: string | null;
     occurredAt: string;

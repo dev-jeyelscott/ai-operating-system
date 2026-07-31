@@ -9,14 +9,13 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { read as readNotification } from '@/routes/organizations/notifications';
 import type { InAppNotification } from '@/types';
 
 /**
  * Displays the current user's persistent, recipient-scoped notification inbox.
  */
 export function NotificationMenu() {
-    const { notifications, organizationContext } = usePage().props;
+    const { notifications } = usePage().props;
 
     /*
      * Poll only the notification prop. Inertia reloads preserve component
@@ -26,30 +25,26 @@ export function NotificationMenu() {
         only: ['notifications'],
     });
 
-    const currentOrganization = organizationContext.current;
     const unreadLabel =
         notifications.unreadCount > 99
             ? '99+'
             : String(notifications.unreadCount);
 
     /**
-     * Persist the first read timestamp for one unread notification.
+     * Submit the server-owned open command.
+     *
+     * The server marks the notification read and returns a 303 redirect to the
+     * exact authorized context. The client never resolves destination metadata.
      */
-    const markAsRead = (notification: InAppNotification): void => {
-        if (currentOrganization === null || notification.readAt !== null) {
-            return;
-        }
-
-        router.patch(
-            readNotification.url({
-                organization: currentOrganization,
-                notificationRecipient: notification.id,
-            }),
+    const openNotification = (
+        notification: InAppNotification,
+    ): void => {
+        router.post(
+            notification.actionUrl,
             {},
             {
-                only: ['notifications'],
-                preserveScroll: true,
-                preserveState: true,
+                preserveScroll: false,
+                preserveState: false,
             },
         );
     };
@@ -115,7 +110,7 @@ export function NotificationMenu() {
                                 key={notification.id}
                                 className="items-start gap-3 px-3 py-3"
                                 onSelect={() => {
-                                    markAsRead(notification);
+                                    openNotification(notification);
                                 }}
                             >
                                 <span

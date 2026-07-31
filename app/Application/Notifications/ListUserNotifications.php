@@ -6,6 +6,7 @@ namespace App\Application\Notifications;
 
 use App\Models\NotificationEvent;
 use App\Models\NotificationRecipient;
+use App\Models\Organization;
 use InvalidArgumentException;
 
 /**
@@ -25,7 +26,7 @@ final readonly class ListUserNotifications
      *         projectId: int|null,
      *         title: string,
      *         message: string,
-     *         actionUrl: string|null,
+     *         actionUrl: string,
      *         deliveredAt: string,
      *         readAt: string|null,
      *         occurredAt: string
@@ -53,6 +54,19 @@ final readonly class ListUserNotifications
             );
         }
 
+        $organizationRouteKey = Organization::query()
+            ->whereKey($organizationId)
+            ->value('slug');
+
+        if (
+            ! is_string($organizationRouteKey)
+            || $organizationRouteKey === ''
+        ) {
+            throw new InvalidArgumentException(
+                'The notification organization could not be resolved.',
+            );
+        }
+
         $recipientQuery = NotificationRecipient::query()
             ->forOrganization($organizationId)
             ->forRecipient($recipientUserId);
@@ -70,7 +84,6 @@ final readonly class ListUserNotifications
                         'event_name',
                         'title',
                         'message',
-                        'action_url',
                         'occurred_at',
                     ]);
                 },
@@ -81,9 +94,7 @@ final readonly class ListUserNotifications
             ->get();
 
         /*
-         * Appending with [] guarantees sequential zero-based integer keys.
-         * PHPStan can therefore prove that this value is a list rather than
-         * only an array with integer keys.
+         * Appending with [] guarantees sequential list keys for PHPStan.
          *
          * @var list<array{
          *     id: string,
@@ -92,7 +103,7 @@ final readonly class ListUserNotifications
          *     projectId: int|null,
          *     title: string,
          *     message: string,
-         *     actionUrl: string|null,
+         *     actionUrl: string,
          *     deliveredAt: string,
          *     readAt: string|null,
          *     occurredAt: string
@@ -113,10 +124,17 @@ final readonly class ListUserNotifications
                 'message' => $event->message,
 
                 /*
-                 * AIOS-115 exposes the persisted URL but does not implement
-                 * actionable deep-link behavior. AIOS-116 owns that workflow.
+                 * The client receives only the server-owned open command URL.
+                 * It never receives or follows raw destination metadata.
                  */
-                'actionUrl' => $event->action_url,
+                'actionUrl' => route(
+                    'organizations.notifications.open',
+                    [
+                        'organization' => $organizationRouteKey,
+                        'notificationRecipient' => $recipient->id,
+                    ],
+                    false,
+                ),
 
                 'deliveredAt' => $recipient
                     ->delivered_at

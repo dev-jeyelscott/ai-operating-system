@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationMenu } from '@/components/notification-menu';
 
 const inertia = vi.hoisted(() => ({
-    patch: vi.fn(),
+    post: vi.fn(),
     usePoll: vi.fn(),
     pageProps: {
         notifications: {
@@ -17,7 +17,8 @@ const inertia = vi.hoisted(() => ({
                     projectId: 10,
                     title: 'Project planning started',
                     message: 'Planning has been queued for Example Project.',
-                    actionUrl: null,
+                    actionUrl:
+                        '/organizations/example-organization/notifications/01K00000000000000000000000/open',
                     deliveredAt: '2026-07-31T01:00:00+00:00',
                     readAt: null,
                     occurredAt: '2026-07-31T01:00:00+00:00',
@@ -37,7 +38,7 @@ const inertia = vi.hoisted(() => ({
 
 vi.mock('@inertiajs/react', () => ({
     router: {
-        patch: inertia.patch,
+        post: inertia.post,
     },
     usePage: () => ({
         props: inertia.pageProps,
@@ -45,26 +46,13 @@ vi.mock('@inertiajs/react', () => ({
     usePoll: inertia.usePoll,
 }));
 
-vi.mock('@/routes/organizations/notifications', () => ({
-    read: {
-        url: ({
-            organization,
-            notificationRecipient,
-        }: {
-            organization: { slug: string };
-            notificationRecipient: string;
-        }) =>
-            `/organizations/${organization.slug}/notifications/${notificationRecipient}/read`,
-    },
-}));
-
 describe('NotificationMenu', () => {
     beforeEach(() => {
-        inertia.patch.mockReset();
+        inertia.post.mockReset();
         inertia.usePoll.mockClear();
     });
 
-    it('shows unread state and submits a recipient-scoped read request', async () => {
+    it('submits the server-owned notification open command', async () => {
         const user = userEvent.setup();
 
         render(<NotificationMenu />);
@@ -81,16 +69,17 @@ describe('NotificationMenu', () => {
             }),
         );
 
-        await user.click(screen.getByText('Project planning started'));
+        await user.click(
+            screen.getByText('Project planning started'),
+        );
 
-        expect(inertia.patch).toHaveBeenCalledWith(
-            '/organizations/example-organization/notifications/01K00000000000000000000000/read',
+        expect(inertia.post).toHaveBeenCalledWith(
+            '/organizations/example-organization/notifications/01K00000000000000000000000/open',
             {},
-            expect.objectContaining({
-                only: ['notifications'],
-                preserveScroll: true,
-                preserveState: true,
-            }),
+            {
+                preserveScroll: false,
+                preserveState: false,
+            },
         );
     });
 
