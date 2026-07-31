@@ -101,8 +101,6 @@ export default function ProjectApprovalInbox({
 }: Props) {
     usePoll(15_000, {
         only: ['inbox'],
-        preserveScroll: true,
-        preserveState: true,
     });
 
     return (
