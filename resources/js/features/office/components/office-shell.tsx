@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import {
+    Accessibility,
     Box,
     Cuboid,
     LayoutDashboard,
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/card';
 import { AgentStatusPanel } from '@/features/office/components/agent-status-panel';
 import { OfficeNavigation } from '@/features/office/components/office-navigation';
+import { usePrefersReducedMotion } from '@/features/office/hooks/use-prefers-reduced-motion';
 import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 
 const LazyOfficeCanvas = lazy(() => import('./office-canvas'));
@@ -36,6 +38,7 @@ type Props = {
 export function OfficeShell({ projection, operationsUrl }: Props) {
     const [canvasRequested, setCanvasRequested] = useState(false);
     const [selectedRoom, setSelectedRoom] = useState<OfficeRoomKey>('lobby');
+    const reducedMotion = usePrefersReducedMotion();
 
     return (
         <div className="space-y-6">
@@ -47,6 +50,19 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                         This office visualizes simulated workflow activity. It
                         does not represent verified repository execution, CI,
                         QA, merge, or deployment evidence.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {reducedMotion && (
+                <Alert>
+                    <Accessibility aria-hidden="true" />
+                    <AlertTitle>Reduced motion enabled</AlertTitle>
+                    <AlertDescription>
+                        Camera and agent transitions update immediately. The
+                        office disables travel, bobbing, pulsing, and turning
+                        effects while preserving the same workflow state and
+                        controls.
                     </AlertDescription>
                 </Alert>
             )}
@@ -98,9 +114,16 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                             </CardDescription>
                         </div>
 
-                        <Badge variant="outline">
-                            Schema v{projection.metadata.schemaVersion}
-                        </Badge>
+                        <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline">
+                                Schema v{projection.metadata.schemaVersion}
+                            </Badge>
+                            <Badge variant="outline">
+                                {reducedMotion
+                                    ? 'Reduced motion'
+                                    : 'Motion enabled'}
+                            </Badge>
+                        </div>
                     </div>
                 </CardHeader>
 
@@ -141,6 +164,7 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                         <LazyOfficeCanvas
                                             projection={projection}
                                             selectedRoom={selectedRoom}
+                                            reducedMotion={reducedMotion}
                                             onSelectRoom={setSelectedRoom}
                                         />
                                     </div>

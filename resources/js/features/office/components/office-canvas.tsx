@@ -14,6 +14,7 @@ import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 type Props = {
     projection: OfficeProjection;
     selectedRoom: OfficeRoomKey;
+    reducedMotion: boolean;
     onSelectRoom: (room: OfficeRoomKey) => void;
 };
 
@@ -23,6 +24,7 @@ type Props = {
 export default function OfficeCanvas({
     projection,
     selectedRoom,
+    reducedMotion,
     onSelectRoom,
 }: Props) {
     return (
@@ -35,24 +37,33 @@ export default function OfficeCanvas({
                 far: 120,
             }}
             dpr={[1, 1.5]}
-            frameloop="demand"
+            frameloop={reducedMotion ? 'demand' : 'always'}
             gl={{
                 antialias: true,
                 powerPreference: 'high-performance',
             }}
+            shadows
         >
             <color attach="background" args={['#09090b']} />
 
             <ambientLight intensity={0.8} />
-            <directionalLight position={[10, 14, 8]} intensity={1.5} />
+            <directionalLight
+                position={[10, 14, 8]}
+                intensity={1.5}
+                castShadow
+            />
 
             <OfficeScene
                 projection={projection}
                 selectedRoom={selectedRoom}
+                reducedMotion={reducedMotion}
                 onSelectRoom={onSelectRoom}
             />
 
-            <OfficeCamera selectedRoom={selectedRoom} />
+            <OfficeCamera
+                selectedRoom={selectedRoom}
+                reducedMotion={reducedMotion}
+            />
         </Canvas>
     );
 }
@@ -60,7 +71,12 @@ export default function OfficeCanvas({
 /**
  * Render every room and agent from projection state.
  */
-function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
+function OfficeScene({
+    projection,
+    selectedRoom,
+    reducedMotion,
+    onSelectRoom,
+}: Props) {
     const roomsByKey = useMemo(
         () => new Map(projection.rooms.map((room) => [room.key, room])),
         [projection.rooms],
@@ -73,7 +89,7 @@ function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
 
     return (
         <group>
-            <mesh position={[0, -0.25, 0]}>
+            <mesh position={[0, -0.25, 0]} receiveShadow>
                 <boxGeometry args={[26, 0.35, 20]} />
                 <meshStandardMaterial color="#18181b" />
             </mesh>
@@ -122,6 +138,7 @@ function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
                         agent={agent}
                         position={position}
                         focused={selectedRoom === agent.room}
+                        reducedMotion={reducedMotion}
                         onSelect={() => onSelectRoom(agent.room)}
                     />
                 );
@@ -131,9 +148,17 @@ function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
 }
 
 /**
- * Move the camera immediately to the selected room.
+ * Move the camera to the selected authoritative room.
+ *
+ * Reduced motion disables CameraControls interpolation and snaps immediately.
  */
-function OfficeCamera({ selectedRoom }: { selectedRoom: OfficeRoomKey }) {
+function OfficeCamera({
+    selectedRoom,
+    reducedMotion,
+}: {
+    selectedRoom: OfficeRoomKey;
+    reducedMotion: boolean;
+}) {
     const controls = useRef<ElementRef<typeof CameraControls>>(null);
 
     useEffect(() => {
@@ -142,18 +167,20 @@ function OfficeCamera({ selectedRoom }: { selectedRoom: OfficeRoomKey }) {
         void controls.current?.setLookAt(
             ...definition.cameraPosition,
             ...definition.cameraTarget,
-            false,
+            !reducedMotion,
         );
-    }, [selectedRoom]);
+    }, [reducedMotion, selectedRoom]);
 
     return (
         <CameraControls
             ref={controls}
             makeDefault
             minDistance={4}
-            maxDistance={24}
-            maxPolarAngle={Math.PI / 2.08}
-            dollyToCursor={false}
+            maxDistance={28}
+            minPolarAngle={0.35}
+            maxPolarAngle={Math.PI / 2.15}
+            truckSpeed={1.2}
+            dollySpeed={0.8}
         />
     );
 }
