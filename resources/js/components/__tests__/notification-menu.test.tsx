@@ -99,7 +99,6 @@ describe('NotificationMenu', () => {
 
         expect(inertia.usePoll).toHaveBeenCalledWith(30_000, {
             only: ['notifications'],
-            preserveScroll: true,
         });
     });
 });

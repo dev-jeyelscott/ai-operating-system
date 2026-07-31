@@ -19,12 +19,11 @@ export function NotificationMenu() {
     const { notifications, organizationContext } = usePage().props;
 
     /*
-     * Poll only the notification prop. The rest of the current Inertia page
-     * remains untouched and the poll stops automatically when unmounted.
+     * Poll only the notification prop. Inertia reloads preserve component
+     * state and scroll position automatically and stop when unmounted.
      */
     usePoll(30_000, {
         only: ['notifications'],
-        preserveScroll: true,
     });
 
     const currentOrganization = organizationContext.current;
@@ -99,9 +98,11 @@ export function NotificationMenu() {
                             className="mx-auto size-6 text-muted-foreground"
                             aria-hidden="true"
                         />
+
                         <p className="mt-2 text-sm font-medium">
                             No notifications
                         </p>
+
                         <p className="mt-1 text-xs text-muted-foreground">
                             Workflow updates requiring your attention will
                             appear here.

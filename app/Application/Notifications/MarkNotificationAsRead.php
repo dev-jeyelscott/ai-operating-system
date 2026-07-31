@@ -6,6 +6,7 @@ namespace App\Application\Notifications;
 
 use App\Models\NotificationRecipient;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -34,12 +35,12 @@ final readonly class MarkNotificationAsRead
             'recipient user',
         );
 
-        if (
-            preg_match(
-                '/\A[0-9A-HJKMNP-TV-Z]{26}\z/',
-                $notificationRecipientId,
-            ) !== 1
-        ) {
+        /*
+         * Use Laravel's native ULID validator instead of a case-sensitive
+         * regular expression. Eloquent's HasUlids trait generates canonical
+         * lowercase identifiers, which are valid ULIDs.
+         */
+        if (! Str::isUlid($notificationRecipientId)) {
             throw new InvalidArgumentException(
                 'The notification recipient identifier is invalid.',
             );
@@ -51,6 +52,10 @@ final readonly class MarkNotificationAsRead
                 $recipientUserId,
                 $notificationRecipientId,
             ): NotificationRecipient {
+                /*
+                 * Scope the lookup to both the organization and authenticated
+                 * recipient so another user's notification remains concealed.
+                 */
                 $recipient = NotificationRecipient::query()
                     ->forOrganization($organizationId)
                     ->forRecipient($recipientUserId)
@@ -58,6 +63,10 @@ final readonly class MarkNotificationAsRead
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                /*
+                 * NotificationRecipient::markAsRead() preserves the original
+                 * read_at timestamp when the command is replayed.
+                 */
                 $recipient->markAsRead();
 
                 return $recipient->refresh();
