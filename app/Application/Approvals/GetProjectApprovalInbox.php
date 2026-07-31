@@ -300,7 +300,7 @@ final readonly class GetProjectApprovalInbox
         $mapping = $conflict->mapping;
         $ticket = $mapping?->task;
         $roadmap = $ticket?->roadmap;
-        $classification = $mapping?->reconciliation_state
+        $classification = $mapping->reconciliation_state
             ?? 'external_drift';
 
         $contextUrl = $roadmap instanceof Roadmap
@@ -362,7 +362,7 @@ final readonly class GetProjectApprovalInbox
             'id' => $assessment->id,
             'category' => 'merge',
             'source' => 'qa_assessment',
-            'type' => $assessment->decision?->value ?? 'human_review_required',
+            'type' => $assessment->decision->value ?? 'human_review_required',
             'title' => $ticket instanceof RoadmapTask
                 ? sprintf('%s: %s', $ticket->stable_id, $ticket->title)
                 : 'Simulated merge decision',

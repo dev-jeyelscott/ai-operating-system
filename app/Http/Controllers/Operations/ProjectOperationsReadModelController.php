@@ -4,27 +4,27 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Operations;
 
-use App\Application\Operations\GetProjectOfficeProjection;
+use App\Application\Operations\GetProjectOperationsReadModel;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 
 /**
- * Returns the persisted office projection as JSON.
+ * Returns the authoritative project operations read model as JSON.
  */
-final class ProjectOfficeProjectionController extends Controller
+final class ProjectOperationsReadModelController extends Controller
 {
     /**
-     * Return the tenant-scoped office projection contract.
+     * Return the tenant-scoped project operations contract.
      */
     public function __invoke(
         Organization $organization,
         Project $project,
-        GetProjectOfficeProjection $projection,
+        GetProjectOperationsReadModel $operations,
     ): JsonResponse {
         return response()->json(
-            $projection->handle(
+            $operations->handle(
                 organizationId: $organization->id,
                 projectId: $project->id,
             ),
