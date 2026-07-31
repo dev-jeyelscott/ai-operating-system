@@ -8,7 +8,7 @@ use App\Application\Events\Data\DeadLetterRecord;
 use App\Application\Events\DeadLetterManager;
 use App\Domain\Events\DeadLetterSource;
 use App\Models\Project;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Replays one allowlisted dead letter after proving project ownership.
@@ -46,12 +46,20 @@ final readonly class ReplayProjectDeadLetter
                 limit: 100,
             ),
         )->first(
-            static fn (DeadLetterRecord $record): bool => hash_equals($record->id, $identifier),
+            static fn (DeadLetterRecord $record): bool => hash_equals(
+                $record->id,
+                $identifier,
+            ),
         );
 
+        /*
+         * A dead letter outside this project, or one that is no longer actively
+         * dead-lettered, is deliberately represented as a missing resource.
+         */
         if (! $record instanceof DeadLetterRecord) {
-            throw (new ModelNotFoundException)
-                ->setModel(DeadLetterRecord::class, [$identifier]);
+            throw new NotFoundHttpException(
+                'The requested project dead letter was not found.',
+            );
         }
 
         return $this->deadLetters->replay(

@@ -14,6 +14,7 @@ use App\Models\OutboxMessage;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -160,30 +161,25 @@ it('shows blocked retry-scheduled and failed executions', function (): void {
             ],
         ))
         ->assertOk()
-        ->assertInertia(fn (Assert $page): Assert => $page
-            ->component('projects/operations/recovery')
-            ->where('recovery.summary.blocked', 1)
-            ->where('recovery.summary.retryScheduled', 1)
-            ->where('recovery.summary.failed', 1)
-            ->has('recovery.executions', 3)
-            ->where(
-                'recovery.executions',
-                static function (mixed $rows): bool {
-                    if (! is_array($rows)) {
-                        return false;
-                    }
-
-                    return collect($rows)
+        ->assertInertia(
+            fn (Assert $page): Assert => $page
+                ->component('projects/operations/recovery')
+                ->where('recovery.summary.blocked', 1)
+                ->where('recovery.summary.retryScheduled', 1)
+                ->where('recovery.summary.failed', 1)
+                ->has('recovery.executions', 3)
+                ->where(
+                    'recovery.executions',
+                    static fn (Collection $rows): bool => $rows
                         ->pluck('status')
                         ->sort()
                         ->values()
                         ->all() === [
-                            'blocked',
-                            'failed',
-                            'retry_scheduled',
-                        ];
-                },
-            )
+                            ExecutionStatus::Blocked->value,
+                            ExecutionStatus::Failed->value,
+                            ExecutionStatus::RetryScheduled->value,
+                        ],
+                )
         );
 });
 
@@ -237,13 +233,14 @@ it('lists only dead letters owned by the current project', function (): void {
             ],
         ))
         ->assertOk()
-        ->assertInertia(fn (Assert $page): Assert => $page
-            ->where('recovery.summary.deadLetters', 1)
-            ->has('recovery.deadLetters', 1)
-            ->where(
-                'recovery.deadLetters.0.id',
-                $currentDeadLetter->event_id,
-            )
+        ->assertInertia(
+            fn (Assert $page): Assert => $page
+                ->where('recovery.summary.deadLetters', 1)
+                ->has('recovery.deadLetters', 1)
+                ->where(
+                    'recovery.deadLetters.0.id',
+                    $currentDeadLetter->event_id,
+                )
         );
 });
 
@@ -507,16 +504,25 @@ it('does not expose raw outbox envelopes or exception messages', function (): vo
 
     $response
         ->assertOk()
-        ->assertInertia(fn (Assert $page): Assert => $page
-            ->has(
-                'recovery.deadLetters.0',
-                fn (Assert $deadLetter): Assert => $deadLetter
-                    ->where('id', $outbox->event_id)
-                    ->where('errorType', RuntimeException::class)
-                    ->missing('envelope')
-                    ->missing('lastError')
-                    ->missing('last_error')
-            )
+        ->assertInertia(
+            fn (Assert $page): Assert => $page
+                ->has(
+                    'recovery.deadLetters.0',
+                    fn (Assert $deadLetter): Assert => $deadLetter
+                        ->where('source', 'outbox')
+                        ->where('id', $outbox->event_id)
+                        ->where('eventId', $outbox->event_id)
+                        ->where('eventName', 'workflow.retry_scheduled')
+                        ->where('attempts', 3)
+                        ->where('errorType', RuntimeException::class)
+                        ->has('failedAt')
+                        ->missing('envelope')
+                        ->missing('lastError')
+                        ->missing('last_error')
+                        ->missing('exception')
+                        ->missing('exceptionMessage')
+                        ->etc()
+                )
         )
         ->assertDontSee('envelope-secret-value', false)
         ->assertDontSee('exception-secret-value', false);
