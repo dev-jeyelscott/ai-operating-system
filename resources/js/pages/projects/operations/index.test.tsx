@@ -196,29 +196,67 @@ describe('OperationsDashboardContent', () => {
             />,
         );
 
-        const agents = screen.getByRole('table', {
-            name: /logical agents, workflow layers/i,
-        });
-        const tickets = screen.getByRole('table', {
-            name: /authoritative ticket status/i,
-        });
+        /*
+        * Locate tables through their accessible captions without repeatedly
+        * calculating the complete document accessibility tree.
+        */
+        const agentsCaption = screen.getByText(
+            /logical agents, workflow layers/i,
+        );
+        const ticketsCaption = screen.getByText(
+            /authoritative ticket status/i,
+        );
 
-        expect(
-            within(agents).getByRole('columnheader', { name: 'Role' }),
-        ).toBeInTheDocument();
-        expect(
-            within(agents).getByRole('rowheader', {
-                name: 'Backend Engineer',
-            }),
-        ).toBeInTheDocument();
-        expect(
-            within(tickets).getByRole('rowheader', { name: /AIOS-120/i }),
-        ).toBeInTheDocument();
-        expect(
-            screen.getByRole('link', { name: 'Review blocker' }),
-        ).toHaveAttribute('href', '/roadmaps/1/tasks/119#blocker');
-        expect(
-            screen.getByRole('link', { name: 'Open inbox item' }),
-        ).toHaveAttribute('href', expect.stringContaining('/approvals'));
+        const agents = agentsCaption.closest('table');
+        const tickets = ticketsCaption.closest('table');
+
+        expect(agents).toBeInstanceOf(HTMLTableElement);
+        expect(tickets).toBeInstanceOf(HTMLTableElement);
+
+        if (!agents || !tickets) {
+            throw new Error('Expected both operational tables to render.');
+        }
+
+        /*
+        * Verify semantic column and row headers directly.
+        */
+        const roleColumnHeader = within(agents).getByText('Role');
+        const agentRowHeader = within(agents).getByText('Backend Engineer');
+        const ticketRowHeader = within(tickets)
+            .getByText('AIOS-120')
+            .closest('th');
+
+        expect(roleColumnHeader.tagName).toBe('TH');
+        expect(roleColumnHeader).toHaveAttribute('scope', 'col');
+
+        expect(agentRowHeader.tagName).toBe('TH');
+        expect(agentRowHeader).toHaveAttribute('scope', 'row');
+
+        expect(ticketRowHeader).not.toBeNull();
+        expect(ticketRowHeader).toHaveAttribute('scope', 'row');
+
+        /*
+        * Verify that operational actions remain real links with their expected
+        * destinations.
+        */
+        const reviewBlockerLink = screen
+            .getByText('Review blocker')
+            .closest('a');
+
+        const openInboxItemLink = screen
+            .getByText('Open inbox item')
+            .closest('a');
+
+        expect(reviewBlockerLink).not.toBeNull();
+        expect(reviewBlockerLink).toHaveAttribute(
+            'href',
+            '/roadmaps/1/tasks/119#blocker',
+        );
+
+        expect(openInboxItemLink).not.toBeNull();
+        expect(openInboxItemLink).toHaveAttribute(
+            'href',
+            expect.stringContaining('/approvals'),
+        );
     });
 });

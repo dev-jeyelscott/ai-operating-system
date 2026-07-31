@@ -803,12 +803,6 @@ function TicketTable({ tickets }: { tickets: OperationsTicket[] }) {
                                                             ticket.actualState
                                                         }
                                                     />
-                                                    {ticket.actualState ===
-                                                        'unverified' && (
-                                                        <Badge variant="secondary">
-                                                            Unverified
-                                                        </Badge>
-                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-3 py-3">
