@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Approvals\ProjectApprovalInboxController;
+use App\Http\Controllers\Operations\ProjectOfficeController;
 use App\Http\Controllers\Operations\ProjectOfficeProjectionController;
 use App\Http\Controllers\Operations\ProjectOperationsDashboardController;
 use App\Http\Controllers\Operations\ProjectOperationsReadModelController;
@@ -33,6 +34,17 @@ Route::middleware(['auth', 'auth.session', 'verified'])
         )
             ->can('view', 'project')
             ->name('operations.index');
+
+        /*
+         * Render the lazy-loaded interactive office while preserving the
+         * accessible operational dashboard as the equivalent fallback.
+         */
+        Route::get(
+            '/operations/office',
+            ProjectOfficeController::class,
+        )
+            ->can('view', 'project')
+            ->name('operations.office.index');
 
         /*
          * Preserve the AIOS-117 machine-readable operations contract.
