@@ -197,15 +197,13 @@ describe('OperationsDashboardContent', () => {
         );
 
         /*
-        * Locate tables through their accessible captions without repeatedly
-        * calculating the complete document accessibility tree.
-        */
+         * Locate tables through their accessible captions without repeatedly
+         * calculating the complete document accessibility tree.
+         */
         const agentsCaption = screen.getByText(
             /logical agents, workflow layers/i,
         );
-        const ticketsCaption = screen.getByText(
-            /authoritative ticket status/i,
-        );
+        const ticketsCaption = screen.getByText(/authoritative ticket status/i);
 
         const agents = agentsCaption.closest('table');
         const tickets = ticketsCaption.closest('table');
@@ -218,8 +216,8 @@ describe('OperationsDashboardContent', () => {
         }
 
         /*
-        * Verify semantic column and row headers directly.
-        */
+         * Verify semantic column and row headers directly.
+         */
         const roleColumnHeader = within(agents).getByText('Role');
         const agentRowHeader = within(agents).getByText('Backend Engineer');
         const ticketRowHeader = within(tickets)
@@ -236,9 +234,9 @@ describe('OperationsDashboardContent', () => {
         expect(ticketRowHeader).toHaveAttribute('scope', 'row');
 
         /*
-        * Verify that operational actions remain real links with their expected
-        * destinations.
-        */
+         * Verify that operational actions remain real links with their expected
+         * destinations.
+         */
         const reviewBlockerLink = screen
             .getByText('Review blocker')
             .closest('a');
