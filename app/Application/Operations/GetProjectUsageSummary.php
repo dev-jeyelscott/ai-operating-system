@@ -84,20 +84,17 @@ final readonly class GetProjectUsageSummary
             ],
             'byProvider' => $this->breakdown(
                 base: $base,
-                dimensionExpression:
-                    "COALESCE(NULLIF(execution_attempts.execution_provider, ''), 'unknown')",
+                dimensionExpression: "COALESCE(NULLIF(execution_attempts.execution_provider, ''), 'unknown')",
                 key: 'provider',
             ),
             'byRole' => $this->breakdown(
                 base: $base,
-                dimensionExpression:
-                    "COALESCE(NULLIF(executions.logical_role, ''), 'unassigned')",
+                dimensionExpression: "COALESCE(NULLIF(executions.logical_role, ''), 'unassigned')",
                 key: 'role',
             ),
             'byReasoning' => $this->breakdown(
                 base: $base,
-                dimensionExpression:
-                    "COALESCE(NULLIF(execution_attempts.effective_reasoning_level, ''), 'unknown')",
+                dimensionExpression: "COALESCE(NULLIF(execution_attempts.effective_reasoning_level, ''), 'unknown')",
                 key: 'reasoning',
             ),
             'dataQuality' => $quality,

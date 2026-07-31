@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Operations;
 
-use App\Application\Events\DeadLetterManager;
 use App\Application\Events\Data\DeadLetterRecord;
+use App\Application\Events\DeadLetterManager;
 use App\Domain\Executions\ExecutionStatus;
 use App\Models\Execution;
 use App\Models\ExecutionAttempt;

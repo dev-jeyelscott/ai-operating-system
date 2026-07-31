@@ -1,13 +1,12 @@
 import { Head, Link, router, usePoll } from '@inertiajs/react';
 import {
-    AlertTriangle,
     ArrowLeft,
     Clock3,
-    RefreshCw,
     RotateCcw,
     ShieldAlert,
 } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import type { FormEvent} from 'react';
+import { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

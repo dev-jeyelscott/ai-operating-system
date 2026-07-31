@@ -10,12 +10,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 type CurrencySummary = {
     currency: string;
@@ -131,9 +126,7 @@ export default function ProjectUsageView({
 
                 <Alert>
                     <ShieldAlert aria-hidden="true" />
-                    <AlertTitle>
-                        Simulation remains an estimate
-                    </AlertTitle>
+                    <AlertTitle>Simulation remains an estimate</AlertTitle>
                     <AlertDescription>
                         Simulation does not create actual provider charges.
                         Estimated simulation cost is never presented as billed
@@ -146,10 +139,7 @@ export default function ProjectUsageView({
                         <ShieldAlert aria-hidden="true" />
                         <AlertTitle>Cost data needs review</AlertTitle>
                         <AlertDescription>
-                            {
-                                usage.dataQuality
-                                    .simulationActualCostRecords
-                            }{' '}
+                            {usage.dataQuality.simulationActualCostRecords}{' '}
                             simulation attempt(s) contain actual cost and{' '}
                             {usage.dataQuality.missingCurrencyRecords} cost
                             record(s) have no currency.
@@ -260,28 +250,18 @@ export default function ProjectUsageView({
 /**
  * Render one non-cost usage metric.
  */
-function MetricCard({
-    label,
-    value,
-}: {
-    label: string;
-    value: number;
-}) {
+function MetricCard({ label, value }: { label: string; value: number }) {
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
-                <CardTitle className="text-sm font-medium">
-                    {label}
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">{label}</CardTitle>
                 <Calculator
                     className="size-4 text-muted-foreground"
                     aria-hidden="true"
                 />
             </CardHeader>
             <CardContent>
-                <p className="text-3xl font-semibold tabular-nums">
-                    {value}
-                </p>
+                <p className="text-3xl font-semibold tabular-nums">{value}</p>
             </CardContent>
         </Card>
     );
@@ -313,9 +293,7 @@ function CostMetric({
             <p className="mt-2 text-2xl font-semibold tabular-nums">
                 {formatCost(value, currency)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-                {description}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
     );
 }
@@ -357,12 +335,8 @@ function BreakdownTable({
                                         <th className="px-3 py-3">
                                             {dimension}
                                         </th>
-                                        <th className="px-3 py-3">
-                                            Currency
-                                        </th>
-                                        <th className="px-3 py-3">
-                                            Attempts
-                                        </th>
+                                        <th className="px-3 py-3">Currency</th>
+                                        <th className="px-3 py-3">Attempts</th>
                                         <th className="px-3 py-3">
                                             Executions
                                         </th>
@@ -384,9 +358,7 @@ function BreakdownTable({
                                             className="border-b last:border-0"
                                         >
                                             <th className="px-3 py-3 text-left font-medium">
-                                                {humanize(
-                                                    resolveLabel(row),
-                                                )}
+                                                {humanize(resolveLabel(row))}
                                             </th>
                                             <td className="px-3 py-3">
                                                 {row.currency}

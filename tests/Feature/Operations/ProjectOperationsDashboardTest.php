@@ -53,6 +53,36 @@ it('renders the authoritative project operations dashboard', function (): void {
             ->where('operations.project.id', $project->id)
             ->where('operations.summary.activeAgents', 0)
             ->where('operations.summary.pendingApprovals', 0)
+            ->where(
+                'recoveryCenterUrl',
+                route(
+                    'organizations.projects.operations.recovery.index',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+            )
+            ->where(
+                'usageUrl',
+                route(
+                    'organizations.projects.operations.usage.index',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+            )
+            ->where(
+                'officeProjectionUrl',
+                route(
+                    'organizations.projects.operations.office-projection.show',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+            )
             ->has('operations.layers', 4)
         );
 });
@@ -61,6 +91,7 @@ it('does not resolve a project through another organization route', function ():
     [$user, $organization] = createOperationsProjectContext();
 
     $otherOrganization = Organization::factory()->create();
+
     $otherProject = Project::factory()
         ->for($otherOrganization)
         ->create();

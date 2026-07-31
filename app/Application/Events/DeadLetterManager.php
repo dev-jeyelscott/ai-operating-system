@@ -501,8 +501,8 @@ final readonly class DeadLetterManager
         if (! $this->failedJobs->forget($failedJobId)) {
             throw new RuntimeException(
                 'The event was requeued, but the failed-job record could not '
-                    . 'be removed. Consumer deduplication makes a later duplicate '
-                    . 'replay safe, but operator review is required.',
+                    .'be removed. Consumer deduplication makes a later duplicate '
+                    .'replay safe, but operator review is required.',
             );
         }
 
@@ -593,7 +593,7 @@ final readonly class DeadLetterManager
         }
 
         set_error_handler(
-            static fn(
+            static fn (
                 int $_severity,
                 string $_message,
             ): bool => true,
