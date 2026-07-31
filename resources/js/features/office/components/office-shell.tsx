@@ -18,6 +18,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { AgentStatusPanel } from '@/features/office/components/agent-status-panel';
 import { OfficeNavigation } from '@/features/office/components/office-navigation';
 import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 
@@ -29,8 +30,8 @@ type Props = {
 };
 
 /**
- * Render the DOM-first office shell and coordinate presentation-only room
- * selection between the accessible navigator and the lazy 3D scene.
+ * Render the DOM-first office shell and coordinate room focus across the
+ * accessible navigation, agent list, and lazy 3D scene.
  */
 export function OfficeShell({ projection, operationsUrl }: Props) {
     const [canvasRequested, setCanvasRequested] = useState(false);
@@ -92,8 +93,8 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                         <div>
                             <CardTitle>Interactive office</CardTitle>
                             <CardDescription>
-                                Select a room through the keyboard-accessible
-                                zone controls or the 3D floor plan.
+                                Room and agent visuals are derived only from the
+                                persisted office projection.
                             </CardDescription>
                         </div>
 
@@ -119,9 +120,8 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                         3D renderer not loaded
                                     </h3>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        The room navigator is already usable.
-                                        Load the scene only when the visual
-                                        office is needed.
+                                        Agent state is already available in the
+                                        accessible list below.
                                     </p>
                                 </div>
                                 <Button
@@ -151,13 +151,7 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
 
                     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                         <p>
-                            Selected room:{' '}
-                            {selectedRoom
-                                .replaceAll('_', ' ')
-                                .replace(/\b\w/g, (character) =>
-                                    character.toUpperCase(),
-                                )}
-                            . Projected{' '}
+                            Selected room: {humanize(selectedRoom)}. Projected{' '}
                             {formatDate(projection.metadata.projectedAt)}.
                         </p>
 
@@ -170,6 +164,12 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                     </div>
                 </CardContent>
             </Card>
+
+            <AgentStatusPanel
+                agents={projection.agents}
+                selectedRoom={selectedRoom}
+                onSelectRoom={setSelectedRoom}
+            />
         </div>
     );
 }
@@ -203,7 +203,7 @@ function SummaryCard({
 }
 
 /**
- * Preserve the page shell if the lazy 3D module fails to render.
+ * Preserve the page shell if the lazy 3D module fails.
  */
 class OfficeCanvasBoundary extends Component<
     { children: ReactNode },
@@ -214,7 +214,7 @@ class OfficeCanvasBoundary extends Component<
     };
 
     /**
-     * Mark only the 3D region as failed.
+     * Mark only the Canvas region as failed.
      */
     static getDerivedStateFromError() {
         return {
@@ -228,7 +228,7 @@ class OfficeCanvasBoundary extends Component<
     componentDidCatch(_error: Error, _info: ErrorInfo) {}
 
     /**
-     * Render the lazy Canvas or a local fallback.
+     * Render the Canvas or an accessible local fallback.
      */
     render() {
         if (this.state.failed) {
@@ -241,8 +241,8 @@ class OfficeCanvasBoundary extends Component<
                         The 3D office could not be loaded
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                        Continue through the room navigator or accessible
-                        operational dashboard.
+                        Continue through the room navigator, logical-agent list,
+                        or operational dashboard.
                     </p>
                 </div>
             );
@@ -267,6 +267,15 @@ function CanvasLoadingState() {
             </p>
         </div>
     );
+}
+
+/**
+ * Convert enum-style values into readable labels.
+ */
+function humanize(value: string) {
+    return value
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 /**

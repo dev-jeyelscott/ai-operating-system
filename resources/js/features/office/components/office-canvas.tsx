@@ -2,6 +2,8 @@ import { CameraControls, Grid } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import type { ElementRef } from 'react';
+import { buildAgentPositions } from '@/features/office/agent-layout';
+import { LogicalAgentAvatar } from '@/features/office/components/logical-agent-avatar';
 import { OfficeZone } from '@/features/office/components/office-zone';
 import {
     OFFICE_ZONE_ORDER,
@@ -16,7 +18,7 @@ type Props = {
 };
 
 /**
- * Render the navigable low-poly office.
+ * Render authoritative rooms and projected logical-agent avatars.
  */
 export default function OfficeCanvas({
     projection,
@@ -56,12 +58,17 @@ export default function OfficeCanvas({
 }
 
 /**
- * Render every room emitted by the authoritative projection.
+ * Render every room and agent from projection state.
  */
 function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
     const roomsByKey = useMemo(
         () => new Map(projection.rooms.map((room) => [room.key, room])),
         [projection.rooms],
+    );
+
+    const agentPositions = useMemo(
+        () => buildAgentPositions(projection.agents),
+        [projection.agents],
     );
 
     return (
@@ -101,14 +108,30 @@ function OfficeScene({ projection, selectedRoom, onSelectRoom }: Props) {
                     />
                 );
             })}
+
+            {projection.agents.map((agent) => {
+                const position = agentPositions[agent.id];
+
+                if (!position) {
+                    return null;
+                }
+
+                return (
+                    <LogicalAgentAvatar
+                        key={agent.id}
+                        agent={agent}
+                        position={position}
+                        focused={selectedRoom === agent.room}
+                        onSelect={() => onSelectRoom(agent.room)}
+                    />
+                );
+            })}
         </group>
     );
 }
 
 /**
  * Move the camera immediately to the selected room.
- *
- * Smooth motion and reduced-motion handling are introduced by AIOS-128.
  */
 function OfficeCamera({ selectedRoom }: { selectedRoom: OfficeRoomKey }) {
     const controls = useRef<ElementRef<typeof CameraControls>>(null);
