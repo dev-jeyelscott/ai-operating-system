@@ -167,32 +167,37 @@ final readonly class GetProjectUsageSummary
             ->orderBy('currency')
             ->get();
 
-        return $rows
-            ->map(function (object $row): array {
-                $values = (array) $row;
+        return array_values(
+            $rows
+                ->map(function (object $row): array {
+                    $values = (array) $row;
 
-                return [
-                    'currency' => (string) $values['currency'],
-                    'attempts' => (int) $values['attempt_count'],
-                    'executions' => (int) $values['execution_count'],
-                    'estimatedSimulationCost' => $this->cost(
-                        $values['estimated_simulation_cost'] ?? null,
-                    ),
-                    'estimatedProviderCost' => $this->cost(
-                        $values['estimated_provider_cost'] ?? null,
-                    ),
-                    'actualProviderCost' => $this->cost(
-                        $values['actual_provider_cost'] ?? null,
-                    ),
-                ];
-            })
-            ->values()
-            ->all();
+                    return [
+                        'currency' => (string) $values['currency'],
+                        'attempts' => (int) $values['attempt_count'],
+                        'executions' => (int) $values['execution_count'],
+                        'estimatedSimulationCost' => $this->cost(
+                            $values['estimated_simulation_cost'] ?? null,
+                        ),
+                        'estimatedProviderCost' => $this->cost(
+                            $values['estimated_provider_cost'] ?? null,
+                        ),
+                        'actualProviderCost' => $this->cost(
+                            $values['actual_provider_cost'] ?? null,
+                        ),
+                    ];
+                })
+                ->all(),
+        );
     }
 
     /**
      * Return a reusable cost breakdown by one trusted internal dimension.
      *
+     * Raw SQL expressions accepted here must only be hard-coded application
+     * expressions and must never originate from request or external input.
+     *
+     * @param  literal-string  $dimensionExpression
      * @return list<array<string, int|string>>
      */
     private function breakdown(
@@ -236,28 +241,29 @@ final readonly class GetProjectUsageSummary
             ->orderBy('currency')
             ->get();
 
-        return $rows
-            ->map(function (object $row) use ($key): array {
-                $values = (array) $row;
+        return array_values(
+            $rows
+                ->map(function (object $row) use ($key): array {
+                    $values = (array) $row;
 
-                return [
-                    $key => (string) $values['dimension'],
-                    'currency' => (string) $values['currency'],
-                    'attempts' => (int) $values['attempt_count'],
-                    'executions' => (int) $values['execution_count'],
-                    'estimatedSimulationCost' => $this->cost(
-                        $values['estimated_simulation_cost'] ?? null,
-                    ),
-                    'estimatedProviderCost' => $this->cost(
-                        $values['estimated_provider_cost'] ?? null,
-                    ),
-                    'actualProviderCost' => $this->cost(
-                        $values['actual_provider_cost'] ?? null,
-                    ),
-                ];
-            })
-            ->values()
-            ->all();
+                    return [
+                        $key => (string) $values['dimension'],
+                        'currency' => (string) $values['currency'],
+                        'attempts' => (int) $values['attempt_count'],
+                        'executions' => (int) $values['execution_count'],
+                        'estimatedSimulationCost' => $this->cost(
+                            $values['estimated_simulation_cost'] ?? null,
+                        ),
+                        'estimatedProviderCost' => $this->cost(
+                            $values['estimated_provider_cost'] ?? null,
+                        ),
+                        'actualProviderCost' => $this->cost(
+                            $values['actual_provider_cost'] ?? null,
+                        ),
+                    ];
+                })
+                ->all(),
+        );
     }
 
     /**
