@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Operations;
 
+use App\Application\Operations\GetProjectOperationsReadModel;
 use App\Models\OfficeProjection;
 use App\Models\OutboxMessage;
 use App\Models\Project;
@@ -259,7 +260,7 @@ final readonly class BuildOfficeProjection
     ): array {
         $doneTickets = count(array_filter(
             $tickets,
-            static fn (array $ticket): bool => in_array(
+            static fn(array $ticket): bool => in_array(
                 $ticket['status'] ?? null,
                 ['done', 'cancelled'],
                 true,
@@ -283,7 +284,7 @@ final readonly class BuildOfficeProjection
 
         $hasBlockedAgent = array_any(
             $operationsAgents,
-            static fn (array $agent): bool => in_array(
+            static fn(array $agent): bool => in_array(
                 $agent['officeState'] ?? null,
                 ['blocked', 'failed'],
                 true,
@@ -292,7 +293,7 @@ final readonly class BuildOfficeProjection
 
         $hasRetryingAgent = array_any(
             $operationsAgents,
-            static fn (array $agent): bool => ($agent['officeState'] ?? null)
+            static fn(array $agent): bool => ($agent['officeState'] ?? null)
                 === 'retrying',
         );
 
@@ -418,10 +419,10 @@ final readonly class BuildOfficeProjection
             'state' => $state,
             'activeAgents' => count(array_filter(
                 $agents,
-                static fn (array $agent): bool => (bool) $agent['active'],
+                static fn(array $agent): bool => (bool) $agent['active'],
             )),
             'agentIds' => array_map(
-                static fn (array $agent): string => (string) $agent['id'],
+                static fn(array $agent): string => (string) $agent['id'],
                 $agents,
             ),
             'actionableCount' => $actionableCount,
@@ -513,7 +514,7 @@ final readonly class BuildOfficeProjection
     ): array {
         $simulatedAgent = array_any(
             $agents,
-            static fn (array $agent): bool => $agent['provider'] === 'simulation'
+            static fn(array $agent): bool => $agent['provider'] === 'simulation'
                 || str_contains(
                     strtolower((string) $agent['capability']),
                     'simulation',
@@ -522,7 +523,7 @@ final readonly class BuildOfficeProjection
 
         $simulatedDecision = array_any(
             $decisions,
-            static fn (array $decision): bool => (bool) (
+            static fn(array $decision): bool => (bool) (
                 $decision['simulated'] ?? false
             ),
         );
@@ -628,7 +629,7 @@ final readonly class BuildOfficeProjection
     ): array {
         return array_values(array_filter(
             $agents,
-            static fn (array $agent): bool => $agent['layer'] === $layer,
+            static fn(array $agent): bool => $agent['layer'] === $layer,
         ));
     }
 
@@ -711,7 +712,7 @@ final readonly class BuildOfficeProjection
 
         return array_values(array_filter(
             $value,
-            static fn (mixed $row): bool => is_array($row),
+            static fn(mixed $row): bool => is_array($row),
         ));
     }
 
