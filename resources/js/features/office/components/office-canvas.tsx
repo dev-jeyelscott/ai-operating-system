@@ -20,30 +20,35 @@ import type { OfficeRendererFailureReason } from '@/features/office/webgl-capabi
 type Props = {
     projection: OfficeProjection;
     selectedRoom: OfficeRoomKey;
+    selectedAgentId: string | null;
     reducedMotion: boolean;
     qualityPreset: OfficeQualityPresetKey;
     onSelectRoom: (room: OfficeRoomKey) => void;
+    onSelectAgent: (agentId: string) => void;
     onRendererFailure: (reason: OfficeRendererFailureReason) => void;
 };
 
 type SceneProps = {
     projection: OfficeProjection;
     selectedRoom: OfficeRoomKey;
+    selectedAgentId: string | null;
     reducedMotion: boolean;
     quality: OfficeQualityPreset;
     onSelectRoom: (room: OfficeRoomKey) => void;
+    onSelectAgent: (agentId: string) => void;
 };
 
 /**
- * Render authoritative rooms and projected logical-agent avatars with the
- * selected presentation-only rendering configuration.
+ * Render authoritative rooms and logical-agent avatars.
  */
 export default function OfficeCanvas({
     projection,
     selectedRoom,
+    selectedAgentId,
     reducedMotion,
     qualityPreset,
     onSelectRoom,
+    onSelectAgent,
     onRendererFailure,
 }: Props) {
     const quality = officeQualityPreset(qualityPreset);
@@ -73,7 +78,6 @@ export default function OfficeCanvas({
             />
 
             <color attach="background" args={['#09090b']} />
-
             <ambientLight intensity={0.8} />
 
             <directionalLight
@@ -86,9 +90,11 @@ export default function OfficeCanvas({
             <OfficeScene
                 projection={projection}
                 selectedRoom={selectedRoom}
+                selectedAgentId={selectedAgentId}
                 reducedMotion={reducedMotion}
                 quality={quality}
                 onSelectRoom={onSelectRoom}
+                onSelectAgent={onSelectAgent}
             />
 
             <OfficeCamera
@@ -100,10 +106,7 @@ export default function OfficeCanvas({
 }
 
 /**
- * Monitor the renderer-owned canvas for a browser or GPU context loss.
- *
- * Workflow truth remains unchanged. The parent shell removes only the failed
- * Canvas and exposes the existing dashboard and projected DOM controls.
+ * Monitor the renderer-owned canvas for context loss.
  */
 function OfficeRendererContextMonitor({
     onRendererFailure,
@@ -114,7 +117,7 @@ function OfficeRendererContextMonitor({
 
     useEffect(() => {
         /**
-         * Move the office into its accessible fallback after context loss.
+         * Preserve authoritative projection state and replace only WebGL.
          */
         function handleContextLost(event: Event) {
             event.preventDefault();
@@ -137,9 +140,11 @@ function OfficeRendererContextMonitor({
 function OfficeScene({
     projection,
     selectedRoom,
+    selectedAgentId,
     reducedMotion,
     quality,
     onSelectRoom,
+    onSelectAgent,
 }: SceneProps) {
     const roomsByKey = useMemo(
         () => new Map(projection.rooms.map((room) => [room.key, room])),
@@ -204,10 +209,11 @@ function OfficeScene({
                         key={agent.id}
                         agent={agent}
                         position={position}
-                        focused={selectedRoom === agent.room}
+                        roomFocused={selectedRoom === agent.room}
+                        selected={selectedAgentId === agent.id}
                         reducedMotion={reducedMotion}
                         quality={quality}
-                        onSelect={() => onSelectRoom(agent.room)}
+                        onSelect={() => onSelectAgent(agent.id)}
                     />
                 );
             })}
@@ -217,8 +223,6 @@ function OfficeScene({
 
 /**
  * Move the camera to the selected authoritative room.
- *
- * Reduced motion disables CameraControls interpolation and snaps immediately.
  */
 function OfficeCamera({
     selectedRoom,

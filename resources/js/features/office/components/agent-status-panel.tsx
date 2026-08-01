@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { ExternalLink, LocateFixed } from 'lucide-react';
+import { ExternalLink, Eye, LocateFixed } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +16,9 @@ import type { OfficeAgent, OfficeRoomKey } from '@/features/office/types';
 type Props = {
     agents: OfficeAgent[];
     selectedRoom: OfficeRoomKey;
+    selectedAgentId: string | null;
     onSelectRoom: (room: OfficeRoomKey) => void;
+    onInspectAgent: (agentId: string, trigger: HTMLButtonElement) => void;
 };
 
 /**
@@ -25,7 +27,9 @@ type Props = {
 export function AgentStatusPanel({
     agents,
     selectedRoom,
+    selectedAgentId,
     onSelectRoom,
+    onInspectAgent,
 }: Props) {
     const orderedAgents = [...agents].sort(
         (left, right) =>
@@ -60,12 +64,14 @@ export function AgentStatusPanel({
                             const presentation = officeStatePresentation(
                                 agent.officeState,
                             );
-                            const selected = selectedRoom === agent.room;
+                            const roomSelected = selectedRoom === agent.room;
+                            const agentSelected = selectedAgentId === agent.id;
 
                             return (
                                 <li
                                     key={agent.id}
                                     className="rounded-lg border p-4"
+                                    data-office-agent-id={agent.id}
                                 >
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
@@ -94,49 +100,35 @@ export function AgentStatusPanel({
                                             </p>
 
                                             <dl className="mt-3 grid gap-1 text-xs text-muted-foreground">
-                                                <div>
-                                                    <dt className="inline font-medium text-foreground">
-                                                        Room:
-                                                    </dt>{' '}
-                                                    <dd className="inline">
-                                                        {
-                                                            officeZone(
-                                                                agent.room,
-                                                            ).label
-                                                        }
-                                                    </dd>
-                                                </div>
-                                                <div>
-                                                    <dt className="inline font-medium text-foreground">
-                                                        Ticket:
-                                                    </dt>{' '}
-                                                    <dd className="inline">
-                                                        {agent.ticketId ??
-                                                            'None'}
-                                                    </dd>
-                                                </div>
-                                                <div>
-                                                    <dt className="inline font-medium text-foreground">
-                                                        Provider:
-                                                    </dt>{' '}
-                                                    <dd className="inline">
-                                                        {agent.provider ??
-                                                            'Unassigned'}
-                                                    </dd>
-                                                </div>
-                                                <div>
-                                                    <dt className="inline font-medium text-foreground">
-                                                        Reasoning:
-                                                    </dt>{' '}
-                                                    <dd className="inline">
-                                                        {
-                                                            agent.requestedReasoning
-                                                        }
-                                                        {agent.effectiveReasoning
-                                                            ? ` / ${agent.effectiveReasoning}`
-                                                            : ''}
-                                                    </dd>
-                                                </div>
+                                                <InlineFact
+                                                    label="Room"
+                                                    value={
+                                                        officeZone(agent.room)
+                                                            .label
+                                                    }
+                                                />
+                                                <InlineFact
+                                                    label="Ticket"
+                                                    value={
+                                                        agent.ticketId ?? 'None'
+                                                    }
+                                                />
+                                                <InlineFact
+                                                    label="Provider"
+                                                    value={
+                                                        agent.provider ??
+                                                        'Unassigned'
+                                                    }
+                                                />
+                                                <InlineFact
+                                                    label="Reasoning"
+                                                    value={[
+                                                        agent.requestedReasoning,
+                                                        agent.effectiveReasoning,
+                                                    ]
+                                                        .filter(Boolean)
+                                                        .join(' / ')}
+                                                />
                                             </dl>
                                         </div>
 
@@ -145,11 +137,35 @@ export function AgentStatusPanel({
                                                 type="button"
                                                 size="sm"
                                                 variant={
-                                                    selected
+                                                    agentSelected
                                                         ? 'default'
                                                         : 'outline'
                                                 }
-                                                aria-pressed={selected}
+                                                aria-haspopup="dialog"
+                                                aria-expanded={agentSelected}
+                                                data-office-agent-inspect={
+                                                    agent.id
+                                                }
+                                                onClick={(event) =>
+                                                    onInspectAgent(
+                                                        agent.id,
+                                                        event.currentTarget,
+                                                    )
+                                                }
+                                            >
+                                                <Eye aria-hidden="true" />
+                                                Inspect agent
+                                            </Button>
+
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant={
+                                                    roomSelected
+                                                        ? 'default'
+                                                        : 'outline'
+                                                }
+                                                aria-pressed={roomSelected}
                                                 onClick={() =>
                                                     onSelectRoom(agent.room)
                                                 }
@@ -181,5 +197,17 @@ export function AgentStatusPanel({
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+/**
+ * Render one compact definition-list value.
+ */
+function InlineFact({ label, value }: { label: string; value: string }) {
+    return (
+        <div>
+            <dt className="inline font-medium text-foreground">{label}:</dt>{' '}
+            <dd className="inline">{value}</dd>
+        </div>
     );
 }

@@ -11,7 +11,8 @@ import type { OfficeAgent } from '@/features/office/types';
 type Props = {
     agent: OfficeAgent;
     position: AgentPosition;
-    focused: boolean;
+    roomFocused: boolean;
+    selected: boolean;
     reducedMotion: boolean;
     quality: OfficeQualityPreset;
     onSelect: () => void;
@@ -23,7 +24,8 @@ type Props = {
 export function LogicalAgentAvatar({
     agent,
     position,
-    focused,
+    roomFocused,
+    selected,
     reducedMotion,
     quality,
     onSelect,
@@ -34,7 +36,7 @@ export function LogicalAgentAvatar({
 
     const showLabel =
         quality.agentLabels === 'all' ||
-        (quality.agentLabels === 'focused' && focused);
+        (quality.agentLabels === 'focused' && roomFocused);
 
     useAgentMotionController({
         agentId: agent.id,
@@ -46,7 +48,7 @@ export function LogicalAgentAvatar({
     });
 
     /**
-     * Focus the authoritative room associated with this agent.
+     * Open the shared DOM inspector for this authoritative projected agent.
      */
     function handleSelect(event: ThreeEvent<MouseEvent>) {
         event.stopPropagation();
@@ -96,11 +98,11 @@ export function LogicalAgentAvatar({
                     <meshBasicMaterial
                         color={presentation.ringColor}
                         transparent
-                        opacity={focused ? 1 : 0.7}
+                        opacity={roomFocused ? 1 : 0.7}
                     />
                 </mesh>
 
-                {focused && (
+                {selected && (
                     <mesh
                         position={[0, 0.02, 0]}
                         rotation={[-Math.PI / 2, 0, 0]}
@@ -108,7 +110,7 @@ export function LogicalAgentAvatar({
                         <ringGeometry
                             args={[
                                 0.43,
-                                0.48,
+                                0.5,
                                 quality.geometry.ringThetaSegments,
                             ]}
                         />

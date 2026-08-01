@@ -5,20 +5,18 @@ import {
     Cuboid,
     Gauge,
     LayoutDashboard,
-    LoaderCircle,
-    RotateCcw,
     ShieldAlert,
-    TriangleAlert,
 } from 'lucide-react';
 import {
-    Component,
     lazy,
     Suspense,
     useCallback,
     useEffect,
+    useMemo,
+    useRef,
     useState,
 } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,15 +28,30 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { AgentStatusPanel } from '@/features/office/components/agent-status-panel';
+import { OfficeAgentInspector } from '@/features/office/components/office-agent-inspector';
 import { OfficeNavigation } from '@/features/office/components/office-navigation';
 import { OfficeQualityControl } from '@/features/office/components/office-quality-control';
+import {
+    CanvasLoadingState,
+    OfficeCanvasBoundary,
+    OfficeRendererFallback,
+    RendererCapabilityCheckingState,
+    RendererNotLoadedState,
+    rendererFailureContent,
+    rendererStatusLabel,
+} from '@/features/office/components/office-renderer-ui';
 import { usePrefersReducedMotion } from '@/features/office/hooks/use-prefers-reduced-motion';
+import { OFFICE_ZONE_ORDER } from '@/features/office/office-zone-layout';
 import {
     DEFAULT_OFFICE_QUALITY_PRESET,
     officeQualityPreset,
 } from '@/features/office/quality-presets';
 import type { OfficeQualityPresetKey } from '@/features/office/quality-presets';
-import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
+import type {
+    OfficeAgent,
+    OfficeProjection,
+    OfficeRoomKey,
+} from '@/features/office/types';
 import {
     CHECKING_OFFICE_RENDERER_CAPABILITY,
     detectOfficeRendererCapability,
@@ -55,18 +68,15 @@ type Props = {
 };
 
 /**
- * Create a new React.lazy boundary for the 3D module.
- *
- * A fresh lazy component allows an explicit retry after a rejected dynamic
- * import instead of reusing React.lazy's cached rejection.
+ * Create a fresh React.lazy boundary so a rejected import can be retried.
  */
 function createLazyOfficeCanvas() {
     return lazy(() => import('./office-canvas'));
 }
 
 /**
- * Render the DOM-first office shell and coordinate presentation state across
- * the accessible controls, agent list, and lazy 3D scene.
+ * Render the DOM-first office and keep keyboard, pointer, and 3D selection in
+ * one presentation-state contract.
  */
 export function OfficeShell({
     projection,
@@ -76,26 +86,54 @@ export function OfficeShell({
     const [canvasRequested, setCanvasRequested] = useState(false);
     const [canvasAttempt, setCanvasAttempt] = useState(0);
     const [selectedRoom, setSelectedRoom] = useState<OfficeRoomKey>('lobby');
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [announcement, setAnnouncement] = useState('');
     const [qualityPreset, setQualityPreset] = useState<OfficeQualityPresetKey>(
         DEFAULT_OFFICE_QUALITY_PRESET,
     );
-
     const [rendererCapability, setRendererCapability] =
         useState<OfficeRendererCapability>(CHECKING_OFFICE_RENDERER_CAPABILITY);
-
     const [rendererFailure, setRendererFailure] =
         useState<OfficeRendererFailureReason | null>(null);
-
     const [LazyOfficeCanvas, setLazyOfficeCanvas] = useState(
         createLazyOfficeCanvas,
     );
 
+    const inspectorReturnFocusRef = useRef<HTMLElement | null>(null);
+    const canvasRegionRef = useRef<HTMLElement | null>(null);
     const reducedMotion = usePrefersReducedMotion();
     const quality = officeQualityPreset(qualityPreset);
 
+    const visibleRoomKeys = useMemo(
+        () =>
+            OFFICE_ZONE_ORDER.filter((roomKey) =>
+                projection.rooms.some((room) => room.key === roomKey),
+            ),
+        [projection.rooms],
+    );
+
+    const selectedAgent = useMemo<OfficeAgent | null>(
+        () =>
+            projection.agents.find((agent) => agent.id === selectedAgentId) ??
+            null,
+        [projection.agents, selectedAgentId],
+    );
+
     /**
-     * Re-run the browser capability probe and apply its safe recommended
-     * presentation state.
+     * Remove an inspector selection that no longer exists after projection
+     * refresh or reconnect.
+     */
+    useEffect(() => {
+        if (selectedAgentId && !selectedAgent) {
+            setSelectedAgentId(null);
+            setAnnouncement(
+                'The previously selected agent is no longer projected.',
+            );
+        }
+    }, [selectedAgent, selectedAgentId]);
+
+    /**
+     * Re-run browser capability detection and apply the safe preset.
      */
     const refreshRendererCapability = useCallback(() => {
         const capability = rendererCapabilityDetector();
@@ -113,11 +151,7 @@ export function OfficeShell({
     }, [rendererCapabilityDetector]);
 
     /**
-     * Run the browser capability probe after hydration.
-     *
-     * The microtask keeps capability updates asynchronous so the effect does not
-     * synchronously trigger another render. The cancellation guard prevents a
-     * queued probe from updating state after cleanup or Strict Mode remounting.
+     * Detect capability after hydration.
      */
     useEffect(() => {
         let cancelled = false;
@@ -134,7 +168,120 @@ export function OfficeShell({
     }, [refreshRendererCapability]);
 
     /**
-     * Load the 3D bundle only after capability detection permits an attempt.
+     * Select one room without mutating workflow truth.
+     */
+    const selectRoom = useCallback((room: OfficeRoomKey) => {
+        setSelectedRoom(room);
+        setAnnouncement(`${humanize(room)} selected.`);
+    }, []);
+
+    /**
+     * Open an agent inspector and remember the exact return-focus target.
+     */
+    const inspectAgent = useCallback(
+        (agentId: string, returnFocusTarget: HTMLElement) => {
+            const agent = projection.agents.find(
+                (candidate) => candidate.id === agentId,
+            );
+
+            if (!agent) {
+                return;
+            }
+
+            inspectorReturnFocusRef.current = returnFocusTarget;
+            setSelectedRoom(agent.room);
+            setSelectedAgentId(agent.id);
+            setAnnouncement(`${agent.role} inspector opened.`);
+        },
+        [projection.agents],
+    );
+
+    /**
+     * Open the inspector from a pointer selection inside the canvas.
+     */
+    const inspectCanvasAgent = useCallback(
+        (agentId: string) => {
+            if (!canvasRegionRef.current) {
+                return;
+            }
+
+            inspectAgent(agentId, canvasRegionRef.current);
+        },
+        [inspectAgent],
+    );
+
+    /**
+     * Handle the controlled inspector lifecycle.
+     */
+    function changeInspectorOpen(open: boolean) {
+        if (!open) {
+            setSelectedAgentId(null);
+            setAnnouncement('Agent inspector closed.');
+        }
+    }
+
+    /**
+     * Apply one-tab-stop canvas-region keyboard navigation.
+     */
+    function handleCanvasKeyDown(event: KeyboardEvent<HTMLElement>) {
+        const currentIndex = visibleRoomKeys.indexOf(selectedRoom);
+
+        if (currentIndex < 0 || visibleRoomKeys.length === 0) {
+            return;
+        }
+
+        let targetIndex: number | null = null;
+
+        switch (event.key) {
+            case 'ArrowRight':
+            case 'ArrowDown':
+                targetIndex = (currentIndex + 1) % visibleRoomKeys.length;
+                break;
+
+            case 'ArrowLeft':
+            case 'ArrowUp':
+                targetIndex =
+                    (currentIndex - 1 + visibleRoomKeys.length) %
+                    visibleRoomKeys.length;
+                break;
+
+            case 'Home':
+                targetIndex = 0;
+                break;
+
+            case 'End':
+                targetIndex = visibleRoomKeys.length - 1;
+                break;
+
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+
+                const firstAgent = projection.agents.find(
+                    (agent) => agent.room === selectedRoom,
+                );
+
+                if (firstAgent && canvasRegionRef.current) {
+                    inspectAgent(firstAgent.id, canvasRegionRef.current);
+                } else {
+                    setAnnouncement(
+                        `${humanize(selectedRoom)} has no projected agents.`,
+                    );
+                }
+
+                return;
+        }
+
+        if (targetIndex === null) {
+            return;
+        }
+
+        event.preventDefault();
+        selectRoom(visibleRoomKeys[targetIndex]);
+    }
+
+    /**
+     * Load the lazy renderer only after capability detection permits it.
      */
     function loadRenderer() {
         if (!rendererCapability.canAttempt3d) {
@@ -146,38 +293,43 @@ export function OfficeShell({
     }
 
     /**
-     * Record a local renderer failure without changing authoritative workflow
-     * or projection state.
+     * Record local renderer failure without changing projection truth.
      */
     const handleRendererFailure = useCallback(
         (reason: OfficeRendererFailureReason) => {
             setRendererFailure(reason);
+            setAnnouncement('3D renderer fallback activated.');
         },
         [],
     );
 
     /**
-     * Retry renderer initialization with the least expensive configuration.
-     *
-     * A new React.lazy instance is created so a previously rejected module
-     * import can be attempted again.
+     * Retry using the least expensive quality preset.
      */
     function retryRenderer() {
         setQualityPreset('low');
         setRendererFailure(null);
         setCanvasRequested(true);
-        setCanvasAttempt((currentAttempt) => currentAttempt + 1);
+        setCanvasAttempt((attempt) => attempt + 1);
         setLazyOfficeCanvas(createLazyOfficeCanvas());
     }
 
     const runtimeFailureCopy = rendererFailure
         ? rendererFailureContent(rendererFailure)
         : null;
-
     const boundaryFailureCopy = rendererFailureContent('initialization_failed');
 
     return (
         <div className="space-y-6">
+            <p
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+            >
+                {announcement}
+            </p>
+
             {projection.simulation.labelRequired && (
                 <Alert>
                     <ShieldAlert aria-hidden="true" />
@@ -226,19 +378,16 @@ export function OfficeShell({
                     value={projection.rooms.length}
                     icon={Box}
                 />
-
                 <SummaryCard
                     label="Projected agents"
                     value={projection.agents.length}
                     icon={Cuboid}
                 />
-
                 <SummaryCard
                     label="Active agents"
                     value={projection.summary.activeAgents}
                     icon={Cuboid}
                 />
-
                 <SummaryCard
                     label="Projection sequence"
                     value={projection.metadata.lastEventSequence}
@@ -249,7 +398,7 @@ export function OfficeShell({
             <OfficeNavigation
                 rooms={projection.rooms}
                 selectedRoom={selectedRoom}
-                onSelectRoom={setSelectedRoom}
+                onSelectRoom={selectRoom}
             />
 
             <Card>
@@ -268,17 +417,14 @@ export function OfficeShell({
                             <Badge variant="outline">
                                 Schema v{projection.metadata.schemaVersion}
                             </Badge>
-
                             <Badge variant="outline">
                                 {reducedMotion
                                     ? 'Reduced motion'
                                     : 'Motion enabled'}
                             </Badge>
-
                             <Badge variant="outline">
                                 {quality.label} quality
                             </Badge>
-
                             <Badge variant="outline">
                                 {rendererStatusLabel(
                                     rendererCapability,
@@ -298,8 +444,23 @@ export function OfficeShell({
                         />
                     </div>
 
-                    <div
-                        className="flex min-h-96 items-center justify-center overflow-hidden rounded-xl border bg-muted/30"
+                    <p
+                        id="office-canvas-keyboard-instructions"
+                        className="text-sm text-muted-foreground"
+                    >
+                        Keyboard: use arrow keys to move between rooms, Home or
+                        End to jump, and Enter or Space to inspect the first
+                        projected agent in the selected room.
+                    </p>
+
+                    <section
+                        id="office-canvas-region"
+                        ref={canvasRegionRef}
+                        tabIndex={0}
+                        aria-label="Interactive 3D office navigation"
+                        aria-describedby="office-canvas-keyboard-instructions"
+                        onKeyDown={handleCanvasKeyDown}
+                        className="flex min-h-96 items-center justify-center overflow-hidden rounded-xl border bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                         data-testid="office-canvas-container"
                     >
                         {rendererCapability.status === 'checking' ? (
@@ -349,9 +510,11 @@ export function OfficeShell({
                                         <LazyOfficeCanvas
                                             projection={projection}
                                             selectedRoom={selectedRoom}
+                                            selectedAgentId={selectedAgentId}
                                             reducedMotion={reducedMotion}
                                             qualityPreset={qualityPreset}
-                                            onSelectRoom={setSelectedRoom}
+                                            onSelectRoom={selectRoom}
+                                            onSelectAgent={inspectCanvasAgent}
                                             onRendererFailure={
                                                 handleRendererFailure
                                             }
@@ -360,7 +523,7 @@ export function OfficeShell({
                                 </Suspense>
                             </OfficeCanvasBoundary>
                         )}
-                    </div>
+                    </section>
 
                     <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                         <p>
@@ -381,7 +544,16 @@ export function OfficeShell({
             <AgentStatusPanel
                 agents={projection.agents}
                 selectedRoom={selectedRoom}
-                onSelectRoom={setSelectedRoom}
+                selectedAgentId={selectedAgentId}
+                onSelectRoom={selectRoom}
+                onInspectAgent={inspectAgent}
+            />
+
+            <OfficeAgentInspector
+                agent={selectedAgent}
+                open={selectedAgent !== null}
+                returnFocusRef={inspectorReturnFocusRef}
+                onOpenChange={changeInspectorOpen}
             />
         </div>
     );
@@ -403,7 +575,6 @@ function SummaryCard({
         <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
                 <CardTitle className="text-sm font-medium">{label}</CardTitle>
-
                 <Icon
                     className="size-4 text-muted-foreground"
                     aria-hidden="true"
@@ -418,231 +589,6 @@ function SummaryCard({
 }
 
 /**
- * Render an accessible state while the browser capability probe is running.
- */
-function RendererCapabilityCheckingState() {
-    return (
-        <div
-            role="status"
-            className="flex min-h-96 flex-col items-center justify-center gap-3 p-8 text-center"
-        >
-            <LoaderCircle className="size-7 animate-spin" aria-hidden="true" />
-
-            <div>
-                <h3 className="font-medium">Checking 3D renderer support</h3>
-
-                <p className="mt-2 max-w-lg text-sm text-muted-foreground">
-                    The accessible room navigator and agent list remain
-                    available while WebGL 2 capability is checked.
-                </p>
-            </div>
-        </div>
-    );
-}
-
-/**
- * Render the user-controlled pre-load state after WebGL capability passes.
- */
-function RendererNotLoadedState({
-    qualityLabel,
-    onLoad,
-}: {
-    qualityLabel: string;
-    onLoad: () => void;
-}) {
-    return (
-        <div className="max-w-lg space-y-4 p-8 text-center">
-            <Cuboid
-                className="mx-auto size-10 text-muted-foreground"
-                aria-hidden="true"
-            />
-
-            <div>
-                <h3 className="font-medium">3D renderer not loaded</h3>
-
-                <p className="mt-2 text-sm text-muted-foreground">
-                    The office is ready to load with {qualityLabel} rendering
-                    quality. Agent state is already available in the accessible
-                    list below.
-                </p>
-            </div>
-
-            <Button type="button" onClick={onLoad}>
-                Load 3D office
-            </Button>
-        </div>
-    );
-}
-
-/**
- * Render the operational fallback without hiding authoritative projection
- * summaries, room navigation, or logical-agent state.
- */
-function OfficeRendererFallback({
-    title,
-    description,
-    operationsUrl,
-    retryLabel,
-    onRetry,
-}: {
-    title: string;
-    description: string;
-    operationsUrl: string;
-    retryLabel?: string;
-    onRetry?: () => void;
-}) {
-    return (
-        <div role="alert" className="max-w-xl space-y-4 p-8 text-center">
-            <TriangleAlert
-                className="mx-auto size-10 text-muted-foreground"
-                aria-hidden="true"
-            />
-
-            <div>
-                <h3 className="font-medium">{title}</h3>
-
-                <p className="mt-2 text-sm text-muted-foreground">
-                    {description}
-                </p>
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-2">
-                {onRetry && retryLabel && (
-                    <Button type="button" variant="outline" onClick={onRetry}>
-                        <RotateCcw aria-hidden="true" />
-                        {retryLabel}
-                    </Button>
-                )}
-
-                <Button asChild>
-                    <Link href={operationsUrl}>
-                        <LayoutDashboard aria-hidden="true" />
-                        Continue in operational dashboard
-                    </Link>
-                </Button>
-            </div>
-        </div>
-    );
-}
-
-/**
- * Preserve the complete page shell when the lazy 3D module or renderer throws.
- */
-class OfficeCanvasBoundary extends Component<
-    {
-        children: ReactNode;
-        fallback: ReactNode;
-        onFailure: (reason: OfficeRendererFailureReason) => void;
-    },
-    {
-        failed: boolean;
-    }
-> {
-    state = {
-        failed: false,
-    };
-
-    /**
-     * Replace only the Canvas region after a descendant rendering error.
-     */
-    static getDerivedStateFromError() {
-        return {
-            failed: true,
-        };
-    }
-
-    /**
-     * Notify the DOM-first parent that renderer initialization failed.
-     */
-    componentDidCatch() {
-        this.props.onFailure('initialization_failed');
-    }
-
-    /**
-     * Render either the Canvas subtree or its accessible replacement.
-     */
-    render() {
-        if (this.state.failed) {
-            return this.props.fallback;
-        }
-
-        return this.props.children;
-    }
-}
-
-/**
- * Render an accessible Suspense fallback while the lazy 3D bundle loads.
- */
-function CanvasLoadingState() {
-    return (
-        <div
-            role="status"
-            className="flex min-h-96 flex-col items-center justify-center gap-3"
-        >
-            <LoaderCircle className="size-7 animate-spin" aria-hidden="true" />
-
-            <p className="text-sm text-muted-foreground">
-                Loading the 3D office renderer…
-            </p>
-        </div>
-    );
-}
-
-/**
- * Return user-facing fallback content for a renderer runtime failure.
- */
-function rendererFailureContent(reason: OfficeRendererFailureReason) {
-    switch (reason) {
-        case 'context_lost':
-            return {
-                title: 'The 3D rendering context was lost',
-                description:
-                    'The browser or graphics device stopped the active WebGL context. The office projection remains available through the accessible controls and operational dashboard.',
-            };
-
-        case 'webgl_unavailable':
-            return {
-                title: 'The 3D renderer became unavailable',
-                description:
-                    'The browser could not create the required WebGL 2 renderer. The office projection remains available through the accessible controls and operational dashboard.',
-            };
-
-        case 'initialization_failed':
-            return {
-                title: 'The 3D office could not be initialized',
-                description:
-                    'The renderer or its lazy-loaded module failed during initialization. Continue with the accessible dashboard or retry using Low rendering quality.',
-            };
-    }
-}
-
-/**
- * Return a concise renderer status label for the card metadata.
- */
-function rendererStatusLabel(
-    capability: OfficeRendererCapability,
-    failure: OfficeRendererFailureReason | null,
-) {
-    if (failure) {
-        return 'Fallback active';
-    }
-
-    switch (capability.status) {
-        case 'checking':
-            return 'Checking WebGL';
-
-        case 'supported':
-            return 'WebGL supported';
-
-        case 'limited':
-            return 'Low-capability mode';
-
-        case 'unavailable':
-            return 'Dashboard fallback';
-    }
-}
-
-/**
  * Convert enum-style values into readable labels.
  */
 function humanize(value: string) {
@@ -652,10 +598,7 @@ function humanize(value: string) {
 }
 
 /**
- * Format an ISO projection timestamp as deterministic UTC text.
- *
- * Using the ISO representation prevents the Node SSR runtime and the browser
- * from formatting the same timestamp with different locales or time zones.
+ * Format an ISO timestamp as deterministic UTC text.
  */
 function formatDate(value: string) {
     const date = new Date(value);

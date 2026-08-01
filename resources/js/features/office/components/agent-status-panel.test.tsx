@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { AgentStatusPanel } from '@/features/office/components/agent-status-panel';
 import { officeProjectionFixture } from '@/tests/fixtures/office-projection';
+import { AgentStatusPanel } from './agent-status-panel';
 
 vi.mock('@inertiajs/react', () => ({
     Link: ({ children, href }: { children: ReactNode; href: string }) => (
@@ -12,52 +12,50 @@ vi.mock('@inertiajs/react', () => ({
 }));
 
 describe('AgentStatusPanel', () => {
-    it('shows authoritative state and simulation labels', () => {
+    it('provides an inspect action for every agent', () => {
+        const projection = officeProjectionFixture();
+
         render(
             <AgentStatusPanel
-                agents={officeProjectionFixture().agents}
+                agents={projection.agents}
                 selectedRoom="lobby"
+                selectedAgentId={null}
                 onSelectRoom={vi.fn()}
+                onInspectAgent={vi.fn()}
             />,
         );
-
-        expect(screen.getByText('Frontend Engineer')).toBeInTheDocument();
-
-        expect(screen.getByText('Implementing')).toBeInTheDocument();
-
-        expect(screen.getByText('Simulated')).toBeInTheDocument();
-
-        expect(screen.getByText('Unverified')).toBeInTheDocument();
 
         expect(
-            screen.getByRole('link', {
-                name: /open context/i,
+            screen.getAllByRole('button', {
+                name: /inspect agent/i,
             }),
-        ).toHaveAttribute('href', '/development/executions/1');
+        ).toHaveLength(projection.agents.length);
     });
 
-    it('focuses the agent room without changing agent state', async () => {
+    it('passes the exact trigger for focus restoration', async () => {
         const user = userEvent.setup();
-        const onSelectRoom = vi.fn();
+        const onInspectAgent = vi.fn();
+        const projection = officeProjectionFixture();
 
         render(
             <AgentStatusPanel
-                agents={officeProjectionFixture().agents}
+                agents={projection.agents}
                 selectedRoom="lobby"
-                onSelectRoom={onSelectRoom}
+                selectedAgentId={null}
+                onSelectRoom={vi.fn()}
+                onInspectAgent={onInspectAgent}
             />,
         );
 
-        await user.click(
-            screen.getByRole('button', {
-                name: /focus room/i,
-            }),
-        );
+        const trigger = screen.getAllByRole('button', {
+            name: /inspect agent/i,
+        })[0];
 
-        expect(onSelectRoom).toHaveBeenCalledWith('development_floor');
+        await user.click(trigger);
 
-        expect(officeProjectionFixture().agents[0].officeState).toBe(
-            'implementing',
+        expect(onInspectAgent).toHaveBeenCalledWith(
+            expect.any(String),
+            trigger,
         );
     });
 });

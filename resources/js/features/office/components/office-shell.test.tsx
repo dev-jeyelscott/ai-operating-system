@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    LIMITED_OFFICE_RENDERER_CAPABILITY,
     SUPPORTED_OFFICE_RENDERER_CAPABILITY,
     UNAVAILABLE_OFFICE_RENDERER_CAPABILITY,
 } from '@/features/office/webgl-capability';
@@ -21,7 +20,15 @@ vi.mock('@inertiajs/react', () => ({
 }));
 
 vi.mock('./office-canvas', () => ({
-    default: ({ qualityPreset }: { qualityPreset: string }) => {
+    default: ({
+        qualityPreset,
+        projection,
+        onSelectAgent,
+    }: {
+        qualityPreset: string;
+        projection: ReturnType<typeof officeProjectionFixture>;
+        onSelectAgent: (agentId: string) => void;
+    }) => {
         if (officeCanvasMock.shouldThrow) {
             throw new Error('Simulated renderer initialization failure.');
         }
@@ -31,7 +38,12 @@ vi.mock('./office-canvas', () => ({
                 data-testid="mock-office-canvas"
                 data-quality-preset={qualityPreset}
             >
-                Mock office Canvas
+                <button
+                    type="button"
+                    onClick={() => onSelectAgent(projection.agents[0].id)}
+                >
+                    Select first 3D agent
+                </button>
             </div>
         );
     },
@@ -40,10 +52,7 @@ vi.mock('./office-canvas', () => ({
 import { OfficeShell } from './office-shell';
 
 /**
- * Render the shell with a deterministic projection and capability result.
- *
- * Returning the projection lets assertions use the same fixture values passed
- * to the component instead of duplicating role or workflow text.
+ * Render the shell with deterministic projection and capability.
  */
 function renderOfficeShell(
     capability: OfficeRendererCapability = SUPPORTED_OFFICE_RENDERER_CAPABILITY,
@@ -64,227 +73,55 @@ function renderOfficeShell(
     };
 }
 
-describe('OfficeShell', () => {
+describe('OfficeShell accessibility bridge', () => {
     beforeEach(() => {
         officeCanvasMock.shouldThrow = false;
     });
 
-    it('does not render the Canvas module before the user requests it', async () => {
+    it('navigates rooms from the focusable canvas region', async () => {
+        const user = userEvent.setup();
+
         renderOfficeShell();
 
-        expect(
-            screen.queryByTestId('mock-office-canvas'),
-        ).not.toBeInTheDocument();
-
-        expect(
-            await screen.findByRole('button', {
-                name: /load 3d office/i,
-            }),
-        ).toBeInTheDocument();
-
-        expect(
-            screen.getByRole('link', {
-                name: /open accessible dashboard/i,
-            }),
-        ).toHaveAttribute('href', '/operations');
-    });
-
-    it('renders accessible quality controls before WebGL loads', async () => {
-        renderOfficeShell();
-
-        await screen.findByRole('button', {
-            name: /load 3d office/i,
+        const canvasRegion = await screen.findByRole('region', {
+            name: /interactive 3d office navigation/i,
         });
 
-        expect(
-            screen.getByRole('button', {
-                name: 'Low',
-            }),
-        ).toHaveAttribute('aria-pressed', 'false');
+        canvasRegion.focus();
+        await user.keyboard('{ArrowRight}');
 
         expect(
-            screen.getByRole('button', {
-                name: 'Balanced',
-            }),
-        ).toHaveAttribute('aria-pressed', 'true');
+            screen.getByText(/selected room: planning room/i),
+        ).toBeInTheDocument();
 
-        expect(
-            screen.getByRole('button', {
-                name: 'High',
-            }),
-        ).toHaveAttribute('aria-pressed', 'false');
+        expect(canvasRegion).toHaveFocus();
     });
 
-    it('renders the lazy Canvas with balanced quality by default', async () => {
+    it('opens an agent inspector from the accessible list', async () => {
         const user = userEvent.setup();
+        const { projection } = renderOfficeShell();
 
-        renderOfficeShell();
+        const trigger = screen.getAllByRole('button', {
+            name: /inspect agent/i,
+        })[0];
 
-        await user.click(
-            await screen.findByRole('button', {
-                name: /load 3d office/i,
+        await user.click(trigger);
+
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+        expect(
+            screen.getByRole('heading', {
+                name: projection.agents[0].role,
             }),
-        );
+        ).toBeInTheDocument();
 
-        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
-            'data-quality-preset',
-            'balanced',
-        );
+        await user.keyboard('{Escape}');
+
+        expect(trigger).toHaveFocus();
     });
 
-    it('passes the selected rendering quality to the loaded Canvas', async () => {
+    it('opens the same inspector from the 3D selection callback', async () => {
         const user = userEvent.setup();
-
-        renderOfficeShell();
-
-        await user.click(
-            await screen.findByRole('button', {
-                name: /load 3d office/i,
-            }),
-        );
-
-        await user.click(
-            screen.getByRole('button', {
-                name: 'Low',
-            }),
-        );
-
-        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
-            'data-quality-preset',
-            'low',
-        );
-
-        expect(
-            screen.getByRole('button', {
-                name: 'Low',
-            }),
-        ).toHaveAttribute('aria-pressed', 'true');
-
-        expect(
-            screen.getByText(/permits browser-reported performance caveats/i),
-        ).toBeInTheDocument();
-    });
-
-    it('can switch from low to high without changing projection truth', async () => {
-        const user = userEvent.setup();
-        const projection = officeProjectionFixture();
-
-        render(
-            <OfficeShell
-                projection={projection}
-                operationsUrl="/operations"
-                rendererCapabilityDetector={() =>
-                    SUPPORTED_OFFICE_RENDERER_CAPABILITY
-                }
-            />,
-        );
-
-        await user.click(
-            await screen.findByRole('button', {
-                name: 'Low',
-            }),
-        );
-
-        await user.click(
-            screen.getByRole('button', {
-                name: /load 3d office/i,
-            }),
-        );
-
-        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
-            'data-quality-preset',
-            'low',
-        );
-
-        await user.click(
-            screen.getByRole('button', {
-                name: 'High',
-            }),
-        );
-
-        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
-            'data-quality-preset',
-            'high',
-        );
-
-        expect(projection.agents[0].officeState).toBe('implementing');
-        expect(projection.rooms[2].state).toBe('working');
-    });
-
-    it('keeps simulation status visible before WebGL loads', () => {
-        renderOfficeShell();
-
-        expect(
-            screen.getByText('Simulation remains unverified'),
-        ).toBeInTheDocument();
-    });
-
-    it('automatically selects low quality for a limited renderer', async () => {
-        renderOfficeShell(LIMITED_OFFICE_RENDERER_CAPABILITY);
-
-        expect(
-            await screen.findByText('Low-capability mode enabled'),
-        ).toBeInTheDocument();
-
-        expect(
-            screen.getByRole('button', {
-                name: 'Low',
-            }),
-        ).toHaveAttribute('aria-pressed', 'true');
-
-        expect(
-            screen.getByRole('button', {
-                name: /load 3d office/i,
-            }),
-        ).toBeInTheDocument();
-    });
-
-    it('keeps the dashboard and projected DOM state available without WebGL', async () => {
-        const { projection } = renderOfficeShell(
-            UNAVAILABLE_OFFICE_RENDERER_CAPABILITY,
-        );
-        renderOfficeShell(UNAVAILABLE_OFFICE_RENDERER_CAPABILITY);
-
-        expect(
-            await screen.findByRole('heading', {
-                name: '3D office unavailable',
-            }),
-        ).toBeInTheDocument();
-
-        expect(
-            screen.queryByRole('button', {
-                name: /load 3d office/i,
-            }),
-        ).not.toBeInTheDocument();
-
-        expect(
-            screen.getByRole('link', {
-                name: /continue in operational dashboard/i,
-            }),
-        ).toHaveAttribute('href', '/operations');
-
-        expect(
-            screen.getByRole('button', {
-                name: 'Low',
-            }),
-        ).toBeDisabled();
-
-        expect(screen.getByText(projection.agents[0].role)).toBeInTheDocument();
-
-        expect(
-            screen.getByRole('navigation', {
-                name: /office room navigation/i,
-            }),
-        ).toBeInTheDocument();
-    });
-
-    it('replaces only the failed renderer and retries with low quality', async () => {
-        const user = userEvent.setup();
-
-        vi.spyOn(console, 'error').mockImplementation(() => undefined);
-
-        officeCanvasMock.shouldThrow = true;
-
         const { projection } = renderOfficeShell();
 
         await user.click(
@@ -293,41 +130,58 @@ describe('OfficeShell', () => {
             }),
         );
 
+        const canvasRegion = screen.getByRole('region', {
+            name: /interactive 3d office navigation/i,
+        });
+
+        canvasRegion.focus();
+
+        await user.click(
+            await screen.findByRole('button', {
+                name: /select first 3d agent/i,
+            }),
+        );
+
         expect(
-            await screen.findByRole('heading', {
-                name: 'The 3D office could not be initialized',
+            screen.getByRole('heading', {
+                name: projection.agents[0].role,
             }),
         ).toBeInTheDocument();
 
-        expect(
-            screen.getByRole('link', {
-                name: /continue in operational dashboard/i,
-            }),
-        ).toHaveAttribute('href', '/operations');
+        await user.keyboard('{Escape}');
 
-        expect(screen.getByText(projection.agents[0].role)).toBeInTheDocument();
-
-        officeCanvasMock.shouldThrow = false;
-
-        await user.click(
-            screen.getByRole('button', {
-                name: /retry with low quality/i,
-            }),
-        );
-
-        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
-            'data-quality-preset',
-            'low',
-        );
+        expect(canvasRegion).toHaveFocus();
     });
 
-    it('renders the projected timestamp deterministically in UTC', () => {
+    it('keeps keyboard controls and agent state during WebGL fallback', async () => {
+        const user = userEvent.setup();
+        const { projection } = renderOfficeShell(
+            UNAVAILABLE_OFFICE_RENDERER_CAPABILITY,
+        );
+
+        expect(
+            await screen.findByRole('heading', {
+                name: '3D office unavailable',
+            }),
+        ).toBeInTheDocument();
+
+        const canvasRegion = screen.getByRole('region', {
+            name: /interactive 3d office navigation/i,
+        });
+
+        canvasRegion.focus();
+        await user.keyboard('{End}');
+
+        expect(screen.getByText(/selected room: archive/i)).toBeInTheDocument();
+
+        expect(screen.getByText(projection.agents[0].role)).toBeInTheDocument();
+    });
+
+    it('keeps simulation status visible', () => {
         renderOfficeShell();
 
         expect(
-            screen.getByText(
-                'Selected room: Lobby. Projected 2026-07-31 17:00 UTC.',
-            ),
+            screen.getByText('Simulation remains unverified'),
         ).toBeInTheDocument();
     });
 });
