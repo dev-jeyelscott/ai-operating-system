@@ -96,13 +96,27 @@ final readonly class PlainTextDocumentParser implements DocumentParser
         }
 
         try {
-            $contents = Storage::disk($documentVersion->storage_disk)
-                ->get($documentVersion->storage_path);
+            $contents = Storage::disk(
+                $documentVersion->storage_disk,
+            )->get(
+                $documentVersion->storage_path,
+            );
         } catch (Throwable $exception) {
             throw DocumentProcessingException::retryable(
                 failureCode: DocumentProcessingFailureCode::StorageReadFailed,
                 message: 'The stored document could not be read.',
                 previous: $exception,
+            );
+        }
+
+        /*
+         * Laravel's filesystem get() contract allows null when the object
+         * cannot be read and the configured adapter does not throw.
+         */
+        if (! is_string($contents)) {
+            throw DocumentProcessingException::retryable(
+                failureCode: DocumentProcessingFailureCode::StorageReadFailed,
+                message: 'The stored document could not be read.',
             );
         }
 
