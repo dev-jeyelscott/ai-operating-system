@@ -34,7 +34,7 @@ function createOfficeProjectContext(): array
     return [$user, $organization, $project];
 }
 
-it('renders the tenant-scoped office page from persisted projection state', function (): void {
+it('renders tenant-scoped office projection and telemetry endpoints', function (): void {
     [$user, $organization, $project] = createOfficeProjectContext();
 
     $response = $this
@@ -54,9 +54,9 @@ it('renders the tenant-scoped office page from persisted projection state', func
             ->where('officeProjection.metadata.schemaVersion', 1)
             ->has('officeProjection.rooms', 7)
             ->where(
-                'operationsUrl',
+                'officeProjectionEndpointUrl',
                 route(
-                    'organizations.projects.operations.index',
+                    'organizations.projects.operations.office-projection.show',
                     [
                         'organization' => $organization,
                         'project' => $project,
@@ -64,9 +64,9 @@ it('renders the tenant-scoped office page from persisted projection state', func
                 ),
             )
             ->where(
-                'officeProjectionEndpointUrl',
+                'officeTelemetryEndpointUrl',
                 route(
-                    'organizations.projects.operations.office-projection.show',
+                    'organizations.projects.operations.office-telemetry.store',
                     [
                         'organization' => $organization,
                         'project' => $project,

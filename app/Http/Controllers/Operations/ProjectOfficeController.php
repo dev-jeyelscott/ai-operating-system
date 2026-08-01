@@ -17,7 +17,7 @@ use Inertia\Response;
 final class ProjectOfficeController extends Controller
 {
     /**
-     * Display the lazy-loaded 3D office shell backed by persisted projection state.
+     * Display the 3D office shell backed by persisted projection state.
      */
     public function __invoke(
         Organization $organization,
@@ -52,6 +52,13 @@ final class ProjectOfficeController extends Controller
             ),
             'officeProjectionEndpointUrl' => route(
                 'organizations.projects.operations.office-projection.show',
+                [
+                    'organization' => $organization,
+                    'project' => $project,
+                ],
+            ),
+            'officeTelemetryEndpointUrl' => route(
+                'organizations.projects.operations.office-telemetry.store',
                 [
                     'organization' => $organization,
                     'project' => $project,

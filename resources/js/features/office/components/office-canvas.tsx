@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { ElementRef } from 'react';
 import { buildAgentPositions } from '@/features/office/agent-layout';
 import { LogicalAgentAvatar } from '@/features/office/components/logical-agent-avatar';
+import { OfficePerformanceMonitor } from '@/features/office/components/office-performance-monitor';
 import { OfficeZone } from '@/features/office/components/office-zone';
+import type { OfficeFrameWindow } from '@/features/office/office-performance';
 import {
     OFFICE_ZONE_ORDER,
     officeZone,
@@ -26,6 +28,8 @@ type Props = {
     onSelectRoom: (room: OfficeRoomKey) => void;
     onSelectAgent: (agentId: string) => void;
     onRendererFailure: (reason: OfficeRendererFailureReason) => void;
+    onRendererReady: () => void;
+    onPerformanceSample: (sample: OfficeFrameWindow) => void;
 };
 
 type SceneProps = {
@@ -50,6 +54,8 @@ export default function OfficeCanvas({
     onSelectRoom,
     onSelectAgent,
     onRendererFailure,
+    onRendererReady,
+    onPerformanceSample,
 }: Props) {
     const quality = officeQualityPreset(qualityPreset);
 
@@ -72,10 +78,13 @@ export default function OfficeCanvas({
                 powerPreference: quality.powerPreference,
             }}
             shadows={quality.shadows}
+            onCreated={onRendererReady}
         >
             <OfficeRendererContextMonitor
                 onRendererFailure={onRendererFailure}
             />
+
+            <OfficePerformanceMonitor onSample={onPerformanceSample} />
 
             <color attach="background" args={['#09090b']} />
             <ambientLight intensity={0.8} />

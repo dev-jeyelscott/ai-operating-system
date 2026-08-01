@@ -21,6 +21,7 @@ type Props = {
     projectUrl: string;
     operationsUrl: string;
     officeProjectionEndpointUrl: string;
+    officeTelemetryEndpointUrl: string;
     officeProjection: OfficeProjection;
 };
 
@@ -34,6 +35,7 @@ export default function ProjectOffice({
     projectUrl,
     operationsUrl,
     officeProjectionEndpointUrl,
+    officeTelemetryEndpointUrl,
     officeProjection,
 }: Props) {
     const [refreshing, setRefreshing] = useState(false);
@@ -121,6 +123,7 @@ export default function ProjectOffice({
                 <OfficeShell
                     projection={officeProjection}
                     operationsUrl={operationsUrl}
+                    telemetryEndpointUrl={officeTelemetryEndpointUrl}
                 />
             </main>
         </>
@@ -128,7 +131,7 @@ export default function ProjectOffice({
 }
 
 /**
- * Convert stable enum-style values into readable UI labels.
+ * Convert stable enum-style values into readable labels.
  */
 function humanize(value: string) {
     return value

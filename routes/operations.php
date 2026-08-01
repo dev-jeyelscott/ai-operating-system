@@ -10,24 +10,18 @@ use App\Http\Controllers\Operations\ProjectOperationsReadModelController;
 use App\Http\Controllers\Operations\ProjectRecoveryCenterController;
 use App\Http\Controllers\Operations\ProjectUsageController;
 use App\Http\Controllers\Operations\ReplayProjectDeadLetterController;
+use App\Http\Controllers\Operations\StoreOfficeRenderingTelemetryController;
 use Illuminate\Support\Facades\Route;
 
 /*
  * Keep every operations endpoint inside the authenticated and tenant-scoped
  * organization/project boundary.
- *
- * Scoped bindings prevent a project from being resolved beneath an
- * organization that does not own it.
  */
 Route::middleware(['auth', 'auth.session', 'verified'])
     ->prefix('/organizations/{organization}/projects/{project}')
     ->name('organizations.projects.')
     ->scopeBindings()
     ->group(function (): void {
-        /*
-         * Render the accessible, non-3D operational dashboard introduced by
-         * AIOS-120.
-         */
         Route::get(
             '/operations',
             ProjectOperationsDashboardController::class,
@@ -35,10 +29,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('operations.index');
 
-        /*
-         * Render the lazy-loaded interactive office while preserving the
-         * accessible operational dashboard as the equivalent fallback.
-         */
         Route::get(
             '/operations/office',
             ProjectOfficeController::class,
@@ -46,9 +36,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('operations.office.index');
 
-        /*
-         * Preserve the AIOS-117 machine-readable operations contract.
-         */
         Route::get(
             '/operations/read-model',
             ProjectOperationsReadModelController::class,
@@ -56,9 +43,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('operations.show');
 
-        /*
-         * Preserve the AIOS-118 machine-readable office projection contract.
-         */
         Route::get(
             '/operations/office-projection',
             ProjectOfficeProjectionController::class,
@@ -67,8 +51,19 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->name('operations.office-projection.show');
 
         /*
-         * Render the AIOS-122 blocker and recovery center.
+         * Accept bounded, privacy-safe renderer telemetry.
+         *
+         * This endpoint records presentation health only. It never advances
+         * workflow state or writes audit/evidence records.
          */
+        Route::post(
+            '/operations/office-telemetry',
+            StoreOfficeRenderingTelemetryController::class,
+        )
+            ->middleware('throttle:30,1')
+            ->can('view', 'project')
+            ->name('operations.office-telemetry.store');
+
         Route::get(
             '/operations/recovery',
             ProjectRecoveryCenterController::class,
@@ -76,9 +71,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('operations.recovery.index');
 
-        /*
-         * Permit only project approvers to replay one project-owned dead letter.
-         */
         Route::post(
             '/operations/recovery/dead-letters/replay',
             ReplayProjectDeadLetterController::class,
@@ -86,9 +78,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('approve', 'project')
             ->name('operations.recovery.replay');
 
-        /*
-         * Render the AIOS-123 usage and separated-cost view.
-         */
         Route::get(
             '/operations/usage',
             ProjectUsageController::class,
@@ -96,9 +85,6 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('operations.usage.index');
 
-        /*
-         * Render the actionable project approval inbox introduced by AIOS-121.
-         */
         Route::get(
             '/approvals',
             ProjectApprovalInboxController::class,

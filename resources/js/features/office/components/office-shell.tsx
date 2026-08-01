@@ -41,6 +41,8 @@ import {
     rendererStatusLabel,
 } from '@/features/office/components/office-renderer-ui';
 import { usePrefersReducedMotion } from '@/features/office/hooks/use-prefers-reduced-motion';
+import { useOfficeTelemetry } from '@/features/office/office-telemetry';
+import type { OfficeFrameWindow } from '@/features/office/office-telemetry';
 import { OFFICE_ZONE_ORDER } from '@/features/office/office-zone-layout';
 import {
     DEFAULT_OFFICE_QUALITY_PRESET,
@@ -64,6 +66,7 @@ import type {
 type Props = {
     projection: OfficeProjection;
     operationsUrl: string;
+    telemetryEndpointUrl: string;
     rendererCapabilityDetector?: () => OfficeRendererCapability;
 };
 
@@ -81,6 +84,7 @@ function createLazyOfficeCanvas() {
 export function OfficeShell({
     projection,
     operationsUrl,
+    telemetryEndpointUrl,
     rendererCapabilityDetector = detectOfficeRendererCapability,
 }: Props) {
     const [canvasRequested, setCanvasRequested] = useState(false);
@@ -103,6 +107,9 @@ export function OfficeShell({
     const canvasRegionRef = useRef<HTMLElement | null>(null);
     const reducedMotion = usePrefersReducedMotion();
     const quality = officeQualityPreset(qualityPreset);
+    const { record: recordTelemetry } =
+        useOfficeTelemetry(telemetryEndpointUrl);
+    const lastCapabilityReasonRef = useRef<string | null>(null);
 
     const visibleRoomKeys = useMemo(
         () =>
@@ -140,6 +147,18 @@ export function OfficeShell({
 
         setRendererCapability(capability);
 
+        if (lastCapabilityReasonRef.current !== capability.reason) {
+            lastCapabilityReasonRef.current = capability.reason;
+
+            recordTelemetry({
+                type: 'capability_checked',
+                qualityPreset: capability.recommendedPreset,
+                reducedMotion,
+                capabilityStatus: capability.status,
+                capabilityReason: capability.reason,
+            });
+        }
+
         if (capability.recommendedPreset === 'low') {
             setQualityPreset('low');
         }
@@ -148,7 +167,7 @@ export function OfficeShell({
             setCanvasRequested(false);
             setRendererFailure(null);
         }
-    }, [rendererCapabilityDetector]);
+    }, [recordTelemetry, reducedMotion, rendererCapabilityDetector]);
 
     /**
      * Detect capability after hydration.
@@ -290,6 +309,14 @@ export function OfficeShell({
 
         setRendererFailure(null);
         setCanvasRequested(true);
+
+        recordTelemetry({
+            type: 'load_started',
+            qualityPreset,
+            reducedMotion,
+            capabilityStatus: rendererCapability.status,
+            capabilityReason: rendererCapability.reason,
+        });
     }
 
     /**
@@ -299,8 +326,23 @@ export function OfficeShell({
         (reason: OfficeRendererFailureReason) => {
             setRendererFailure(reason);
             setAnnouncement('3D renderer fallback activated.');
+
+            recordTelemetry({
+                type: 'load_failed',
+                qualityPreset,
+                reducedMotion,
+                capabilityStatus: rendererCapability.status,
+                capabilityReason: rendererCapability.reason,
+                failureReason: reason,
+            });
         },
-        [],
+        [
+            qualityPreset,
+            recordTelemetry,
+            reducedMotion,
+            rendererCapability.reason,
+            rendererCapability.status,
+        ],
     );
 
     /**
@@ -312,6 +354,71 @@ export function OfficeShell({
         setCanvasRequested(true);
         setCanvasAttempt((attempt) => attempt + 1);
         setLazyOfficeCanvas(createLazyOfficeCanvas());
+
+        recordTelemetry({
+            type: 'load_started',
+            qualityPreset: 'low',
+            reducedMotion,
+            capabilityStatus: rendererCapability.status,
+            capabilityReason: rendererCapability.reason,
+        });
+    }
+
+    /**
+     * Record successful WebGL initialization.
+     */
+    const handleRendererReady = useCallback(() => {
+        recordTelemetry({
+            type: 'load_succeeded',
+            qualityPreset,
+            reducedMotion,
+            capabilityStatus: rendererCapability.status,
+            capabilityReason: rendererCapability.reason,
+        });
+    }, [
+        qualityPreset,
+        recordTelemetry,
+        reducedMotion,
+        rendererCapability.reason,
+        rendererCapability.status,
+    ]);
+
+    /**
+     * Record one aggregated frame-health window.
+     */
+    const handlePerformanceSample = useCallback(
+        (frame: OfficeFrameWindow) => {
+            recordTelemetry({
+                type: 'frame_window',
+                qualityPreset,
+                reducedMotion,
+                capabilityStatus: rendererCapability.status,
+                capabilityReason: rendererCapability.reason,
+                frame,
+            });
+        },
+        [
+            qualityPreset,
+            recordTelemetry,
+            reducedMotion,
+            rendererCapability.reason,
+            rendererCapability.status,
+        ],
+    );
+
+    /**
+     * Change presentation quality and record only the selected preset.
+     */
+    function changeQualityPreset(value: OfficeQualityPresetKey) {
+        setQualityPreset(value);
+
+        recordTelemetry({
+            type: 'quality_changed',
+            qualityPreset: value,
+            reducedMotion,
+            capabilityStatus: rendererCapability.status,
+            capabilityReason: rendererCapability.reason,
+        });
     }
 
     const runtimeFailureCopy = rendererFailure
@@ -440,7 +547,7 @@ export function OfficeShell({
                         <OfficeQualityControl
                             value={qualityPreset}
                             disabled={!rendererCapability.canAttempt3d}
-                            onChange={setQualityPreset}
+                            onChange={changeQualityPreset}
                         />
                     </div>
 
@@ -517,6 +624,12 @@ export function OfficeShell({
                                             onSelectAgent={inspectCanvasAgent}
                                             onRendererFailure={
                                                 handleRendererFailure
+                                            }
+                                            onRendererReady={
+                                                handleRendererReady
+                                            }
+                                            onPerformanceSample={
+                                                handlePerformanceSample
                                             }
                                         />
                                     </div>
