@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -103,10 +103,25 @@ describe('ProjectRecoveryCenter', () => {
             }),
         ).toBeInTheDocument();
 
-        expect(screen.getByText('Blocked')).toBeInTheDocument();
-        expect(screen.getByText('Scheduled retries')).toBeInTheDocument();
-        expect(screen.getByText('Terminal failures')).toBeInTheDocument();
-        expect(screen.getByText('Dead letters')).toBeInTheDocument();
+        const recoverySummary = screen.getByRole('region', {
+            name: 'Recovery summary',
+        });
+
+        expect(
+            within(recoverySummary).getByText('Blocked'),
+        ).toBeInTheDocument();
+
+        expect(
+            within(recoverySummary).getByText('Scheduled retries'),
+        ).toBeInTheDocument();
+
+        expect(
+            within(recoverySummary).getByText('Terminal failures'),
+        ).toBeInTheDocument();
+
+        expect(
+            within(recoverySummary).getByText('Dead letters'),
+        ).toBeInTheDocument();
 
         expect(screen.getByText('Simulated')).toBeInTheDocument();
         expect(screen.getByText('Provider Unavailable')).toBeInTheDocument();
@@ -137,6 +152,7 @@ describe('ProjectRecoveryCenter', () => {
         await user.click(submit);
 
         expect(inertiaMocks.post).toHaveBeenCalledTimes(1);
+
         expect(inertiaMocks.post).toHaveBeenCalledWith(
             '/organizations/1/projects/10/operations/recovery/replay',
             {
@@ -156,6 +172,7 @@ describe('ProjectRecoveryCenter', () => {
         renderRecoveryCenter(false);
 
         expect(screen.getByText('Approval required')).toBeInTheDocument();
+
         expect(
             screen.getByText(/owner or administrator must authorize replay/i),
         ).toBeInTheDocument();

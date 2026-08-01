@@ -89,7 +89,7 @@ describe('ProjectOperationsDashboard polling', () => {
         vi.clearAllMocks();
     });
 
-    it('reloads only operations while preserving scroll and state', () => {
+    it('polls only operations and tracks the refresh lifecycle', () => {
         render(
             <ProjectOperationsDashboard
                 organization={{
@@ -113,12 +113,14 @@ describe('ProjectOperationsDashboard polling', () => {
             />,
         );
 
+        expect(vi.mocked(usePoll)).toHaveBeenCalledTimes(1);
+
         expect(vi.mocked(usePoll)).toHaveBeenCalledWith(
             10_000,
             expect.objectContaining({
                 only: ['operations'],
-                preserveScroll: true,
-                preserveState: true,
+                onStart: expect.any(Function),
+                onFinish: expect.any(Function),
             }),
         );
     });
