@@ -56,10 +56,7 @@ export class OfficeFrameWindowAccumulator {
         this.frameTimes.push(frameMs);
         this.latestRendererInfo = rendererInfo;
 
-        if (
-            this.elapsedMs + WINDOW_COMPLETION_TOLERANCE_MS <
-            this.windowMs
-        ) {
+        if (this.elapsedMs + WINDOW_COMPLETION_TOLERANCE_MS < this.windowMs) {
             return null;
         }
 
