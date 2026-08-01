@@ -14,13 +14,17 @@ use LogicException;
 final readonly class QualityAssuranceProviderRegistry
 {
     /**
-     * Register QA providers and the mandatory result validator.
+     * Register QA providers and the result validator.
+     *
+     * The validator has a default instance to preserve direct registry
+     * construction in isolated tests while allowing explicit container
+     * injection in the application service provider.
      *
      * @param  iterable<QualityAssuranceExecutionProvider>  $providers
      */
     public function __construct(
         private iterable $providers,
-        private QaAssessmentValidator $validator,
+        private QaAssessmentValidator $validator = new QaAssessmentValidator,
     ) {}
 
     /**

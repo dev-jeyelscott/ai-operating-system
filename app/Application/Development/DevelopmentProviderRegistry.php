@@ -14,13 +14,17 @@ use LogicException;
 final readonly class DevelopmentProviderRegistry
 {
     /**
-     * Register development providers and the mandatory result validator.
+     * Register development providers and the result validator.
+     *
+     * The validator has a default instance to preserve direct registry
+     * construction in isolated tests while allowing explicit container
+     * injection in the application service provider.
      *
      * @param  iterable<DevelopmentExecutionProvider>  $providers
      */
     public function __construct(
         private iterable $providers,
-        private DevelopmentResultValidator $validator,
+        private DevelopmentResultValidator $validator = new DevelopmentResultValidator,
     ) {}
 
     /**
