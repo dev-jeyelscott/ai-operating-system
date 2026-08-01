@@ -25,7 +25,10 @@ test(
         $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
-            ->handle($version, AuditContext::system(actorId: 'feature-test'));
+            ->handle(
+                $version,
+                AuditContext::system(actorId: 'feature-test'),
+            );
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::Quarantined)
@@ -58,7 +61,10 @@ test(
         $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
-            ->handle($version, AuditContext::system(actorId: 'feature-test'));
+            ->handle(
+                $version,
+                AuditContext::system(actorId: 'feature-test'),
+            );
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::ScanApproved)
@@ -93,10 +99,13 @@ test(
         expect(
             fn (): null => app(
                 RetryDocumentVersionProcessing::class,
-            )->handle($version, AuditContext::system(actorId: 'feature-test')),
+            )->handle(
+                $version,
+                AuditContext::system(actorId: 'feature-test'),
+            ),
         )->toThrow(
             LogicException::class,
-            'Permanent parser capability failures cannot be retried.',
+            'Permanent document content failures cannot be retried.',
         );
 
         expect($version->fresh())
@@ -120,7 +129,10 @@ test('completed processing cannot be retried', function (): void {
     expect(
         fn (): null => app(
             RetryDocumentVersionProcessing::class,
-        )->handle($version, AuditContext::system(actorId: 'feature-test')),
+        )->handle(
+            $version,
+            AuditContext::system(actorId: 'feature-test'),
+        ),
     )->toThrow(
         LogicException::class,
         'Only failed document processing can be retried.',
@@ -146,7 +158,10 @@ test(
         $checksum = $version->checksum_sha256;
 
         app(RetryDocumentVersionProcessing::class)
-            ->handle($version, AuditContext::system(actorId: 'feature-test'));
+            ->handle(
+                $version,
+                AuditContext::system(actorId: 'feature-test'),
+            );
 
         expect($version->fresh())
             ->status->toBe(DocumentStatus::AnalysisPending)

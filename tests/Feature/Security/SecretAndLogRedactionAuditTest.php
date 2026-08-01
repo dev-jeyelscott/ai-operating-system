@@ -10,9 +10,10 @@ use App\Models\ExecutionAttempt;
 use App\Models\NotificationEvent;
 use App\Support\Security\SensitiveValueRedactor;
 use Illuminate\Http\Request;
+use Illuminate\Log\Logger as LaravelLogger;
 use LogicException;
 use Monolog\Handler\TestHandler;
-use Monolog\Logger;
+use Monolog\Logger as MonologLogger;
 use RuntimeException;
 
 it(
@@ -41,7 +42,9 @@ it(
             ->not->toContain($openAiToken)
             ->not->toContain($githubToken)
             ->not->toContain($notionToken)
-            ->toContain(SensitiveValueRedactor::REDACTED);
+            ->toContain(
+                SensitiveValueRedactor::REDACTED,
+            );
     },
 );
 
@@ -80,10 +83,19 @@ it(
         $openAiToken = 'sk-proj-'.str_repeat('A', 32);
         $notionToken = 'ntn_'.str_repeat('C', 32);
 
-        $logger = new Logger('security-audit');
+        $monolog = new MonologLogger(
+            'security-audit',
+        );
+
         $handler = new TestHandler;
 
-        $logger->pushHandler($handler);
+        $monolog->pushHandler($handler);
+
+        /*
+         * Laravel invokes configured tap classes with its logger wrapper,
+         * not with the underlying Monolog logger directly.
+         */
+        $logger = new LaravelLogger($monolog);
 
         app(RedactSensitiveLogRecords::class)(
             $logger,
@@ -111,7 +123,9 @@ it(
         expect($serialized)
             ->not->toContain($openAiToken)
             ->not->toContain($notionToken)
-            ->toContain(SensitiveValueRedactor::REDACTED);
+            ->toContain(
+                SensitiveValueRedactor::REDACTED,
+            );
     },
 );
 
@@ -189,7 +203,8 @@ it(
                 SensitiveValueRedactor::REDACTED,
             );
 
-        expect($notification->action_url)->toBeNull();
+        expect($notification->action_url)
+            ->toBeNull();
     },
 );
 
@@ -198,7 +213,8 @@ it(
     function (): void {
         $token = 'ghp_'.str_repeat('B', 36);
 
-        $attempt = ExecutionAttempt::factory()->create();
+        $attempt = ExecutionAttempt::factory()
+            ->create();
 
         $attempt->forceFill([
             'error_message' => "GitHub rejected {$token}",
