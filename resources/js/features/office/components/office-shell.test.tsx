@@ -52,7 +52,8 @@ vi.mock('./office-canvas', () => ({
 import { OfficeShell } from './office-shell';
 
 /**
- * Render the shell with deterministic projection and capability.
+ * Render the shell with deterministic projection, telemetry endpoint, and
+ * renderer capability.
  */
 function renderOfficeShell(
     capability: OfficeRendererCapability = SUPPORTED_OFFICE_RENDERER_CAPABILITY,
@@ -63,6 +64,7 @@ function renderOfficeShell(
         <OfficeShell
             projection={projection}
             operationsUrl="/operations"
+            telemetryEndpointUrl="/test/office-telemetry"
             rendererCapabilityDetector={() => capability}
         />,
     );
