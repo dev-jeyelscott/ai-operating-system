@@ -1,50 +1,55 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 /**
  * Return whether the operating system requests reduced motion.
  *
- * The hook is SSR-safe and keeps the value synchronized when the user changes
- * the operating-system preference while the application remains open.
+ * The browser media query is treated as an external store so React can read a
+ * stable snapshot and subscribe without mirroring browser state through an
+ * effect.
  */
 export function usePrefersReducedMotion(): boolean {
-    const [reducedMotion, setReducedMotion] = useState(() =>
-        currentReducedMotionPreference(),
+    return useSyncExternalStore(
+        subscribeToReducedMotionPreference,
+        getReducedMotionPreference,
+        getServerReducedMotionPreference,
     );
-
-    useEffect(() => {
-        if (
-            typeof window === 'undefined' ||
-            typeof window.matchMedia !== 'function'
-        ) {
-            return undefined;
-        }
-
-        const mediaQuery = window.matchMedia(REDUCED_MOTION_QUERY);
-
-        /**
-         * Synchronize React state with the browser accessibility preference.
-         */
-        function handleChange(event: MediaQueryListEvent) {
-            setReducedMotion(event.matches);
-        }
-
-        setReducedMotion(mediaQuery.matches);
-        mediaQuery.addEventListener('change', handleChange);
-
-        return () => {
-            mediaQuery.removeEventListener('change', handleChange);
-        };
-    }, []);
-
-    return reducedMotion;
 }
 
 /**
- * Read the current preference without assuming a browser environment.
+ * Subscribe to changes in the browser's reduced-motion preference.
  */
-function currentReducedMotionPreference(): boolean {
+function subscribeToReducedMotionPreference(
+    onPreferenceChange: () => void,
+): () => void {
+    if (
+        typeof window === 'undefined' ||
+        typeof window.matchMedia !== 'function'
+    ) {
+        return () => undefined;
+    }
+
+    const mediaQuery = window.matchMedia(REDUCED_MOTION_QUERY);
+
+    /**
+     * Notify React that the external preference snapshot may have changed.
+     */
+    function handleChange(): void {
+        onPreferenceChange();
+    }
+
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => {
+        mediaQuery.removeEventListener('change', handleChange);
+    };
+}
+
+/**
+ * Read the current browser preference snapshot.
+ */
+function getReducedMotionPreference(): boolean {
     if (
         typeof window === 'undefined' ||
         typeof window.matchMedia !== 'function'
@@ -53,4 +58,11 @@ function currentReducedMotionPreference(): boolean {
     }
 
     return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+/**
+ * Return a deterministic server snapshot for SSR and hydration.
+ */
+function getServerReducedMotionPreference(): boolean {
+    return false;
 }
