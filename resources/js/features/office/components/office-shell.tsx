@@ -8,7 +8,7 @@ import {
     ShieldAlert,
 } from 'lucide-react';
 import { Component, lazy, Suspense, useState } from 'react';
-import type { ErrorInfo, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
