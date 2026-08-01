@@ -85,8 +85,6 @@ export default function ProjectRecoveryCenter({
 
     usePoll(10_000, {
         only: ['recovery'],
-        preserveScroll: true,
-        preserveState: true,
         onStart: () => setRefreshing(true),
         onFinish: () => setRefreshing(false),
     });

@@ -1,3 +1,4 @@
+import { describe } from 'vitest';
 import {
     OFFICE_ZONE_LAYOUT,
     OFFICE_ZONE_ORDER,

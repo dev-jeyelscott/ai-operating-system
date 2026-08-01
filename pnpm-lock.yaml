@@ -159,6 +159,9 @@ importers:
       '@types/node':
         specifier: ^22.13.5
         version: 22.20.1
+      '@types/three':
+        specifier: 0.185.1
+        version: 0.185.1
       babel-plugin-react-compiler:
         specifier: ^1.0.0
         version: 1.0.0

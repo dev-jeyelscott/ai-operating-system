@@ -40,8 +40,6 @@ export default function ProjectOffice({
 
     usePoll(10_000, {
         only: ['officeProjection'],
-        preserveScroll: true,
-        preserveState: true,
         onStart: () => setRefreshing(true),
         onFinish: () => setRefreshing(false),
     });
@@ -52,8 +50,6 @@ export default function ProjectOffice({
     function refreshProjection() {
         router.reload({
             only: ['officeProjection'],
-            preserveScroll: true,
-            preserveState: true,
             onStart: () => setRefreshing(true),
             onFinish: () => setRefreshing(false),
         });

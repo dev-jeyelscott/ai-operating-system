@@ -180,8 +180,6 @@ export default function ProjectOperationsDashboard({
 
     usePoll(10_000, {
         only: ['operations'],
-        preserveScroll: true,
-        preserveState: true,
         onStart: () => setRefreshing(true),
         onFinish: () => setRefreshing(false),
     });
@@ -192,8 +190,6 @@ export default function ProjectOperationsDashboard({
     function refreshOperations() {
         router.reload({
             only: ['operations'],
-            preserveScroll: true,
-            preserveState: true,
             onStart: () => setRefreshing(true),
             onFinish: () => setRefreshing(false),
         });

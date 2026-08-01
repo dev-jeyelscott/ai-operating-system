@@ -74,8 +74,6 @@ export default function ProjectUsageView({
 }: Props) {
     usePoll(30_000, {
         only: ['usage'],
-        preserveState: true,
-        preserveScroll: true,
     });
 
     const hasQualityIssues =

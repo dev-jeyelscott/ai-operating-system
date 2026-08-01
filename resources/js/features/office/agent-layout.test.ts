@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import { buildAgentPositions } from '@/features/office/agent-layout';
 import { officeProjectionFixture } from '@/tests/fixtures/office-projection';
 
