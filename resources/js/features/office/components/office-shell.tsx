@@ -129,14 +129,31 @@ export function OfficeShell({
     /**
      * Remove an inspector selection that no longer exists after projection
      * refresh or reconnect.
+     *
+     * The state update is deferred so the effect does not synchronously trigger
+     * another render while React is processing the committed projection update.
      */
     useEffect(() => {
-        if (selectedAgentId && !selectedAgent) {
+        if (!selectedAgentId || selectedAgent) {
+            return;
+        }
+
+        let cancelled = false;
+
+        queueMicrotask(() => {
+            if (cancelled) {
+                return;
+            }
+
             setSelectedAgentId(null);
             setAnnouncement(
                 'The previously selected agent is no longer projected.',
             );
-        }
+        });
+
+        return () => {
+            cancelled = true;
+        };
     }, [selectedAgent, selectedAgentId]);
 
     /**
@@ -273,7 +290,7 @@ export function OfficeShell({
                 break;
 
             case 'Enter':
-            case ' ':
+            case ' ': {
                 event.preventDefault();
 
                 const firstAgent = projection.agents.find(
@@ -289,6 +306,7 @@ export function OfficeShell({
                 }
 
                 return;
+            }
         }
 
         if (targetIndex === null) {
