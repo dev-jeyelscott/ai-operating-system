@@ -40,18 +40,28 @@ vi.mock('./office-canvas', () => ({
 import { OfficeShell } from './office-shell';
 
 /**
- * Render the shell with a deterministic capability result.
+ * Render the shell with a deterministic projection and capability result.
+ *
+ * Returning the projection lets assertions use the same fixture values passed
+ * to the component instead of duplicating role or workflow text.
  */
 function renderOfficeShell(
     capability: OfficeRendererCapability = SUPPORTED_OFFICE_RENDERER_CAPABILITY,
 ) {
-    return render(
+    const projection = officeProjectionFixture();
+
+    const view = render(
         <OfficeShell
-            projection={officeProjectionFixture()}
+            projection={projection}
             operationsUrl="/operations"
             rendererCapabilityDetector={() => capability}
         />,
     );
+
+    return {
+        projection,
+        view,
+    };
 }
 
 describe('OfficeShell', () => {
@@ -230,6 +240,9 @@ describe('OfficeShell', () => {
     });
 
     it('keeps the dashboard and projected DOM state available without WebGL', async () => {
+        const { projection } = renderOfficeShell(
+            UNAVAILABLE_OFFICE_RENDERER_CAPABILITY,
+        );
         renderOfficeShell(UNAVAILABLE_OFFICE_RENDERER_CAPABILITY);
 
         expect(
@@ -256,7 +269,7 @@ describe('OfficeShell', () => {
             }),
         ).toBeDisabled();
 
-        expect(screen.getByText('Backend Engineer')).toBeInTheDocument();
+        expect(screen.getByText(projection.agents[0].role)).toBeInTheDocument();
 
         expect(
             screen.getByRole('navigation', {
@@ -272,7 +285,7 @@ describe('OfficeShell', () => {
 
         officeCanvasMock.shouldThrow = true;
 
-        renderOfficeShell();
+        const { projection } = renderOfficeShell();
 
         await user.click(
             await screen.findByRole('button', {
@@ -292,7 +305,7 @@ describe('OfficeShell', () => {
             }),
         ).toHaveAttribute('href', '/operations');
 
-        expect(screen.getByText('Backend Engineer')).toBeInTheDocument();
+        expect(screen.getByText(projection.agents[0].role)).toBeInTheDocument();
 
         officeCanvasMock.shouldThrow = false;
 
@@ -306,5 +319,15 @@ describe('OfficeShell', () => {
             'data-quality-preset',
             'low',
         );
+    });
+
+    it('renders the projected timestamp deterministically in UTC', () => {
+        renderOfficeShell();
+
+        expect(
+            screen.getByText(
+                'Selected room: Lobby. Projected 2026-07-31 17:00 UTC.',
+            ),
+        ).toBeInTheDocument();
     });
 });

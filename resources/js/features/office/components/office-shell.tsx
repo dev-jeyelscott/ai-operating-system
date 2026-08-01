@@ -113,18 +113,23 @@ export function OfficeShell({
     }, [rendererCapabilityDetector]);
 
     /**
-     * Run the initial browser capability probe after the first render.
+     * Run the browser capability probe after hydration.
      *
-     * Deferring through a browser timer prevents a synchronous state update inside
-     * the effect while keeping WebGL detection outside the render phase.
+     * The microtask keeps capability updates asynchronous so the effect does not
+     * synchronously trigger another render. The cancellation guard prevents a
+     * queued probe from updating state after cleanup or Strict Mode remounting.
      */
     useEffect(() => {
-        const timeoutId = window.setTimeout(() => {
-            refreshRendererCapability();
-        }, 0);
+        let cancelled = false;
+
+        queueMicrotask(() => {
+            if (!cancelled) {
+                refreshRendererCapability();
+            }
+        });
 
         return () => {
-            window.clearTimeout(timeoutId);
+            cancelled = true;
         };
     }, [refreshRendererCapability]);
 
@@ -647,11 +652,17 @@ function humanize(value: string) {
 }
 
 /**
- * Format an ISO date without modifying projection truth.
+ * Format an ISO projection timestamp as deterministic UTC text.
+ *
+ * Using the ISO representation prevents the Node SSR runtime and the browser
+ * from formatting the same timestamp with different locales or time zones.
  */
 function formatDate(value: string) {
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(new Date(value));
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Unknown projection time';
+    }
+
+    return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
