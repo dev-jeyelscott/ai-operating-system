@@ -5,17 +5,32 @@ declare(strict_types=1);
 namespace App\Application\Planning;
 
 use App\Application\Planning\Contracts\ExecutionProvider;
+use App\Application\Planning\Providers\ValidatingPlanningExecutionProvider;
 use App\Domain\Projects\Configuration\ProviderPolicy;
 use LogicException;
 
-/** Resolves an allowed provider in the project's explicit fallback order. */
+/**
+ * Resolves an allowed planning provider in the project's fallback order.
+ */
 final readonly class ExecutionProviderRegistry
 {
-    /** @param iterable<ExecutionProvider> $providers */
-    public function __construct(private iterable $providers) {}
+    /**
+     * Register planning providers and the mandatory result validator.
+     *
+     * @param  iterable<ExecutionProvider>  $providers
+     */
+    public function __construct(
+        private iterable $providers,
+        private PlanningResultValidator $validator,
+    ) {}
 
-    public function resolve(ProviderPolicy $policy, string $capability): ExecutionProvider
-    {
+    /**
+     * Resolve the first allowed provider and enforce result validation.
+     */
+    public function resolve(
+        ProviderPolicy $policy,
+        string $capability,
+    ): ExecutionProvider {
         $providers = [];
 
         foreach ($this->providers as $provider) {
@@ -25,8 +40,15 @@ final readonly class ExecutionProviderRegistry
         foreach ($policy->fallbackOrder as $providerId) {
             $provider = $providers[$providerId] ?? null;
 
-            if ($provider !== null && $provider->supports($capability)) {
-                return $provider;
+            if (
+                $provider !== null
+                && $provider->supports($capability)
+            ) {
+                return new ValidatingPlanningExecutionProvider(
+                    provider: $provider,
+                    validator: $this->validator,
+                    capability: $capability,
+                );
             }
         }
 

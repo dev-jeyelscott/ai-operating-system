@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\QualityAssurance;
 
 use App\Application\QualityAssurance\Contracts\QualityAssuranceExecutionProvider;
+use App\Application\QualityAssurance\Providers\ValidatingQualityAssuranceExecutionProvider;
 use LogicException;
 
 /**
@@ -13,10 +14,13 @@ use LogicException;
 final readonly class QualityAssuranceProviderRegistry
 {
     /**
+     * Register QA providers and the mandatory result validator.
+     *
      * @param  iterable<QualityAssuranceExecutionProvider>  $providers
      */
     public function __construct(
         private iterable $providers,
+        private QaAssessmentValidator $validator,
     ) {}
 
     /**
@@ -41,7 +45,11 @@ final readonly class QualityAssuranceProviderRegistry
                 $provider !== null
                 && $provider->supports($capability)
             ) {
-                return $provider;
+                return new ValidatingQualityAssuranceExecutionProvider(
+                    provider: $provider,
+                    validator: $this->validator,
+                    capability: $capability,
+                );
             }
         }
 

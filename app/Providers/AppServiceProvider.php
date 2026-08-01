@@ -3,10 +3,13 @@
 namespace App\Providers;
 
 use App\Application\Development\DevelopmentProviderRegistry;
+use App\Application\Development\DevelopmentResultValidator;
 use App\Application\Documents\Contracts\DocumentAnalyzer;
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\Contracts\MalwareScanner;
 use App\Application\Planning\ExecutionProviderRegistry;
+use App\Application\Planning\PlanningResultValidator;
+use App\Application\QualityAssurance\QaAssessmentValidator;
 use App\Application\QualityAssurance\QualityAssuranceProviderRegistry;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Application\Workflows\Contracts\WorkflowTransitionGuardEvaluator;
@@ -70,11 +73,16 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             ExecutionProviderRegistry::class,
-            fn ($app): ExecutionProviderRegistry => new ExecutionProviderRegistry([
-                $app->make(
-                    SimulationPlanningProvider::class,
+            fn ($app): ExecutionProviderRegistry => new ExecutionProviderRegistry(
+                providers: [
+                    $app->make(
+                        SimulationPlanningProvider::class,
+                    ),
+                ],
+                validator: $app->make(
+                    PlanningResultValidator::class,
                 ),
-            ]),
+            ),
         );
 
         $this->app->singleton(
@@ -83,11 +91,16 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             DevelopmentProviderRegistry::class,
-            fn ($app): DevelopmentProviderRegistry => new DevelopmentProviderRegistry([
-                $app->make(
-                    SimulationDevelopmentProvider::class,
+            fn ($app): DevelopmentProviderRegistry => new DevelopmentProviderRegistry(
+                providers: [
+                    $app->make(
+                        SimulationDevelopmentProvider::class,
+                    ),
+                ],
+                validator: $app->make(
+                    DevelopmentResultValidator::class,
                 ),
-            ]),
+            ),
         );
 
         $this->app->singleton(
@@ -96,11 +109,16 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             QualityAssuranceProviderRegistry::class,
-            fn ($app): QualityAssuranceProviderRegistry => new QualityAssuranceProviderRegistry([
-                $app->make(
-                    SimulationQualityAssuranceProvider::class,
+            fn ($app): QualityAssuranceProviderRegistry => new QualityAssuranceProviderRegistry(
+                providers: [
+                    $app->make(
+                        SimulationQualityAssuranceProvider::class,
+                    ),
+                ],
+                validator: $app->make(
+                    QaAssessmentValidator::class,
                 ),
-            ]),
+            ),
         );
     }
 
