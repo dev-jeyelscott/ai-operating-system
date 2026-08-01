@@ -40,7 +40,10 @@ final class RetryFailedNotionPublicationJob implements ShouldBeUnique, ShouldQue
     public int $uniqueFor = 900;
 
     /**
-     * Create and route the retry job to the integrations queue.
+     * Create the transport-independent Notion publication retry job.
+     *
+     * Queue connection and queue name are assigned by the application
+     * dispatch boundary, where Laravel configuration is available.
      *
      * @param  list<int>|null  $taskIds
      */
@@ -51,15 +54,7 @@ final class RetryFailedNotionPublicationJob implements ShouldBeUnique, ShouldQue
         public readonly string $idempotencyKey,
         public readonly ?array $taskIds,
         public readonly ?string $correlationId,
-    ) {
-        $this->onConnection(
-            $this->queueConnection(),
-        );
-
-        $this->onQueue(
-            $this->queueName(),
-        );
-    }
+    ) {}
 
     /**
      * Return the retry-request-specific Laravel unique-job key.
@@ -154,38 +149,6 @@ final class RetryFailedNotionPublicationJob implements ShouldBeUnique, ShouldQue
     private function roadmapOverlapKey(): string
     {
         return 'notion-roadmap:'.$this->roadmapId;
-    }
-
-    /**
-     * Resolve the configured queue connection safely.
-     */
-    private function queueConnection(): string
-    {
-        $connection = config(
-            'integration-resilience.notion.queue.connection',
-            'redis',
-        );
-
-        return is_string($connection)
-            && trim($connection) !== ''
-                ? trim($connection)
-                : 'redis';
-    }
-
-    /**
-     * Resolve the dedicated integration queue safely.
-     */
-    private function queueName(): string
-    {
-        $queue = config(
-            'integration-resilience.notion.queue.name',
-            'integrations',
-        );
-
-        return is_string($queue)
-            && trim($queue) !== ''
-                ? trim($queue)
-                : 'integrations';
     }
 
     /**

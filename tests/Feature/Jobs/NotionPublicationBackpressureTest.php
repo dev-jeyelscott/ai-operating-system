@@ -20,13 +20,23 @@ beforeEach(function (): void {
 test('publication jobs are dispatched to the isolated integrations queue', function (): void {
     Queue::fake();
 
+    $connection = (string) config(
+        'integration-resilience.notion.queue.connection',
+    );
+
+    $queue = (string) config(
+        'integration-resilience.notion.queue.name',
+    );
+
     PublishRoadmapToNotionJob::dispatch(
         actorUserId: 10,
         organizationId: 20,
         roadmapId: 30,
         idempotencyKey: 'publish-request',
         correlationId: 'correlation-id',
-    );
+    )
+        ->onConnection($connection)
+        ->onQueue($queue);
 
     RetryFailedNotionPublicationJob::dispatch(
         actorUserId: 10,
@@ -35,7 +45,9 @@ test('publication jobs are dispatched to the isolated integrations queue', funct
         idempotencyKey: 'retry-request',
         taskIds: [100],
         correlationId: 'correlation-id',
-    );
+    )
+        ->onConnection($connection)
+        ->onQueue($queue);
 
     Queue::assertPushedOn(
         'integrations',
@@ -77,8 +89,17 @@ test('publication and retry jobs use rate and overlap middleware', function (): 
             ->toBeInstanceOf(WithoutOverlapping::class)
             ->and($job->tries)
             ->toBe(10)
+            ->and($job->maxExceptions)
+            ->toBe(3)
             ->and($job->timeout)
-            ->toBe(60);
+            ->toBe(60)
+            ->and($job->backoff())
+            ->toBe([
+                5,
+                30,
+                120,
+                300,
+            ]);
     }
 });
 

@@ -40,7 +40,10 @@ final class PublishRoadmapToNotionJob implements ShouldBeUnique, ShouldQueue
     public int $uniqueFor = 900;
 
     /**
-     * Create and route the job to the isolated integrations queue.
+     * Create the transport-independent publication job.
+     *
+     * Queue connection and queue name are assigned by the application
+     * dispatch boundary, where Laravel configuration is available.
      */
     public function __construct(
         public readonly int $actorUserId,
@@ -48,15 +51,7 @@ final class PublishRoadmapToNotionJob implements ShouldBeUnique, ShouldQueue
         public readonly int $roadmapId,
         public readonly string $idempotencyKey,
         public readonly ?string $correlationId,
-    ) {
-        $this->onConnection(
-            $this->queueConnection(),
-        );
-
-        $this->onQueue(
-            $this->queueName(),
-        );
-    }
+    ) {}
 
     /**
      * Return the idempotency-specific Laravel unique-job key.
@@ -150,38 +145,6 @@ final class PublishRoadmapToNotionJob implements ShouldBeUnique, ShouldQueue
     private function roadmapOverlapKey(): string
     {
         return 'notion-roadmap:'.$this->roadmapId;
-    }
-
-    /**
-     * Resolve the configured queue connection safely.
-     */
-    private function queueConnection(): string
-    {
-        $connection = config(
-            'integration-resilience.notion.queue.connection',
-            'redis',
-        );
-
-        return is_string($connection)
-            && trim($connection) !== ''
-                ? trim($connection)
-                : 'redis';
-    }
-
-    /**
-     * Resolve the dedicated integration queue safely.
-     */
-    private function queueName(): string
-    {
-        $queue = config(
-            'integration-resilience.notion.queue.name',
-            'integrations',
-        );
-
-        return is_string($queue)
-            && trim($queue) !== ''
-                ? trim($queue)
-                : 'integrations';
     }
 
     /**
