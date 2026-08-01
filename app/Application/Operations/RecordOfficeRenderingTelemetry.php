@@ -13,8 +13,12 @@ use Illuminate\Support\Facades\Log;
  * Renderer telemetry is operational observability. It is not workflow truth,
  * audit evidence, billing usage, or verified execution evidence.
  */
-final class RecordOfficeRenderingTelemetry
+final readonly class RecordOfficeRenderingTelemetry
 {
+    public function __construct(
+        private EvaluateOfficeRenderingBudget $budgets,
+    ) {}
+
     /**
      * Write each validated event using an explicit field allowlist.
      *
@@ -27,6 +31,8 @@ final class RecordOfficeRenderingTelemetry
         array $events,
     ): void {
         foreach ($events as $event) {
+            $budget = $this->budgets->handle($event);
+
             Log::channel('json')->info(
                 'office.renderer.telemetry',
                 [
@@ -48,8 +54,24 @@ final class RecordOfficeRenderingTelemetry
                             'frame',
                         ],
                     ),
+                    'performance_budget' => $budget,
                 ],
             );
+
+            if ($budget['exceeded'] === true) {
+                Log::channel('json')->warning(
+                    'office.renderer.performance_budget_exceeded',
+                    [
+                        'organization_id' => $organizationId,
+                        'project_id' => $projectId,
+                        'actor_id' => $actorId,
+                        'session_id' => $event['sessionId'] ?? null,
+                        'sequence' => $event['sequence'] ?? null,
+                        'quality_preset' => $budget['preset'],
+                        'violations' => $budget['violations'],
+                    ],
+                );
+            }
         }
     }
 }

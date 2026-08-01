@@ -11,6 +11,17 @@ Artisan::command('inspire', function (): void {
 })->purpose('Display an inspiring quote');
 
 /*
+ * Persist Horizon throughput, runtime, failure, and wait-time snapshots.
+ *
+ * Horizon snapshot storage is operational telemetry only and does not become
+ * project workflow truth.
+ */
+Schedule::command('horizon:snapshot')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(2)
+    ->onOneServer();
+
+/*
  * Database row claims provide correctness across concurrent dispatchers.
  * Scheduler locks reduce unnecessary duplicate scheduler invocations.
  */

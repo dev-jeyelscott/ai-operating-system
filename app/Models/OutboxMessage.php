@@ -27,6 +27,15 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $execution_id
  * @property int $schema_version
  * @property array<string, mixed> $envelope
+ * @property CarbonImmutable|null $published_at
+ * @property CarbonImmutable $available_at
+ * @property CarbonImmutable|null $reserved_until
+ * @property string|null $reservation_token
+ * @property int $dispatch_attempts
+ * @property string|null $last_error
+ * @property CarbonImmutable|null $dead_lettered_at
+ * @property int $replay_count
+ * @property CarbonImmutable|null $last_replayed_at
  * @property CarbonImmutable $created_at
  */
 final class OutboxMessage extends Model

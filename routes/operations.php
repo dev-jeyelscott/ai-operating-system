@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Approvals\ProjectApprovalInboxController;
 use App\Http\Controllers\Operations\ProjectOfficeController;
 use App\Http\Controllers\Operations\ProjectOfficeProjectionController;
+use App\Http\Controllers\Operations\ProjectOperationalMetricsController;
 use App\Http\Controllers\Operations\ProjectOperationsDashboardController;
 use App\Http\Controllers\Operations\ProjectOperationsReadModelController;
 use App\Http\Controllers\Operations\ProjectRecoveryCenterController;
@@ -28,6 +29,13 @@ Route::middleware(['auth', 'auth.session', 'verified'])
         )
             ->can('view', 'project')
             ->name('operations.index');
+
+        Route::get(
+            '/operations/metrics',
+            ProjectOperationalMetricsController::class,
+        )
+            ->can('view', 'project')
+            ->name('operations.metrics.index');
 
         Route::get(
             '/operations/office',
