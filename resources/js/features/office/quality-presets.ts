@@ -16,6 +16,8 @@ export type OfficeQualityPreset = {
     shadows: boolean;
     shadowMapSize: number;
     showGrid: boolean;
+    powerPreference: NonNullable<WebGLContextAttributes['powerPreference']>;
+    failIfMajorPerformanceCaveat: boolean;
     roomLabels: Extract<OfficeLabelDensity, 'selected' | 'all'>;
     agentLabels: Extract<OfficeLabelDensity, 'focused' | 'all'>;
     geometry: {
@@ -34,12 +36,14 @@ export const OFFICE_QUALITY_PRESETS = {
         key: 'low',
         label: 'Low',
         description:
-            'Lowest rendering cost. Disables shadows and the decorative grid, reduces pixel density, and limits labels.',
+            'Lowest rendering cost. Disables shadows and the decorative grid, reduces pixel density, limits labels, and permits browser-reported performance caveats.',
         dpr: 1,
         antialias: false,
         shadows: false,
         shadowMapSize: 512,
         showGrid: false,
+        powerPreference: 'low-power',
+        failIfMajorPerformanceCaveat: false,
         roomLabels: 'selected',
         agentLabels: 'focused',
         geometry: {
@@ -60,6 +64,8 @@ export const OFFICE_QUALITY_PRESETS = {
         shadows: true,
         shadowMapSize: 1024,
         showGrid: true,
+        powerPreference: 'high-performance',
+        failIfMajorPerformanceCaveat: true,
         roomLabels: 'all',
         agentLabels: 'all',
         geometry: {
@@ -80,6 +86,8 @@ export const OFFICE_QUALITY_PRESETS = {
         shadows: true,
         shadowMapSize: 2048,
         showGrid: true,
+        powerPreference: 'high-performance',
+        failIfMajorPerformanceCaveat: true,
         roomLabels: 'all',
         agentLabels: 'all',
         geometry: {

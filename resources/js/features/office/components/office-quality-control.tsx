@@ -8,18 +8,23 @@ import type { OfficeQualityPresetKey } from '@/features/office/quality-presets';
 
 type Props = {
     value: OfficeQualityPresetKey;
+    disabled?: boolean;
     onChange: (value: OfficeQualityPresetKey) => void;
 };
 
 /**
  * Render keyboard-accessible controls for the presentation-only quality level.
  */
-export function OfficeQualityControl({ value, onChange }: Props) {
+export function OfficeQualityControl({
+    value,
+    disabled = false,
+    onChange,
+}: Props) {
     const descriptionId = useId();
     const currentPreset = officeQualityPreset(value);
 
     return (
-        <fieldset className="space-y-2">
+        <fieldset className="space-y-2" disabled={disabled}>
             <legend className="text-sm font-medium">Rendering quality</legend>
 
             <div
@@ -39,6 +44,7 @@ export function OfficeQualityControl({ value, onChange }: Props) {
                             variant={selected ? 'default' : 'outline'}
                             aria-pressed={selected}
                             aria-describedby={descriptionId}
+                            disabled={disabled}
                             onClick={() => onChange(presetKey)}
                         >
                             {preset.label}

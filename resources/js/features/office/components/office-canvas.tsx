@@ -1,5 +1,5 @@
 import { CameraControls, Grid } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import type { ElementRef } from 'react';
 import { buildAgentPositions } from '@/features/office/agent-layout';
@@ -15,6 +15,7 @@ import type {
     OfficeQualityPresetKey,
 } from '@/features/office/quality-presets';
 import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
+import type { OfficeRendererFailureReason } from '@/features/office/webgl-capability';
 
 type Props = {
     projection: OfficeProjection;
@@ -22,6 +23,7 @@ type Props = {
     reducedMotion: boolean;
     qualityPreset: OfficeQualityPresetKey;
     onSelectRoom: (room: OfficeRoomKey) => void;
+    onRendererFailure: (reason: OfficeRendererFailureReason) => void;
 };
 
 type SceneProps = {
@@ -42,6 +44,7 @@ export default function OfficeCanvas({
     reducedMotion,
     qualityPreset,
     onSelectRoom,
+    onRendererFailure,
 }: Props) {
     const quality = officeQualityPreset(qualityPreset);
 
@@ -56,16 +59,26 @@ export default function OfficeCanvas({
                 far: 120,
             }}
             dpr={quality.dpr}
+            fallback={
+                <OfficeCanvasFallback onRendererFailure={onRendererFailure} />
+            }
             frameloop={reducedMotion ? 'demand' : 'always'}
             gl={{
                 antialias: quality.antialias,
-                powerPreference: 'high-performance',
+                failIfMajorPerformanceCaveat:
+                    quality.failIfMajorPerformanceCaveat,
+                powerPreference: quality.powerPreference,
             }}
             shadows={quality.shadows}
         >
+            <OfficeRendererContextMonitor
+                onRendererFailure={onRendererFailure}
+            />
+
             <color attach="background" args={['#09090b']} />
 
             <ambientLight intensity={0.8} />
+
             <directionalLight
                 position={[10, 14, 8]}
                 intensity={1.5}
@@ -87,6 +100,64 @@ export default function OfficeCanvas({
             />
         </Canvas>
     );
+}
+
+/**
+ * Notify the DOM-first shell when React Three Fiber cannot create its WebGL
+ * renderer and briefly render an accessible local status.
+ */
+function OfficeCanvasFallback({
+    onRendererFailure,
+}: {
+    onRendererFailure: (reason: OfficeRendererFailureReason) => void;
+}) {
+    useEffect(() => {
+        onRendererFailure('webgl_unavailable');
+    }, [onRendererFailure]);
+
+    return (
+        <div
+            role="alert"
+            className="flex min-h-96 flex-col items-center justify-center gap-2 p-8 text-center"
+        >
+            <h3 className="font-medium">The 3D renderer is unavailable</h3>
+            <p className="max-w-lg text-sm text-muted-foreground">
+                Switching to the accessible office fallback.
+            </p>
+        </div>
+    );
+}
+
+/**
+ * Monitor the renderer-owned canvas for a browser or GPU context loss.
+ *
+ * Workflow truth remains unchanged. The parent shell removes only the failed
+ * Canvas and exposes the existing dashboard and projected DOM controls.
+ */
+function OfficeRendererContextMonitor({
+    onRendererFailure,
+}: {
+    onRendererFailure: (reason: OfficeRendererFailureReason) => void;
+}) {
+    const canvas = useThree((state) => state.gl.domElement);
+
+    useEffect(() => {
+        /**
+         * Move the office into its accessible fallback after context loss.
+         */
+        function handleContextLost(event: Event) {
+            event.preventDefault();
+            onRendererFailure('context_lost');
+        }
+
+        canvas.addEventListener('webglcontextlost', handleContextLost);
+
+        return () => {
+            canvas.removeEventListener('webglcontextlost', handleContextLost);
+        };
+    }, [canvas, onRendererFailure]);
+
+    return null;
 }
 
 /**

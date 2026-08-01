@@ -48,23 +48,43 @@ describe('officeQualityPreset', () => {
         expect(OFFICE_QUALITY_PRESETS.low.agentLabels).toBe('focused');
     });
 
+    it('uses the relaxed GPU context policy in low quality', () => {
+        expect(OFFICE_QUALITY_PRESETS.low.powerPreference).toBe('low-power');
+
+        expect(OFFICE_QUALITY_PRESETS.low.failIfMajorPerformanceCaveat).toBe(
+            false,
+        );
+    });
+
     it('retains the current office defaults in balanced quality', () => {
         expect(OFFICE_QUALITY_PRESETS.balanced.dpr).toEqual([1, 1.5]);
         expect(OFFICE_QUALITY_PRESETS.balanced.antialias).toBe(true);
         expect(OFFICE_QUALITY_PRESETS.balanced.shadows).toBe(true);
         expect(OFFICE_QUALITY_PRESETS.balanced.showGrid).toBe(true);
+        expect(OFFICE_QUALITY_PRESETS.balanced.powerPreference).toBe(
+            'high-performance',
+        );
+
+        expect(
+            OFFICE_QUALITY_PRESETS.balanced.failIfMajorPerformanceCaveat,
+        ).toBe(true);
+
         expect(
             OFFICE_QUALITY_PRESETS.balanced.geometry.capsuleCapSegments,
         ).toBe(4);
+
         expect(
             OFFICE_QUALITY_PRESETS.balanced.geometry.capsuleRadialSegments,
         ).toBe(8);
+
         expect(
             OFFICE_QUALITY_PRESETS.balanced.geometry.sphereWidthSegments,
         ).toBe(16);
+
         expect(
             OFFICE_QUALITY_PRESETS.balanced.geometry.sphereHeightSegments,
         ).toBe(12);
+
         expect(OFFICE_QUALITY_PRESETS.balanced.geometry.ringThetaSegments).toBe(
             24,
         );
