@@ -9,26 +9,45 @@ import {
     OFFICE_ZONE_ORDER,
     officeZone,
 } from '@/features/office/office-zone-layout';
+import { officeQualityPreset } from '@/features/office/quality-presets';
+import type {
+    OfficeQualityPreset,
+    OfficeQualityPresetKey,
+} from '@/features/office/quality-presets';
 import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 
 type Props = {
     projection: OfficeProjection;
     selectedRoom: OfficeRoomKey;
     reducedMotion: boolean;
+    qualityPreset: OfficeQualityPresetKey;
+    onSelectRoom: (room: OfficeRoomKey) => void;
+};
+
+type SceneProps = {
+    projection: OfficeProjection;
+    selectedRoom: OfficeRoomKey;
+    reducedMotion: boolean;
+    quality: OfficeQualityPreset;
     onSelectRoom: (room: OfficeRoomKey) => void;
 };
 
 /**
- * Render authoritative rooms and projected logical-agent avatars.
+ * Render authoritative rooms and projected logical-agent avatars with the
+ * selected presentation-only rendering configuration.
  */
 export default function OfficeCanvas({
     projection,
     selectedRoom,
     reducedMotion,
+    qualityPreset,
     onSelectRoom,
 }: Props) {
+    const quality = officeQualityPreset(qualityPreset);
+
     return (
         <Canvas
+            key={quality.key}
             aria-label={`Interactive office for ${projection.project.name}`}
             camera={{
                 position: [0, 8, 15],
@@ -36,13 +55,13 @@ export default function OfficeCanvas({
                 near: 0.1,
                 far: 120,
             }}
-            dpr={[1, 1.5]}
+            dpr={quality.dpr}
             frameloop={reducedMotion ? 'demand' : 'always'}
             gl={{
-                antialias: true,
+                antialias: quality.antialias,
                 powerPreference: 'high-performance',
             }}
-            shadows
+            shadows={quality.shadows}
         >
             <color attach="background" args={['#09090b']} />
 
@@ -50,13 +69,15 @@ export default function OfficeCanvas({
             <directionalLight
                 position={[10, 14, 8]}
                 intensity={1.5}
-                castShadow
+                castShadow={quality.shadows}
+                shadow-mapSize={[quality.shadowMapSize, quality.shadowMapSize]}
             />
 
             <OfficeScene
                 projection={projection}
                 selectedRoom={selectedRoom}
                 reducedMotion={reducedMotion}
+                quality={quality}
                 onSelectRoom={onSelectRoom}
             />
 
@@ -75,8 +96,9 @@ function OfficeScene({
     projection,
     selectedRoom,
     reducedMotion,
+    quality,
     onSelectRoom,
-}: Props) {
+}: SceneProps) {
     const roomsByKey = useMemo(
         () => new Map(projection.rooms.map((room) => [room.key, room])),
         [projection.rooms],
@@ -89,23 +111,25 @@ function OfficeScene({
 
     return (
         <group>
-            <mesh position={[0, -0.25, 0]} receiveShadow>
+            <mesh position={[0, -0.25, 0]} receiveShadow={quality.shadows}>
                 <boxGeometry args={[26, 0.35, 20]} />
                 <meshStandardMaterial color="#18181b" />
             </mesh>
 
-            <Grid
-                args={[26, 20]}
-                position={[0, 0.01, 0]}
-                cellColor="#3f3f46"
-                cellSize={1}
-                cellThickness={0.5}
-                sectionColor="#71717a"
-                sectionSize={4}
-                sectionThickness={1}
-                fadeDistance={32}
-                fadeStrength={1}
-            />
+            {quality.showGrid && (
+                <Grid
+                    args={[26, 20]}
+                    position={[0, 0.01, 0]}
+                    cellColor="#3f3f46"
+                    cellSize={1}
+                    cellThickness={0.5}
+                    sectionColor="#71717a"
+                    sectionSize={4}
+                    sectionThickness={1}
+                    fadeDistance={32}
+                    fadeStrength={1}
+                />
+            )}
 
             {OFFICE_ZONE_ORDER.map((roomKey) => {
                 const room = roomsByKey.get(roomKey);
@@ -120,6 +144,7 @@ function OfficeScene({
                         room={room}
                         definition={officeZone(roomKey)}
                         selected={selectedRoom === roomKey}
+                        quality={quality}
                         onSelect={() => onSelectRoom(roomKey)}
                     />
                 );
@@ -139,6 +164,7 @@ function OfficeScene({
                         position={position}
                         focused={selectedRoom === agent.room}
                         reducedMotion={reducedMotion}
+                        quality={quality}
                         onSelect={() => onSelectRoom(agent.room)}
                     />
                 );

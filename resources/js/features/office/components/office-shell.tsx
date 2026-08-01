@@ -21,7 +21,13 @@ import {
 } from '@/components/ui/card';
 import { AgentStatusPanel } from '@/features/office/components/agent-status-panel';
 import { OfficeNavigation } from '@/features/office/components/office-navigation';
+import { OfficeQualityControl } from '@/features/office/components/office-quality-control';
 import { usePrefersReducedMotion } from '@/features/office/hooks/use-prefers-reduced-motion';
+import {
+    DEFAULT_OFFICE_QUALITY_PRESET,
+    officeQualityPreset,
+} from '@/features/office/quality-presets';
+import type { OfficeQualityPresetKey } from '@/features/office/quality-presets';
 import type { OfficeProjection, OfficeRoomKey } from '@/features/office/types';
 
 const LazyOfficeCanvas = lazy(() => import('./office-canvas'));
@@ -32,13 +38,18 @@ type Props = {
 };
 
 /**
- * Render the DOM-first office shell and coordinate room focus across the
- * accessible navigation, agent list, and lazy 3D scene.
+ * Render the DOM-first office shell and coordinate presentation state across
+ * the accessible controls, agent list, and lazy 3D scene.
  */
 export function OfficeShell({ projection, operationsUrl }: Props) {
     const [canvasRequested, setCanvasRequested] = useState(false);
     const [selectedRoom, setSelectedRoom] = useState<OfficeRoomKey>('lobby');
+    const [qualityPreset, setQualityPreset] = useState<OfficeQualityPresetKey>(
+        DEFAULT_OFFICE_QUALITY_PRESET,
+    );
+
     const reducedMotion = usePrefersReducedMotion();
+    const quality = officeQualityPreset(qualityPreset);
 
     return (
         <div className="space-y-6">
@@ -110,7 +121,8 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                             <CardTitle>Interactive office</CardTitle>
                             <CardDescription>
                                 Room and agent visuals are derived only from the
-                                persisted office projection.
+                                persisted office projection. Rendering quality
+                                changes presentation cost only.
                             </CardDescription>
                         </div>
 
@@ -123,11 +135,21 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                     ? 'Reduced motion'
                                     : 'Motion enabled'}
                             </Badge>
+                            <Badge variant="outline">
+                                {quality.label} quality
+                            </Badge>
                         </div>
                     </div>
                 </CardHeader>
 
                 <CardContent className="space-y-4">
+                    <div className="rounded-lg border bg-muted/20 p-4">
+                        <OfficeQualityControl
+                            value={qualityPreset}
+                            onChange={setQualityPreset}
+                        />
+                    </div>
+
                     <div
                         className="flex min-h-96 items-center justify-center overflow-hidden rounded-xl border bg-muted/30"
                         data-testid="office-canvas-container"
@@ -143,10 +165,12 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                         3D renderer not loaded
                                     </h3>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Agent state is already available in the
-                                        accessible list below.
+                                        Select a quality preset before loading
+                                        the office. Agent state is already
+                                        available in the accessible list below.
                                     </p>
                                 </div>
+
                                 <Button
                                     type="button"
                                     onClick={() => setCanvasRequested(true)}
@@ -155,7 +179,7 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                 </Button>
                             </div>
                         ) : (
-                            <OfficeCanvasBoundary>
+                            <OfficeCanvasBoundary key={qualityPreset}>
                                 <Suspense fallback={<CanvasLoadingState />}>
                                     <div
                                         className="h-[min(70vh,48rem)] w-full"
@@ -165,6 +189,7 @@ export function OfficeShell({ projection, operationsUrl }: Props) {
                                             projection={projection}
                                             selectedRoom={selectedRoom}
                                             reducedMotion={reducedMotion}
+                                            qualityPreset={qualityPreset}
                                             onSelectRoom={setSelectedRoom}
                                         />
                                     </div>
@@ -266,7 +291,8 @@ class OfficeCanvasBoundary extends Component<
                     </h3>
                     <p className="text-sm text-muted-foreground">
                         Continue through the room navigator, logical-agent list,
-                        or operational dashboard.
+                        or operational dashboard. Select a lower rendering
+                        quality before trying again.
                     </p>
                 </div>
             );

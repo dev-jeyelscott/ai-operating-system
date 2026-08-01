@@ -70,10 +70,14 @@
         "containers:check": [
             "bash bin/check-container-images"
         ],
+        "office-assets:check": [
+            "bash bin/check-office-assets"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
             "@containers:check",
+            "@office-assets:check",
             "@lint:check",
             "@types:check",
             "@php artisan test",
@@ -89,7 +93,7 @@
             "@php artisan test"
         ],
         "post-autoload-dump": [
-            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "Illuminate\\Foundation\\ComposerScripts::post-autoload-dump",
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
@@ -105,7 +109,7 @@
             "@php artisan migrate --graceful --ansi"
         ],
         "pre-package-uninstall": [
-            "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+            "Illuminate\\Foundation\\ComposerScripts::pre-package-uninstall"
         ]
     },
     "extra": {

@@ -1,20 +1,31 @@
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { OfficeZoneDefinition } from '@/features/office/office-zone-layout';
+import type { OfficeQualityPreset } from '@/features/office/quality-presets';
 import type { OfficeRoom } from '@/features/office/types';
 
 type Props = {
     room: OfficeRoom;
     definition: OfficeZoneDefinition;
     selected: boolean;
+    quality: OfficeQualityPreset;
     onSelect: () => void;
 };
 
 /**
  * Render one low-poly office zone from authoritative room state.
  */
-export function OfficeZone({ room, definition, selected, onSelect }: Props) {
+export function OfficeZone({
+    room,
+    definition,
+    selected,
+    quality,
+    onSelect,
+}: Props) {
     const color = selected ? '#e4e4e7' : roomStateColor(room.state);
+    const showLabel =
+        quality.roomLabels === 'all' ||
+        (quality.roomLabels === 'selected' && selected);
 
     /**
      * Select the room without writing any workflow state.
@@ -29,6 +40,7 @@ export function OfficeZone({ room, definition, selected, onSelect }: Props) {
             <mesh
                 name={`office-zone-${room.key}`}
                 position={[0, -0.02, 0]}
+                receiveShadow={quality.shadows}
                 onClick={selectRoom}
                 onPointerOver={(event) => {
                     event.stopPropagation();
@@ -47,25 +59,27 @@ export function OfficeZone({ room, definition, selected, onSelect }: Props) {
                 />
             </mesh>
 
-            <Html
-                center
-                position={[0, 0.72, 0]}
-                distanceFactor={12}
-                style={{
-                    pointerEvents: 'none',
-                }}
-            >
-                <div
-                    aria-hidden="true"
-                    className="min-w-32 rounded-md border bg-background/90 px-3 py-2 text-center text-xs shadow-sm backdrop-blur"
+            {showLabel && (
+                <Html
+                    center
+                    position={[0, 0.72, 0]}
+                    distanceFactor={12}
+                    style={{
+                        pointerEvents: 'none',
+                    }}
                 >
-                    <p className="font-medium">{definition.label}</p>
-                    <p className="mt-1 text-muted-foreground">
-                        {room.activeAgents} active · {room.actionableCount}{' '}
-                        actionable
-                    </p>
-                </div>
-            </Html>
+                    <div
+                        aria-hidden="true"
+                        className="min-w-32 rounded-md border bg-background/90 px-3 py-2 text-center text-xs shadow-sm backdrop-blur"
+                    >
+                        <p className="font-medium">{definition.label}</p>
+                        <p className="mt-1 text-muted-foreground">
+                            {room.activeAgents} active · {room.actionableCount}{' '}
+                            actionable
+                        </p>
+                    </div>
+                </Html>
+            )}
         </group>
     );
 }

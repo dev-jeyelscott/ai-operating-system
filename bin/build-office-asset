@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${repository_root}"
+
+if [[ "$#" -ne 1 ]]; then
+    echo "Usage: bash bin/build-office-asset resources/3d/office/source/<asset>.glb" >&2
+    exit 64
+fi
+
+source_path="$1"
+source_directory="resources/3d/office/source"
+output_directory="public/assets/office"
+maximum_bytes="${OFFICE_ASSET_MAX_BYTES:-2097152}"
+
+if [[ ! -f "${source_path}" ]]; then
+    echo "Office asset source does not exist: ${source_path}" >&2
+    exit 66
+fi
+
+case "${source_path}" in
+    "${source_directory}"/*.glb)
+        ;;
+    *)
+        echo "Office asset sources must be GLB files under ${source_directory}." >&2
+        exit 65
+        ;;
+esac
+
+source_filename="$(basename "${source_path}")"
+
+if [[ ! "${source_filename}" =~ ^[a-z0-9]+(-[a-z0-9]+)*\.glb$ ]]; then
+    echo "Office asset names must use lowercase kebab-case: ${source_filename}" >&2
+    exit 65
+fi
+
+mkdir -p "${output_directory}"
+
+output_path="${output_directory}/${source_filename}"
+temporary_path="$(mktemp --suffix=.glb)"
+
+cleanup() {
+    rm -f "${temporary_path}"
+}
+
+trap cleanup EXIT
+
+echo "Optimizing ${source_path}..."
+
+pnpm exec gltf-transform optimize \
+    "${source_path}" \
+    "${temporary_path}" \
+    --texture-compress webp
+
+echo "Validating optimized GLB..."
+
+pnpm exec gltf-transform inspect "${temporary_path}" > /dev/null
+
+asset_bytes="$(stat -c '%s' "${temporary_path}")"
+
+if (( asset_bytes > maximum_bytes )); then
+    echo "Optimized office asset exceeds the ${maximum_bytes}-byte budget: ${asset_bytes} bytes." >&2
+    exit 1
+fi
+
+mv "${temporary_path}" "${output_path}"
+
+bash bin/check-office-assets
+
+echo "Built ${output_path} (${asset_bytes} bytes)."

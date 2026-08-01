@@ -5,6 +5,7 @@ import type { Group } from 'three';
 import { useAgentMotionController } from '@/features/office/hooks/use-agent-motion-controller';
 import type { AgentPosition } from '@/features/office/hooks/use-agent-motion-controller';
 import { officeStatePresentation } from '@/features/office/office-state-presentation';
+import type { OfficeQualityPreset } from '@/features/office/quality-presets';
 import type { OfficeAgent } from '@/features/office/types';
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
     position: AgentPosition;
     focused: boolean;
     reducedMotion: boolean;
+    quality: OfficeQualityPreset;
     onSelect: () => void;
 };
 
@@ -23,11 +25,16 @@ export function LogicalAgentAvatar({
     position,
     focused,
     reducedMotion,
+    quality,
     onSelect,
 }: Props) {
     const rootRef = useRef<Group | null>(null);
     const visualRef = useRef<Group | null>(null);
     const presentation = officeStatePresentation(agent.officeState);
+
+    const showLabel =
+        quality.agentLabels === 'all' ||
+        (quality.agentLabels === 'focused' && focused);
 
     useAgentMotionController({
         agentId: agent.id,
@@ -49,8 +56,15 @@ export function LogicalAgentAvatar({
     return (
         <group ref={rootRef} name={`agent-${agent.id}`}>
             <group ref={visualRef} onClick={handleSelect}>
-                <mesh position={[0, 0.52, 0]} castShadow>
-                    <capsuleGeometry args={[0.16, 0.42, 4, 8]} />
+                <mesh position={[0, 0.52, 0]} castShadow={quality.shadows}>
+                    <capsuleGeometry
+                        args={[
+                            0.16,
+                            0.42,
+                            quality.geometry.capsuleCapSegments,
+                            quality.geometry.capsuleRadialSegments,
+                        ]}
+                    />
                     <meshStandardMaterial
                         color={presentation.color}
                         emissive={presentation.emissive}
@@ -59,8 +73,14 @@ export function LogicalAgentAvatar({
                     />
                 </mesh>
 
-                <mesh position={[0, 0.98, 0]} castShadow>
-                    <sphereGeometry args={[0.19, 16, 12]} />
+                <mesh position={[0, 0.98, 0]} castShadow={quality.shadows}>
+                    <sphereGeometry
+                        args={[
+                            0.19,
+                            quality.geometry.sphereWidthSegments,
+                            quality.geometry.sphereHeightSegments,
+                        ]}
+                    />
                     <meshStandardMaterial
                         color={presentation.color}
                         emissive={presentation.emissive}
@@ -70,7 +90,9 @@ export function LogicalAgentAvatar({
                 </mesh>
 
                 <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                    <ringGeometry args={[0.28, 0.38, 24]} />
+                    <ringGeometry
+                        args={[0.28, 0.38, quality.geometry.ringThetaSegments]}
+                    />
                     <meshBasicMaterial
                         color={presentation.ringColor}
                         transparent
@@ -83,27 +105,37 @@ export function LogicalAgentAvatar({
                         position={[0, 0.02, 0]}
                         rotation={[-Math.PI / 2, 0, 0]}
                     >
-                        <ringGeometry args={[0.43, 0.48, 24]} />
+                        <ringGeometry
+                            args={[
+                                0.43,
+                                0.48,
+                                quality.geometry.ringThetaSegments,
+                            ]}
+                        />
                         <meshBasicMaterial color="#f8fafc" />
                     </mesh>
                 )}
 
-                <Html
-                    position={[0, 1.35, 0]}
-                    center
-                    distanceFactor={10}
-                    style={{ pointerEvents: 'none' }}
-                >
-                    <div className="min-w-max rounded-md border border-white/10 bg-zinc-950/90 px-2 py-1 text-center text-[10px] text-white shadow-lg">
-                        <p className="font-medium">{agent.role}</p>
-                        <p className="text-zinc-300">{presentation.label}</p>
-                        {agent.provider === 'simulation' && (
-                            <p className="font-semibold text-amber-300">
-                                Simulated · Unverified
+                {showLabel && (
+                    <Html
+                        position={[0, 1.35, 0]}
+                        center
+                        distanceFactor={10}
+                        style={{ pointerEvents: 'none' }}
+                    >
+                        <div className="min-w-max rounded-md border border-white/10 bg-zinc-950/90 px-2 py-1 text-center text-[10px] text-white shadow-lg">
+                            <p className="font-medium">{agent.role}</p>
+                            <p className="text-zinc-300">
+                                {presentation.label}
                             </p>
-                        )}
-                    </div>
-                </Html>
+                            {agent.provider === 'simulation' && (
+                                <p className="font-semibold text-amber-300">
+                                    Simulated · Unverified
+                                </p>
+                            )}
+                        </div>
+                    </Html>
+                )}
             </group>
         </group>
     );

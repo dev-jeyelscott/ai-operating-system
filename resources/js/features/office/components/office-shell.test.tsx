@@ -11,8 +11,13 @@ vi.mock('@inertiajs/react', () => ({
 }));
 
 vi.mock('./office-canvas', () => ({
-    default: () => (
-        <div data-testid="mock-office-canvas">Mock office Canvas</div>
+    default: ({ qualityPreset }: { qualityPreset: string }) => (
+        <div
+            data-testid="mock-office-canvas"
+            data-quality-preset={qualityPreset}
+        >
+            Mock office Canvas
+        </div>
     ),
 }));
 
@@ -38,7 +43,34 @@ describe('OfficeShell', () => {
         ).toHaveAttribute('href', '/operations');
     });
 
-    it('renders the lazy Canvas after an explicit user action', async () => {
+    it('renders accessible quality controls before WebGL loads', () => {
+        render(
+            <OfficeShell
+                projection={officeProjectionFixture()}
+                operationsUrl="/operations"
+            />,
+        );
+
+        expect(
+            screen.getByRole('button', {
+                name: 'Low',
+            }),
+        ).toHaveAttribute('aria-pressed', 'false');
+
+        expect(
+            screen.getByRole('button', {
+                name: 'Balanced',
+            }),
+        ).toHaveAttribute('aria-pressed', 'true');
+
+        expect(
+            screen.getByRole('button', {
+                name: 'High',
+            }),
+        ).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('renders the lazy Canvas with balanced quality by default', async () => {
         const user = userEvent.setup();
 
         render(
@@ -54,9 +86,88 @@ describe('OfficeShell', () => {
             }),
         );
 
+        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
+            'data-quality-preset',
+            'balanced',
+        );
+    });
+
+    it('passes the selected rendering quality to the loaded Canvas', async () => {
+        const user = userEvent.setup();
+
+        render(
+            <OfficeShell
+                projection={officeProjectionFixture()}
+                operationsUrl="/operations"
+            />,
+        );
+
+        await user.click(
+            screen.getByRole('button', {
+                name: /load 3d office/i,
+            }),
+        );
+
+        await user.click(
+            screen.getByRole('button', {
+                name: 'Low',
+            }),
+        );
+
+        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
+            'data-quality-preset',
+            'low',
+        );
+
         expect(
-            await screen.findByTestId('mock-office-canvas'),
+            screen.getByRole('button', {
+                name: 'Low',
+            }),
+        ).toHaveAttribute('aria-pressed', 'true');
+
+        expect(
+            screen.getByText(/disables shadows and the decorative grid/i),
         ).toBeInTheDocument();
+    });
+
+    it('can switch from low to high without changing projection truth', async () => {
+        const user = userEvent.setup();
+        const projection = officeProjectionFixture();
+
+        render(
+            <OfficeShell projection={projection} operationsUrl="/operations" />,
+        );
+
+        await user.click(
+            screen.getByRole('button', {
+                name: 'Low',
+            }),
+        );
+
+        await user.click(
+            screen.getByRole('button', {
+                name: /load 3d office/i,
+            }),
+        );
+
+        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
+            'data-quality-preset',
+            'low',
+        );
+
+        await user.click(
+            screen.getByRole('button', {
+                name: 'High',
+            }),
+        );
+
+        expect(await screen.findByTestId('mock-office-canvas')).toHaveAttribute(
+            'data-quality-preset',
+            'high',
+        );
+
+        expect(projection.agents[0].officeState).toBe('implementing');
+        expect(projection.rooms[2].state).toBe('working');
     });
 
     it('keeps simulation status visible before WebGL loads', () => {
