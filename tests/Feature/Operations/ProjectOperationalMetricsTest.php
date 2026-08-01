@@ -46,14 +46,40 @@ it('renders project-scoped operational metrics', function (): void {
     [$user, $organization, $project] =
         createOperationalMetricProject();
 
+    $configurationVersion = ProjectConfigurationVersion::query()->create([
+        'project_id' => $project->id,
+        'schema_version' => 1,
+        'revision' => 1,
+        'actor_type' => 'system',
+        'actor_id' => 'operational-metrics-test',
+        'change_reason' => 'Create operational metrics test context.',
+        'snapshot' => [
+            'schema_version' => 1,
+            'project_id' => $project->id,
+        ],
+        'created_at' => now(),
+    ]);
+
+    $contextSnapshot = ProjectContextSnapshot::query()->create([
+        'project_id' => $project->id,
+        'project_configuration_version_id' => $configurationVersion->id,
+        'configuration_revision' => $configurationVersion->revision,
+        'identity_schema_version' => 1,
+        'approved_document_set_fingerprint' => hash(
+            'sha256',
+            'operational-metrics-empty-document-set',
+        ),
+        'approved_document_versions' => [],
+    ]);
     $completedExecution = Execution::factory()
         ->for($project)
         ->create([
+            'project_context_snapshot_id' => $contextSnapshot->id,
             'status' => ExecutionStatus::Completed,
             'attempt_count' => 2,
-            'created_at' => now()->subMinutes(12),
             'started_at' => now()->subMinutes(10),
             'finished_at' => now()->subMinutes(5),
+            'created_at' => now()->subMinutes(12),
         ]);
 
     ExecutionAttempt::factory()
@@ -77,19 +103,105 @@ it('renders project-scoped operational metrics', function (): void {
     $activeExecution = Execution::factory()
         ->for($project)
         ->create([
+            'project_context_snapshot_id' => $contextSnapshot->id,
             'status' => ExecutionStatus::Running,
             'attempt_count' => 1,
-            'created_at' => now()->subMinutes(4),
             'started_at' => now()->subMinutes(3),
+            'finished_at' => null,
+            'created_at' => now()->subMinutes(4),
         ]);
+    $inputFingerprint = hash(
+        'sha256',
+        'operational-metrics-test-input',
+    );
 
-    $roadmap = Roadmap::factory()
-        ->for($project)
-        ->create();
+    $outputFingerprint = hash(
+        'sha256',
+        'operational-metrics-test-output',
+    );
 
-    $ticket = RoadmapTask::factory()
-        ->for($roadmap)
-        ->create();
+    $roadmap = Roadmap::query()->create([
+        'project_id' => $project->id,
+        'planning_execution_id' => $completedExecution->id,
+        'project_context_snapshot_id' => $contextSnapshot->id,
+        'parent_roadmap_id' => null,
+        'approval_id' => null,
+        'schema_version' => 1,
+        'revision' => 1,
+        'content_version' => 1,
+        'provider_id' => 'simulation',
+        'scenario' => 'operational-metrics-test',
+        'seed' => 142,
+        'input_fingerprint' => $inputFingerprint,
+        'output_fingerprint' => $outputFingerprint,
+        'candidate_fingerprint' => $outputFingerprint,
+        'approved_fingerprint' => null,
+        'status' => 'generated',
+        'readiness' => 'ready',
+        'goal' => 'Verify project operational metrics.',
+        'scope' => [
+            'Project-scoped queue and workflow metrics.',
+        ],
+        'assumptions' => [],
+        'constraints' => [],
+        'definition_of_done' => [
+            'The operational metrics response is rendered.',
+        ],
+        'required_approvals' => [],
+        'document_inventory' => [],
+        'document_summary' => 'No documents are required for this test.',
+        'architecture_concerns' => [],
+        'security_concerns' => [],
+        'readiness_reasons' => [],
+        'metadata' => [
+            'fixture' => 'operational-metrics',
+            'verification' => 'test',
+        ],
+        'derived_graph' => [
+            'nodes' => [],
+            'edges' => [],
+        ],
+        'generated_snapshot' => [
+            'goal' => 'Verify project operational metrics.',
+            'tasks' => [],
+        ],
+        'approved_snapshot' => null,
+        'regeneration_feedback' => null,
+        'feedback_fingerprint' => null,
+        'generated_at' => now(),
+        'approved_at' => null,
+    ]);
+
+    $ticket = RoadmapTask::query()->create([
+        'roadmap_id' => $roadmap->id,
+        'roadmap_phase_id' => null,
+        'roadmap_milestone_id' => null,
+        'stable_id' => 'AIOS-142-TEST',
+        'title' => 'Operational metrics test ticket',
+        'objective' => 'Provide a valid ticket for the active lease fixture.',
+        'ticket_type' => 'implementation',
+        'scope' => [
+            'included' => [
+                'Queue lease metrics',
+            ],
+            'excluded' => [],
+        ],
+        'acceptance_criteria' => [],
+        'source_references' => [],
+        'evidence_requirements' => [],
+        'notion_body_overrides' => null,
+        'priority' => 'high',
+        'risk' => 'medium',
+        'reasoning_level' => 'medium',
+        'reasoning' => 'The test requires a valid durable ticket lease.',
+        'logical_agent' => 'backend_engineer',
+        'estimated_complexity' => 1,
+        'human_approval_required' => false,
+        'position' => 1,
+        'critical_path_rank' => null,
+        'critical_path_position' => null,
+        'is_critical_path' => false,
+    ]);
 
     TicketExecutionLease::query()->create([
         'project_id' => $project->id,
@@ -134,7 +246,7 @@ it('renders project-scoped operational metrics', function (): void {
     $response
         ->assertOk()
         ->assertInertia(
-            fn (Assert $page): Assert => $page
+            fn(Assert $page): Assert => $page
                 ->component('projects/operations/metrics')
                 ->where('organization.id', $organization->id)
                 ->where('project.id', $project->id)
