@@ -3,6 +3,13 @@
 declare(strict_types=1);
 
 use App\Application\Operations\EvaluateOfficeRenderingBudget;
+use Tests\TestCase;
+
+/*
+ * This test evaluates the application's configured renderer budgets, so it
+ * must boot Laravel's configuration container while remaining database-free.
+ */
+uses(TestCase::class);
 
 it('accepts a frame window inside the balanced budget', function (): void {
     $result = app(EvaluateOfficeRenderingBudget::class)->handle([

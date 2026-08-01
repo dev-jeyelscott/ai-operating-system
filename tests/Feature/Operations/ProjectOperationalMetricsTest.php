@@ -9,6 +9,8 @@ use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\OutboxMessage;
 use App\Models\Project;
+use App\Models\ProjectConfigurationVersion;
+use App\Models\ProjectContextSnapshot;
 use App\Models\Roadmap;
 use App\Models\RoadmapTask;
 use App\Models\TicketExecutionLease;
