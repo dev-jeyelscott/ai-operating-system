@@ -164,35 +164,93 @@ test(
             ],
         );
 
-        /*
-         * Keep an allowed extension so validation reaches server-side MIME
-         * inspection instead of stopping at the extension rule.
-         */
-        $spoofedPdf = UploadedFile::fake()->createWithContent(
-            'architecture.txt',
-            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n",
+        $pngContents = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII=',
+            true,
         );
 
-        $this
-            ->actingAs($user)
-            ->from($documentsIndexRoute)
-            ->post(
-                route(
-                    'organizations.projects.documents.store',
+        if (! is_string($pngContents)) {
+            throw new RuntimeException(
+                'The deterministic PNG fixture could not be decoded.',
+            );
+        }
+
+        $temporaryPath = tempnam(
+            sys_get_temp_dir(),
+            'aios-document-upload-',
+        );
+
+        if (! is_string($temporaryPath)) {
+            throw new RuntimeException(
+                'The temporary upload fixture could not be created.',
+            );
+        }
+
+        $bytesWritten = file_put_contents(
+            $temporaryPath,
+            $pngContents,
+        );
+
+        if ($bytesWritten !== strlen($pngContents)) {
+            if (is_file($temporaryPath)) {
+                unlink($temporaryPath);
+            }
+
+            throw new RuntimeException(
+                'The PNG upload fixture could not be written.',
+            );
+        }
+
+        /*
+         * Use a real UploadedFile in Symfony test mode. Unlike Laravel's
+         * Testing\File fake, getMimeType() now inspects the physical bytes.
+         *
+         * The client claims text/plain and supplies an allowed .txt filename,
+         * while server-side inspection must identify image/png.
+         */
+        $spoofedImage = new UploadedFile(
+            $temporaryPath,
+            'architecture.txt',
+            'text/plain',
+            UPLOAD_ERR_OK,
+            true,
+        );
+
+        try {
+            expect($spoofedImage->getClientOriginalName())
+                ->toBe('architecture.txt')
+                ->and($spoofedImage->getClientMimeType())
+                ->toBe('text/plain')
+                ->and($spoofedImage->getMimeType())
+                ->toBe('image/png');
+
+            $response = $this
+                ->actingAs($user)
+                ->from($documentsIndexRoute)
+                ->post(
+                    route(
+                        'organizations.projects.documents.store',
+                        [
+                            'organization' => $organization,
+                            'project' => $project,
+                        ],
+                    ),
                     [
-                        'organization' => $organization,
-                        'project' => $project,
+                        'title' => 'Unsupported image',
+                        'document' => $spoofedImage,
                     ],
-                ),
-                [
-                    'title' => 'Unsupported PDF',
-                    'document' => $spoofedPdf,
-                ],
-            )
-            ->assertRedirect($documentsIndexRoute)
-            ->assertSessionHasErrors([
-                'document' => 'The document format is not supported. Supported media types: text/markdown, text/plain.',
-            ]);
+                );
+
+            $response
+                ->assertRedirect($documentsIndexRoute)
+                ->assertSessionHasErrors([
+                    'document' => 'The document format is not supported. Supported media types: text/markdown, text/plain.',
+                ]);
+        } finally {
+            if (is_file($temporaryPath)) {
+                unlink($temporaryPath);
+            }
+        }
 
         expect(Document::query()->count())
             ->toBe(0);
