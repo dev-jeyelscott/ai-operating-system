@@ -19,6 +19,7 @@ export type OfficeFrameWindow = {
 };
 
 const DEFAULT_WINDOW_MS = 5_000;
+const WINDOW_COMPLETION_TOLERANCE_MS = 0.001;
 const DEGRADED_AVERAGE_FPS = 30;
 const DEGRADED_P95_FRAME_MS = 50;
 
@@ -41,6 +42,9 @@ export class OfficeFrameWindowAccumulator {
 
     /**
      * Add one visible frame and return a completed sample when the window ends.
+     *
+     * A sub-microsecond tolerance prevents IEEE 754 accumulation errors from
+     * delaying an otherwise complete frame window by one additional frame.
      */
     public push(
         deltaSeconds: number,
@@ -52,7 +56,10 @@ export class OfficeFrameWindowAccumulator {
         this.frameTimes.push(frameMs);
         this.latestRendererInfo = rendererInfo;
 
-        if (this.elapsedMs < this.windowMs) {
+        if (
+            this.elapsedMs + WINDOW_COMPLETION_TOLERANCE_MS <
+            this.windowMs
+        ) {
             return null;
         }
 
