@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Documents;
 
-use App\Application\Documents\Contracts\DocumentParser;
+use App\Application\Documents\DocumentUploadInspector;
 use App\Models\Project;
 use App\Models\User;
-use Closure;
+use App\Rules\Documents\SafeProjectDocumentUpload;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\UploadedFile;
 
 /**
  * Authorizes and validates one replacement document upload.
@@ -30,49 +29,38 @@ final class StoreReplacementDocumentVersionRequest extends FormRequest
     }
 
     /**
-     * Apply the same size and parser-capability rules as an initial upload.
+     * Apply the same upload security contract as an initial version.
      *
      * @return array<string, list<mixed>>
      */
     public function rules(
-        DocumentParser $documentParser,
+        DocumentUploadInspector $uploadInspector,
     ): array {
-        $supportedMediaTypes =
-            $documentParser->supportedMediaTypes();
-
         return [
             'document' => [
                 'bail',
                 'required',
                 'file',
-                'max:20480',
-                function (
-                    string $attribute,
-                    mixed $value,
-                    Closure $fail,
-                ) use (
-                    $documentParser,
-                    $supportedMediaTypes,
-                ): void {
-                    if (! $value instanceof UploadedFile) {
-                        return;
-                    }
-
-                    $mediaType = $value->getMimeType();
-
-                    if (
-                        is_string($mediaType)
-                        && $documentParser->supports($mediaType)
-                    ) {
-                        return;
-                    }
-
-                    $fail(sprintf(
-                        'The document format is not supported. Supported media types: %s.',
-                        implode(', ', $supportedMediaTypes),
-                    ));
-                },
+                'max:'.$uploadInspector->maxKilobytes(),
+                'extensions:'.implode(
+                    ',',
+                    $uploadInspector->allowedExtensions(),
+                ),
+                new SafeProjectDocumentUpload($uploadInspector),
             ],
+        ];
+    }
+
+    /**
+     * Return actionable validation messages without exposing internals.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'document.max' => 'The document may not be larger than 20 MB.',
+            'document.extensions' => 'The document must use a .md or .txt extension.',
         ];
     }
 }

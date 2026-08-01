@@ -59,6 +59,7 @@ final class ParseDocumentVersionJob implements ShouldQueue
         app(ParseDocumentVersion::class)->markFailed(
             id: $this->documentVersionId,
             auditContext: $this->auditContext(),
+            exception: $exception,
         );
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Domain\Documents\DocumentClassification;
+use App\Domain\Documents\DocumentProcessingFailureCode;
 use App\Domain\Documents\DocumentStatus;
 use Carbon\CarbonImmutable;
 use Database\Factories\DocumentVersionFactory;
@@ -251,20 +252,29 @@ final class DocumentVersion extends Model
     /**
      * Determine whether this failed processing stage may be safely retried.
      *
-     * Permanent parser capability failures require a replacement upload instead
-     * of repeatedly dispatching work that can never succeed.
+     * Deterministic content failures require replacement rather than repeatedly
+     * executing the same immutable input.
      */
     public function canRetryProcessing(): bool
     {
-        return match ($this->status) {
+        if (in_array($this->status, [
             DocumentStatus::ScanFailed,
-            DocumentStatus::AnalysisFailed => true,
+            DocumentStatus::AnalysisFailed,
+        ], true)) {
+            return true;
+        }
 
-            DocumentStatus::ParseFailed => $this->failure_code
-                !== 'unsupported_media_type',
+        if ($this->status !== DocumentStatus::ParseFailed) {
+            return false;
+        }
 
-            default => false,
-        };
+        $failureCode = is_string($this->failure_code)
+            ? DocumentProcessingFailureCode::tryFrom(
+                $this->failure_code,
+            )
+            : null;
+
+        return $failureCode?->isPermanent() !== true;
     }
 
     /**

@@ -6,15 +6,20 @@ namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
 use App\Application\Documents\Contracts\DocumentParser;
+use App\Application\Documents\Exceptions\DocumentProcessingException;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
+use App\Domain\Documents\DocumentProcessingFailureCode;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Models\DocumentVersion;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
+/**
+ * Parses scan-approved document versions through the active parser.
+ */
 final readonly class ParseDocumentVersion
 {
     /**
@@ -29,14 +34,19 @@ final readonly class ParseDocumentVersion
     /**
      * Parse one scan-approved document version idempotently.
      *
-     * Successful parsing persists AnalysisPending and dispatches the unique
-     * analysis job only after the parse transaction commits.
+     * Permanent content failures are recorded immediately. Transient
+     * infrastructure failures are rethrown for bounded queue retry.
      *
      * @throws Throwable
      */
-    public function handle(int $id, ?AuditContext $auditContext = null): void
-    {
-        $auditContext ??= AuditContext::system(actorId: 'document-parse-worker');
+    public function handle(
+        int $id,
+        ?AuditContext $auditContext = null,
+    ): void {
+        $auditContext ??= AuditContext::system(
+            actorId: 'document-parse-worker',
+        );
+
         $version = $this->transactions->run(
             function () use ($id, $auditContext): ?DocumentVersion {
                 $version = DocumentVersion::query()
@@ -53,15 +63,15 @@ final readonly class ParseDocumentVersion
                 if (! $this->documentParser->supports(
                     $version->media_type,
                 )) {
-                    $this->markUnsupportedMediaType($version, $auditContext);
+                    $this->markUnsupportedMediaType(
+                        version: $version,
+                        auditContext: $auditContext,
+                    );
 
                     return null;
                 }
 
-                if (
-                    $version->status
-                    === DocumentStatus::ScanApproved
-                ) {
+                if ($version->status === DocumentStatus::ScanApproved) {
                     $version->beginParsing(
                         $this->documentParser->name(),
                         $this->documentParser->version(),
@@ -96,7 +106,21 @@ final readonly class ParseDocumentVersion
             'parser_version' => $this->documentParser->version(),
         ]);
 
-        $parsed = $this->documentParser->parse($version);
+        try {
+            $parsed = $this->documentParser->parse($version);
+        } catch (DocumentProcessingException $exception) {
+            if ($exception->retryable) {
+                throw $exception;
+            }
+
+            $this->recordPermanentFailure(
+                id: $id,
+                exception: $exception,
+                auditContext: $auditContext,
+            );
+
+            return;
+        }
 
         $analysisPending = $this->transactions->run(
             function () use ($id, $parsed, $auditContext): bool {
@@ -104,10 +128,7 @@ final readonly class ParseDocumentVersion
                     ->lockForUpdate()
                     ->findOrFail($id);
 
-                if (
-                    $version->status
-                    !== DocumentStatus::Parsing
-                ) {
+                if ($version->status !== DocumentStatus::Parsing) {
                     return false;
                 }
 
@@ -167,10 +188,29 @@ final readonly class ParseDocumentVersion
     /**
      * Record terminal parser failure after queue attempts are exhausted.
      */
-    public function markFailed(int $id, ?AuditContext $auditContext = null): void
-    {
-        $auditContext ??= AuditContext::system(actorId: 'document-parse-worker');
-        $this->transactions->run(function () use ($id, $auditContext): void {
+    public function markFailed(
+        int $id,
+        ?AuditContext $auditContext = null,
+        ?Throwable $exception = null,
+    ): void {
+        $auditContext ??= AuditContext::system(
+            actorId: 'document-parse-worker',
+        );
+
+        $failureCode = DocumentProcessingFailureCode::ParseFailed;
+        $failureMessage = 'The document could not be parsed.';
+
+        if ($exception instanceof DocumentProcessingException) {
+            $failureCode = $exception->failureCode;
+            $failureMessage = $exception->getMessage();
+        }
+
+        $this->transactions->run(function () use (
+            $id,
+            $auditContext,
+            $failureCode,
+            $failureMessage,
+        ): void {
             $version = DocumentVersion::query()
                 ->lockForUpdate()
                 ->findOrFail($id);
@@ -181,8 +221,8 @@ final readonly class ParseDocumentVersion
 
             $version->forceFill([
                 'status' => DocumentStatus::ParseFailed,
-                'failure_code' => 'parse_failed',
-                'failure_message' => 'The document could not be parsed.',
+                'failure_code' => $failureCode->value,
+                'failure_message' => $failureMessage,
             ])->save();
 
             $this->events->version(
@@ -192,14 +232,59 @@ final readonly class ParseDocumentVersion
                 metadata: [
                     'previous_status' => DocumentStatus::Parsing->value,
                     'new_status' => DocumentStatus::ParseFailed->value,
-                    'failure_code' => 'parse_failed',
+                    'failure_code' => $failureCode->value,
                 ],
             );
         });
     }
 
     /**
-     * Record an unsupported media type as a permanent parser failure.
+     * Record a deterministic parser failure without queue retry.
+     */
+    private function recordPermanentFailure(
+        int $id,
+        DocumentProcessingException $exception,
+        AuditContext $auditContext,
+    ): void {
+        $this->transactions->run(function () use (
+            $id,
+            $exception,
+            $auditContext,
+        ): void {
+            $version = DocumentVersion::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($version->status !== DocumentStatus::Parsing) {
+                return;
+            }
+
+            $version->forceFill([
+                'status' => DocumentStatus::ParseFailed,
+                'failure_code' => $exception->failureCode->value,
+                'failure_message' => $exception->getMessage(),
+            ])->save();
+
+            $this->events->version(
+                version: $version,
+                eventType: AuditEventType::DocumentParseFailed,
+                context: $auditContext,
+                metadata: [
+                    'previous_status' => DocumentStatus::Parsing->value,
+                    'new_status' => DocumentStatus::ParseFailed->value,
+                    'failure_code' => $exception->failureCode->value,
+                ],
+            );
+        });
+
+        Log::warning('document.parsing_rejected', [
+            'document_version_id' => $id,
+            'failure_code' => $exception->failureCode->value,
+        ]);
+    }
+
+    /**
+     * Record unsupported media as an immediate permanent failure.
      */
     private function markUnsupportedMediaType(
         DocumentVersion $version,
@@ -212,7 +297,7 @@ final readonly class ParseDocumentVersion
             'parsing_started_at' => null,
             'parsed_at' => null,
             'parsed_content' => null,
-            'failure_code' => 'unsupported_media_type',
+            'failure_code' => DocumentProcessingFailureCode::UnsupportedMediaType->value,
             'failure_message' => sprintf(
                 'No parser is registered for media type "%s". Supported media types: %s.',
                 $version->media_type,
@@ -230,14 +315,14 @@ final readonly class ParseDocumentVersion
             metadata: [
                 'previous_status' => DocumentStatus::ScanApproved->value,
                 'new_status' => DocumentStatus::ParseFailed->value,
-                'failure_code' => 'unsupported_media_type',
+                'failure_code' => DocumentProcessingFailureCode::UnsupportedMediaType->value,
             ],
         );
 
         Log::warning('document.parsing_rejected', [
             'document_version_id' => $version->id,
             'media_type' => $version->media_type,
-            'failure_code' => 'unsupported_media_type',
+            'failure_code' => DocumentProcessingFailureCode::UnsupportedMediaType->value,
         ]);
     }
 }

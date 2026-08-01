@@ -6,11 +6,17 @@ namespace App\Infrastructure\Documents;
 
 use App\Application\Documents\Contracts\DocumentParser;
 use App\Application\Documents\Data\ParsedDocument;
+use App\Application\Documents\DocumentTextGuard;
+use App\Application\Documents\Exceptions\DocumentProcessingException;
+use App\Domain\Documents\DocumentProcessingFailureCode;
 use App\Models\DocumentVersion;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
+use Throwable;
 
-final class PlainTextDocumentParser implements DocumentParser
+/**
+ * Parses the text-only document formats supported by the MVP.
+ */
+final readonly class PlainTextDocumentParser implements DocumentParser
 {
     /** @var list<string> */
     private const SUPPORTED_MEDIA_TYPES = [
@@ -20,7 +26,14 @@ final class PlainTextDocumentParser implements DocumentParser
 
     private const NAME = 'plain-text-mvp';
 
-    private const VERSION = '1.0.0';
+    private const VERSION = '1.1.0';
+
+    /**
+     * Create the parser with the shared text-safety guard.
+     */
+    public function __construct(
+        private DocumentTextGuard $textGuard,
+    ) {}
 
     /**
      * Return the media types handled by the MVP text parser.
@@ -61,20 +74,42 @@ final class PlainTextDocumentParser implements DocumentParser
     }
 
     /**
-     * Read a supported Markdown or plain-text document from private storage.
+     * Read and validate a supported text document from private storage.
      */
     public function parse(DocumentVersion $documentVersion): ParsedDocument
     {
         if (! $this->supports($documentVersion->media_type)) {
-            throw new RuntimeException(sprintf(
-                'No parser is registered for media type "%s".',
-                $documentVersion->media_type,
-            ));
+            throw DocumentProcessingException::permanent(
+                failureCode: DocumentProcessingFailureCode::UnsupportedMediaType,
+                message: sprintf(
+                    'No parser is registered for media type "%s".',
+                    $documentVersion->media_type,
+                ),
+            );
         }
 
+        if ($documentVersion->byte_size > $this->textGuard->maxBytes()) {
+            throw DocumentProcessingException::permanent(
+                failureCode: DocumentProcessingFailureCode::DocumentTooLarge,
+                message: 'The stored document exceeds the current processing size limit.',
+            );
+        }
+
+        try {
+            $contents = Storage::disk($documentVersion->storage_disk)
+                ->get($documentVersion->storage_path);
+        } catch (Throwable $exception) {
+            throw DocumentProcessingException::retryable(
+                failureCode: DocumentProcessingFailureCode::StorageReadFailed,
+                message: 'The stored document could not be read.',
+                previous: $exception,
+            );
+        }
+
+        $this->textGuard->assertSafe($contents);
+
         return new ParsedDocument(
-            content: Storage::disk($documentVersion->storage_disk)
-                ->get($documentVersion->storage_path),
+            content: $contents,
             parserName: $this->name(),
             parserVersion: $this->version(),
         );

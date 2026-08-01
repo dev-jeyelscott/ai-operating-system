@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Documents\Data\InspectedDocumentUpload;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
@@ -26,9 +27,13 @@ use Throwable;
  */
 final readonly class StoreReplacementDocumentVersion
 {
+    /**
+     * Create the replacement storage application service.
+     */
     public function __construct(
+        private DocumentUploadInspector $uploadInspector,
         private RecordDocumentLifecycleEvent $events,
-        private TransactionManager $transactions
+        private TransactionManager $transactions,
     ) {}
 
     /**
@@ -47,7 +52,10 @@ final readonly class StoreReplacementDocumentVersion
         UploadedFile $uploadedFile,
         ?AuditContext $auditContext = null,
     ): DocumentVersion {
-        $auditContext ??= AuditContext::system(actorId: 'document-replacement-command');
+        $auditContext ??= AuditContext::system(
+            actorId: 'document-replacement-command',
+        );
+
         $this->ensureRouteScope(
             organization: $organization,
             project: $project,
@@ -55,44 +63,19 @@ final readonly class StoreReplacementDocumentVersion
             approvedVersion: $approvedVersion,
         );
 
-        $disk = (string) config('filesystems.artifact');
+        /*
+         * Repeat inspection inside the application boundary so a replacement
+         * cannot bypass security by avoiding the HTTP Form Request.
+         */
+        $inspected = $this->uploadInspector->inspect($uploadedFile);
 
+        $disk = (string) config('filesystems.artifact');
         $directory = sprintf(
             'documents/organizations/%d/projects/%d/documents/%d',
             $organization->id,
             $project->id,
             $document->id,
         );
-
-        $mediaType = $uploadedFile->getMimeType();
-        $byteSize = $uploadedFile->getSize();
-        $realPath = $uploadedFile->getRealPath();
-
-        if (! is_string($mediaType) || trim($mediaType) === '') {
-            throw new RuntimeException(
-                'The replacement media type could not be determined.',
-            );
-        }
-
-        if (! is_int($byteSize) || $byteSize < 1) {
-            throw new RuntimeException(
-                'The replacement file size could not be determined.',
-            );
-        }
-
-        if (! is_string($realPath) || $realPath === '') {
-            throw new RuntimeException(
-                'The replacement upload is unavailable.',
-            );
-        }
-
-        $checksum = hash_file('sha256', $realPath);
-
-        if (! is_string($checksum)) {
-            throw new RuntimeException(
-                'The replacement checksum could not be calculated.',
-            );
-        }
 
         $storedPath = null;
 
@@ -114,12 +97,9 @@ final readonly class StoreReplacementDocumentVersion
                     $project,
                     $document,
                     $approvedVersion,
-                    $uploadedFile,
-                    $mediaType,
-                    $byteSize,
+                    $inspected,
                     $disk,
                     $storedPath,
-                    $checksum,
                     $auditContext,
                 ): DocumentVersion {
                     /*
@@ -148,8 +128,8 @@ final readonly class StoreReplacementDocumentVersion
                     }
 
                     /*
-                     * Refuse to manufacture a replacement when authority is
-                     * already ambiguous. Exactly one approved source is required.
+                     * Exactly one approved source must exist before creating
+                     * a replacement revision.
                      */
                     $approvedVersionIds = $lockedDocument
                         ->versions()
@@ -176,37 +156,14 @@ final readonly class StoreReplacementDocumentVersion
                             ->max('version')
                     ) + 1;
 
-                    $replacement = DocumentVersion::query()->create([
-                        'document_id' => $lockedDocument->id,
-                        'version' => $nextVersion,
-                        'original_filename' => $this->originalFilename(
-                            $uploadedFile,
-                        ),
-                        'media_type' => $mediaType,
-                        'byte_size' => $byteSize,
-                        'storage_disk' => $disk,
-                        'storage_path' => $storedPath,
-                        'checksum_sha256' => $checksum,
-                        'status' => DocumentStatus::Quarantined,
-                        'classification' => DocumentClassification::Unclassified,
-                        'parser_name' => null,
-                        'parser_version' => null,
-                        'parsing_started_at' => null,
-                        'parsed_at' => null,
-                        'parsed_content' => null,
-                        'analyzer_name' => null,
-                        'analyzer_version' => null,
-                        'analysis_seed' => null,
-                        'analysis_started_at' => null,
-                        'analysis_completed_at' => null,
-                        'analysis_summary' => null,
-                        'analysis_conflicts' => null,
-                        'analysis_gaps' => null,
-                        'analysis_flags' => null,
-                        'failure_code' => null,
-                        'failure_message' => null,
-                        'supersedes_document_version_id' => $lockedApprovedVersion->id,
-                    ]);
+                    $replacement = $this->createReplacement(
+                        document: $lockedDocument,
+                        approvedVersion: $lockedApprovedVersion,
+                        inspected: $inspected,
+                        nextVersion: $nextVersion,
+                        disk: $disk,
+                        storedPath: $storedPath,
+                    );
 
                     $uploadedEvent = $this->events->version(
                         version: $replacement,
@@ -243,6 +200,48 @@ final readonly class StoreReplacementDocumentVersion
     }
 
     /**
+     * Create a clean replacement version from inspected metadata.
+     */
+    private function createReplacement(
+        Document $document,
+        DocumentVersion $approvedVersion,
+        InspectedDocumentUpload $inspected,
+        int $nextVersion,
+        string $disk,
+        string $storedPath,
+    ): DocumentVersion {
+        return DocumentVersion::query()->create([
+            'document_id' => $document->id,
+            'version' => $nextVersion,
+            'original_filename' => $inspected->originalFilename,
+            'media_type' => $inspected->mediaType,
+            'byte_size' => $inspected->byteSize,
+            'storage_disk' => $disk,
+            'storage_path' => $storedPath,
+            'checksum_sha256' => $inspected->checksumSha256,
+            'status' => DocumentStatus::Quarantined,
+            'classification' => DocumentClassification::Unclassified,
+            'parser_name' => null,
+            'parser_version' => null,
+            'parsing_started_at' => null,
+            'parsed_at' => null,
+            'parsed_content' => null,
+            'analyzer_name' => null,
+            'analyzer_version' => null,
+            'analysis_seed' => null,
+            'analysis_started_at' => null,
+            'analysis_completed_at' => null,
+            'analysis_summary' => null,
+            'analysis_conflicts' => null,
+            'analysis_gaps' => null,
+            'analysis_flags' => null,
+            'failure_code' => null,
+            'failure_message' => null,
+            'supersedes_document_version_id' => $approvedVersion->id,
+        ]);
+    }
+
+    /**
      * Verify that every route model belongs to the same tenant hierarchy.
      */
     private function ensureRouteScope(
@@ -265,8 +264,8 @@ final readonly class StoreReplacementDocumentVersion
     /**
      * Delete a stored upload only when no persisted version references it.
      *
-     * If database availability prevents proving that the object is unreferenced,
-     * retain the object. An orphan is safer than deleting committed evidence.
+     * If database availability prevents proving that the object is
+     * unreferenced, retain it. An orphan is safer than deleting evidence.
      */
     private function deleteUnreferencedObject(
         string $disk,
@@ -284,22 +283,5 @@ final readonly class StoreReplacementDocumentVersion
         if (! $isReferenced) {
             Storage::disk($disk)->delete($storedPath);
         }
-    }
-
-    /**
-     * Return a normalized, bounded client filename for audit display.
-     */
-    private function originalFilename(
-        UploadedFile $uploadedFile,
-    ): string {
-        $filename = trim(
-            basename($uploadedFile->getClientOriginalName()),
-        );
-
-        return Str::limit(
-            $filename !== '' ? $filename : 'document',
-            255,
-            '',
-        );
     }
 }

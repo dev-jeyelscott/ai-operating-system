@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Documents;
 
 use App\Application\Audit\Data\AuditContext;
+use App\Application\Documents\Data\InspectedDocumentUpload;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Documents\DocumentClassification;
@@ -21,7 +22,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Stores a received file privately and records its immutable initial version.
+ * Stores a securely inspected file and records its immutable initial version.
  */
 final class StoreProjectDocument
 {
@@ -29,11 +30,14 @@ final class StoreProjectDocument
      * Create the project-document storage application service.
      */
     public function __construct(
+        private readonly DocumentUploadInspector $uploadInspector,
         private readonly RecordDocumentLifecycleEvent $events,
         private readonly TransactionManager $transactions,
     ) {}
 
     /**
+     * Inspect, store, and begin processing one project document.
+     *
      * @throws Throwable
      */
     public function handle(
@@ -44,7 +48,16 @@ final class StoreProjectDocument
         UploadedFile $uploadedFile,
         ?AuditContext $auditContext = null,
     ): Document {
-        $auditContext ??= AuditContext::system(actorId: 'document-upload-command');
+        $auditContext ??= AuditContext::system(
+            actorId: 'document-upload-command',
+        );
+
+        /*
+         * Repeat inspection here even when the HTTP request already validated
+         * the file. This protects CLI, API, worker, and future internal callers.
+         */
+        $inspected = $this->uploadInspector->inspect($uploadedFile);
+
         $disk = (string) config('filesystems.artifact');
         $directory = sprintf(
             'documents/organizations/%d/projects/%d',
@@ -61,23 +74,18 @@ final class StoreProjectDocument
             );
 
             if (! is_string($storedPath) || $storedPath === '') {
-                throw new RuntimeException('The document could not be stored.');
-            }
-
-            $checksum = hash_file('sha256', $uploadedFile->getRealPath());
-
-            if (! is_string($checksum)) {
-                throw new RuntimeException('The document checksum could not be calculated.');
+                throw new RuntimeException(
+                    'The document could not be stored.',
+                );
             }
 
             return $this->transactions->run(function () use (
                 $project,
                 $title,
                 $documentClass,
-                $uploadedFile,
                 $disk,
                 $storedPath,
-                $checksum,
+                $inspected,
                 $auditContext,
             ): Document {
                 $document = Document::query()->create([
@@ -86,18 +94,12 @@ final class StoreProjectDocument
                     'document_class' => $documentClass,
                 ]);
 
-                $documentVersion = DocumentVersion::query()->create([
-                    'document_id' => $document->id,
-                    'version' => 1,
-                    'original_filename' => $this->originalFilename($uploadedFile),
-                    'media_type' => $uploadedFile->getMimeType(),
-                    'byte_size' => $uploadedFile->getSize(),
-                    'storage_disk' => $disk,
-                    'storage_path' => $storedPath,
-                    'checksum_sha256' => $checksum,
-                    'status' => DocumentStatus::Quarantined,
-                    'classification' => DocumentClassification::Unclassified,
-                ]);
+                $documentVersion = $this->createVersion(
+                    document: $document,
+                    inspected: $inspected,
+                    disk: $disk,
+                    storedPath: $storedPath,
+                );
 
                 $uploadedEvent = $this->events->version(
                     version: $documentVersion,
@@ -128,14 +130,26 @@ final class StoreProjectDocument
         }
     }
 
-    private function originalFilename(UploadedFile $uploadedFile): string
-    {
-        $filename = trim(basename($uploadedFile->getClientOriginalName()));
-
-        return Str::limit(
-            $filename !== '' ? $filename : 'document',
-            255,
-            '',
-        );
+    /**
+     * Create the immutable first version from inspected metadata.
+     */
+    private function createVersion(
+        Document $document,
+        InspectedDocumentUpload $inspected,
+        string $disk,
+        string $storedPath,
+    ): DocumentVersion {
+        return DocumentVersion::query()->create([
+            'document_id' => $document->id,
+            'version' => 1,
+            'original_filename' => $inspected->originalFilename,
+            'media_type' => $inspected->mediaType,
+            'byte_size' => $inspected->byteSize,
+            'storage_disk' => $disk,
+            'storage_path' => $storedPath,
+            'checksum_sha256' => $inspected->checksumSha256,
+            'status' => DocumentStatus::Quarantined,
+            'classification' => DocumentClassification::Unclassified,
+        ]);
     }
 }

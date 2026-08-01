@@ -7,6 +7,7 @@ namespace App\Application\Documents;
 use App\Application\Audit\Data\AuditContext;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditEventType;
+use App\Domain\Documents\DocumentProcessingFailureCode;
 use App\Domain\Documents\DocumentStatus;
 use App\Jobs\AnalyzeDocumentVersionJob;
 use App\Jobs\ParseDocumentVersionJob;
@@ -43,10 +44,6 @@ final class RetryDocumentVersionProcessing
                 $previousStatus = $lockedVersion->status;
                 $previousFailureCode = $lockedVersion->failure_code;
 
-                /*
-                 * Resolve the failed stage first so permanent parser failures
-                 * and non-failed states return their precise domain errors.
-                 */
                 $stage = match ($lockedVersion->status) {
                     DocumentStatus::ScanFailed => $this->retryScan(
                         $lockedVersion,
@@ -88,18 +85,21 @@ final class RetryDocumentVersionProcessing
                 causationId: $context->causationId,
                 executionId: $context->executionId,
             )->afterCommit(),
+
             'parse' => ParseDocumentVersionJob::dispatch(
                 documentVersionId: $version->id,
                 correlationId: $context->correlationId,
                 causationId: $context->causationId,
                 executionId: $context->executionId,
             )->afterCommit(),
+
             'analysis' => AnalyzeDocumentVersionJob::dispatch(
                 documentVersionId: $version->id,
                 correlationId: $context->correlationId,
                 causationId: $context->causationId,
                 executionId: $context->executionId,
             )->afterCommit(),
+
             default => throw new LogicException(
                 'Unsupported document retry stage.',
             ),
@@ -127,12 +127,15 @@ final class RetryDocumentVersionProcessing
     private function retryParsing(
         DocumentVersion $version,
     ): string {
-        if (
-            $version->failure_code
-            === 'unsupported_media_type'
-        ) {
+        $failureCode = is_string($version->failure_code)
+            ? DocumentProcessingFailureCode::tryFrom(
+                $version->failure_code,
+            )
+            : null;
+
+        if ($failureCode?->isPermanent() === true) {
             throw new LogicException(
-                'Permanent parser capability failures cannot be retried.',
+                'Permanent document content failures cannot be retried.',
             );
         }
 
@@ -146,7 +149,7 @@ final class RetryDocumentVersionProcessing
     }
 
     /**
-     * Reset terminal analysis failure while retaining previous safety flags.
+     * Reset terminal analysis failure while retaining safety flags.
      */
     private function retryAnalysis(
         DocumentVersion $version,
