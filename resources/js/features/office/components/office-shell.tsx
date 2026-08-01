@@ -112,8 +112,20 @@ export function OfficeShell({
         }
     }, [rendererCapabilityDetector]);
 
+    /**
+     * Run the initial browser capability probe after the first render.
+     *
+     * Deferring through a browser timer prevents a synchronous state update inside
+     * the effect while keeping WebGL detection outside the render phase.
+     */
     useEffect(() => {
-        refreshRendererCapability();
+        const timeoutId = window.setTimeout(() => {
+            refreshRendererCapability();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
     }, [refreshRendererCapability]);
 
     /**
