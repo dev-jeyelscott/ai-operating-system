@@ -133,9 +133,7 @@ final readonly class SensitivePersistenceObserver
             ),
             'action_url' => $safeActionUrl,
             'data' => $this->redactor->redact(
-                is_array($notification->data)
-                    ? $notification->data
-                    : [],
+                $notification->data,
             ),
         ]);
     }
