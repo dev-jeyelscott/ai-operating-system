@@ -1,10 +1,10 @@
 import { Html } from '@react-three/drei';
-import { useRef } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
+import { useRef } from 'react';
 import type { Group } from 'three';
 import { useAgentMotionController } from '@/features/office/hooks/use-agent-motion-controller';
-import { officeStatePresentation } from '@/features/office/office-state-presentation';
 import type { AgentPosition } from '@/features/office/hooks/use-agent-motion-controller';
+import { officeStatePresentation } from '@/features/office/office-state-presentation';
 import type { OfficeAgent } from '@/features/office/types';
 
 type Props = {

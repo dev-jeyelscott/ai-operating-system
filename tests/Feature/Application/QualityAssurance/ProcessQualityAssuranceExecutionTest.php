@@ -26,7 +26,6 @@ use App\Models\QaAssessment;
 use App\Models\RoadmapTask;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
-use RuntimeException;
 use Tests\Support\TicketTestFixture;
 
 /*

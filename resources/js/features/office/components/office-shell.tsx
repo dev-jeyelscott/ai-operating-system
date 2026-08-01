@@ -249,7 +249,7 @@ class OfficeCanvasBoundary extends Component<
     /**
      * Leave structured reporting to the application error pipeline.
      */
-    componentDidCatch(_error: Error, _info: ErrorInfo) {}
+    componentDidCatch() {}
 
     /**
      * Render the Canvas or an accessible local fallback.
