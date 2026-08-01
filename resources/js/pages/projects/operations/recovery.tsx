@@ -258,9 +258,9 @@ export default function ProjectRecoveryCenter({
                                                             <span className="font-medium">
                                                                 Error:
                                                             </span>{' '}
-                                                            {
-                                                                execution.errorCode
-                                                            }
+                                                            {humanize(
+                                                                execution.errorCode,
+                                                            )}
                                                         </p>
                                                     )}
 
