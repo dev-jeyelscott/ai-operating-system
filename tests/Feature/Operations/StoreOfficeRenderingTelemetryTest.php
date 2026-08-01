@@ -8,7 +8,7 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
-use Psr\Log\LoggerInterface;
+use Psr\Log\AbstractLogger;
 
 uses(RefreshDatabase::class);
 
@@ -70,22 +70,48 @@ it('records a bounded privacy-safe renderer batch', function (): void {
     [$user, $organization, $project] =
         createTelemetryProjectContext();
 
-    $logger = Mockery::mock(LoggerInterface::class);
+    /*
+     * Capture log records without placing strict expectations on every method
+     * of Laravel's global LogManager.
+     */
+    $logger = new class extends AbstractLogger
+    {
+        /**
+         * Store emitted records for assertions.
+         *
+         * @var list<array{
+         *     level: string,
+         *     message: string,
+         *     context: array<string, mixed>
+         * }>
+         */
+        public array $records = [];
 
-    $logger
-        ->shouldReceive('info')
-        ->once()
-        ->with(
-            'office.renderer.telemetry',
-            Mockery::on(
-                fn (array $context): bool => $context['organization_id'] === $organization->id
-                    && $context['project_id'] === $project->id
-                    && $context['actor_id'] === $user->id
-                    && $context['renderer']['type'] === 'frame_window',
-            ),
-        );
+        /**
+         * Capture one PSR log record in memory.
+         *
+         * @param  mixed  $level
+         * @param  array<string, mixed>  $context
+         */
+        public function log(
+            $level,
+            Stringable|string $message,
+            array $context = [],
+        ): void {
+            $this->records[] = [
+                'level' => (string) $level,
+                'message' => (string) $message,
+                'context' => $context,
+            ];
+        }
+    };
 
-    Log::shouldReceive('channel')
+    /*
+     * Use a partial facade mock so unrelated logging methods, including error
+     * reporting from Laravel's exception handler, are not blocked by Mockery.
+     */
+    Log::partialMock()
+        ->shouldReceive('channel')
         ->once()
         ->with('json')
         ->andReturn($logger);
@@ -107,9 +133,41 @@ it('records a bounded privacy-safe renderer batch', function (): void {
             ],
         )
         ->assertNoContent(202);
+
+    expect($logger->records)->toHaveCount(1);
+
+    $record = $logger->records[0];
+
+    expect($record['level'])->toBe('info')
+        ->and($record['message'])->toBe('office.renderer.telemetry')
+        ->and($record['context']['organization_id'])
+        ->toBe($organization->id)
+        ->and($record['context']['project_id'])
+        ->toBe($project->id)
+        ->and($record['context']['actor_id'])
+        ->toBe($user->id)
+        ->and($record['context']['renderer']['type'])
+        ->toBe('frame_window')
+        ->and($record['context']['renderer']['qualityPreset'])
+        ->toBe('balanced');
+
+    expect(array_keys($record['context']['renderer']))
+        ->not->toContain(
+            'projectName',
+            'projectSlug',
+            'ticketId',
+            'agentId',
+            'provider',
+            'currentAction',
+            'url',
+            'userAgent',
+            'gpuVendor',
+            'gpuRenderer',
+            'message',
+        );
 });
 
-it('rejects sensitive content and device fingerprint fields', function (): void {
+it('rejects unknown content and device fingerprint fields', function (): void {
     [$user, $organization, $project] =
         createTelemetryProjectContext();
 
@@ -133,8 +191,40 @@ it('rejects sensitive content and device fingerprint fields', function (): void 
         )
         ->assertUnprocessable()
         ->assertJsonValidationErrors([
-            'events.0.ticketId',
-            'events.0.gpuRenderer',
+            /*
+             * The event array's allowed-key rule owns the validation failure.
+             */
+            'events.0',
+        ]);
+});
+
+it('rejects unknown nested frame fields', function (): void {
+    [$user, $organization, $project] =
+        createTelemetryProjectContext();
+
+    $event = validRendererEvent();
+    $event['frame']['gpuTemperature'] = 82;
+
+    $this
+        ->actingAs($user)
+        ->postJson(
+            route(
+                'organizations.projects.operations.office-telemetry.store',
+                [
+                    'organization' => $organization,
+                    'project' => $project,
+                ],
+            ),
+            [
+                'events' => [$event],
+            ],
+        )
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            /*
+             * The nested frame array's allowed-key rule owns the failure.
+             */
+            'events.0.frame',
         ]);
 });
 
@@ -158,7 +248,9 @@ it('does not resolve telemetry through another organization', function (): void 
                 ],
             ),
             [
-                'events' => [validRendererEvent()],
+                'events' => [
+                    validRendererEvent(),
+                ],
             ],
         )
         ->assertNotFound();
@@ -178,7 +270,9 @@ it('requires authentication', function (): void {
                 ],
             ),
             [
-                'events' => [validRendererEvent()],
+                'events' => [
+                    validRendererEvent(),
+                ],
             ],
         )
         ->assertUnauthorized();

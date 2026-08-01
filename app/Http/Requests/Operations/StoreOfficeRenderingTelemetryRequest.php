@@ -27,16 +27,31 @@ final class StoreOfficeRenderingTelemetryRequest extends FormRequest
     /**
      * Return the bounded telemetry contract.
      *
-     * Free-form strings, browser identity, GPU identity, project content,
-     * ticket identity, and agent identity are intentionally prohibited.
+     * Every array uses an explicit key allowlist so project content, ticket
+     * identifiers, agent identifiers, browser identity, GPU identity, URLs,
+     * and arbitrary client-controlled strings fail validation by default.
      *
      * @return array<string, list<mixed>>
      */
     public function rules(): array
     {
         return [
-            'events' => ['required', 'array', 'min:1', 'max:20'],
-            'events.*' => ['required', 'array'],
+            'events' => [
+                'required',
+                'array',
+                'min:1',
+                'max:20',
+            ],
+
+            /*
+             * Reject every event-level key that is not part of the approved,
+             * privacy-safe telemetry schema.
+             */
+            'events.*' => [
+                'required',
+                'array:type,sessionId,sequence,observedAt,qualityPreset,reducedMotion,capabilityStatus,capabilityReason,failureReason,frame',
+            ],
+
             'events.*.type' => [
                 'required',
                 'string',
@@ -49,20 +64,39 @@ final class StoreOfficeRenderingTelemetryRequest extends FormRequest
                     'frame_window',
                 ]),
             ],
-            'events.*.sessionId' => ['required', 'uuid'],
+
+            'events.*.sessionId' => [
+                'required',
+                'uuid',
+            ],
+
             'events.*.sequence' => [
                 'required',
                 'integer',
                 'min:1',
                 'max:1000000',
             ],
-            'events.*.observedAt' => ['required', 'date'],
+
+            'events.*.observedAt' => [
+                'required',
+                'date',
+            ],
+
             'events.*.qualityPreset' => [
                 'required',
                 'string',
-                Rule::in(['low', 'balanced', 'high']),
+                Rule::in([
+                    'low',
+                    'balanced',
+                    'high',
+                ]),
             ],
-            'events.*.reducedMotion' => ['required', 'boolean'],
+
+            'events.*.reducedMotion' => [
+                'required',
+                'boolean',
+            ],
+
             'events.*.capabilityStatus' => [
                 'nullable',
                 'string',
@@ -73,6 +107,7 @@ final class StoreOfficeRenderingTelemetryRequest extends FormRequest
                     'unavailable',
                 ]),
             ],
+
             'events.*.capabilityReason' => [
                 'nullable',
                 'string',
@@ -84,6 +119,7 @@ final class StoreOfficeRenderingTelemetryRequest extends FormRequest
                     'capability_check_failed',
                 ]),
             ],
+
             'events.*.failureReason' => [
                 'nullable',
                 'string',
@@ -93,86 +129,88 @@ final class StoreOfficeRenderingTelemetryRequest extends FormRequest
                     'context_lost',
                 ]),
             ],
-            'events.*.frame' => ['nullable', 'array'],
+
+            /*
+             * Reject every frame-level key that is not part of the approved
+             * aggregate performance measurement schema.
+             */
+            'events.*.frame' => [
+                'nullable',
+                'array:averageFps,p95FrameMs,maxFrameMs,sampleDurationMs,frameCount,drawCalls,triangles,geometries,textures,degraded',
+            ],
+
             'events.*.frame.averageFps' => [
                 'nullable',
                 'numeric',
                 'min:0',
                 'max:1000',
             ],
+
             'events.*.frame.p95FrameMs' => [
                 'nullable',
                 'numeric',
                 'min:0',
                 'max:60000',
             ],
+
             'events.*.frame.maxFrameMs' => [
                 'nullable',
                 'numeric',
                 'min:0',
                 'max:60000',
             ],
+
             'events.*.frame.sampleDurationMs' => [
                 'nullable',
                 'integer',
                 'min:1000',
                 'max:60000',
             ],
+
             'events.*.frame.frameCount' => [
                 'nullable',
                 'integer',
                 'min:0',
                 'max:60000',
             ],
+
             'events.*.frame.drawCalls' => [
                 'nullable',
                 'integer',
                 'min:0',
                 'max:1000000',
             ],
+
             'events.*.frame.triangles' => [
                 'nullable',
                 'integer',
                 'min:0',
                 'max:1000000000',
             ],
+
             'events.*.frame.geometries' => [
                 'nullable',
                 'integer',
                 'min:0',
                 'max:1000000',
             ],
+
             'events.*.frame.textures' => [
                 'nullable',
                 'integer',
                 'min:0',
                 'max:1000000',
             ],
+
             'events.*.frame.degraded' => [
                 'nullable',
                 'boolean',
             ],
-
-            /*
-             * Fail closed when a client attempts to attach content or device
-             * fingerprint fields.
-             */
-            'events.*.projectName' => ['prohibited'],
-            'events.*.projectSlug' => ['prohibited'],
-            'events.*.ticketId' => ['prohibited'],
-            'events.*.agentId' => ['prohibited'],
-            'events.*.provider' => ['prohibited'],
-            'events.*.currentAction' => ['prohibited'],
-            'events.*.url' => ['prohibited'],
-            'events.*.userAgent' => ['prohibited'],
-            'events.*.gpuVendor' => ['prohibited'],
-            'events.*.gpuRenderer' => ['prohibited'],
-            'events.*.message' => ['prohibited'],
         ];
     }
 
     /**
-     * Return the validated telemetry event list.
+     * Return the validated and allowlisted telemetry event list.
      *
      * @return list<array<string, mixed>>
      */
