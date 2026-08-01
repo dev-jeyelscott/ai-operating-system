@@ -17,10 +17,11 @@ final readonly class BuildOfficeProjection
     private const int SCHEMA_VERSION = 1;
 
     /**
-     * Inject the existing project operations read model.
+     * Inject the project operations read model and state-aware room resolver.
      */
     public function __construct(
         private GetProjectOperationsReadModel $operations,
+        private ResolveOfficeAgentRoom $agentRooms,
     ) {}
 
     /**
@@ -167,7 +168,7 @@ final readonly class BuildOfficeProjection
     }
 
     /**
-     * Project operational executions into logical office agents.
+     * Project operational executions into state-aware logical office agents.
      *
      * @param  list<array<string, mixed>>  $agents
      * @return list<array<string, mixed>>
@@ -198,7 +199,10 @@ final readonly class BuildOfficeProjection
                         'unknown',
                     ),
                     'layer' => $layer,
-                    'room' => $this->roomForLayer($layer),
+                    'room' => $this->agentRooms->handle(
+                        layer: $layer,
+                        officeState: $officeState,
+                    ),
                     'capability' => $this->string(
                         $agent['capability'] ?? '',
                     ),
@@ -235,7 +239,7 @@ final readonly class BuildOfficeProjection
     }
 
     /**
-     * Build stable office room summaries from authoritative layers and indicators.
+     * Build stable room summaries from authoritative state-aware agent placement.
      *
      * @param  list<array<string, mixed>>  $agents
      * @param  array<string, array<string, mixed>>  $layers
@@ -261,6 +265,36 @@ final readonly class BuildOfficeProjection
                 true,
             ),
         ));
+
+        $approvalAgents = $this->agentsForRoom(
+            agents: $agents,
+            room: 'approval_room',
+        );
+
+        $operationsAgents = $this->agentsForRoom(
+            agents: $agents,
+            room: 'operations_area',
+        );
+
+        $archiveAgents = $this->agentsForRoom(
+            agents: $agents,
+            room: 'archive',
+        );
+
+        $hasBlockedAgent = array_any(
+            $operationsAgents,
+            static fn (array $agent): bool => in_array(
+                $agent['officeState'] ?? null,
+                ['blocked', 'failed'],
+                true,
+            ),
+        );
+
+        $hasRetryingAgent = array_any(
+            $operationsAgents,
+            static fn (array $agent): bool => ($agent['officeState'] ?? null)
+                === 'retrying',
+        );
 
         return [
             $this->room(
@@ -294,32 +328,32 @@ final readonly class BuildOfficeProjection
             $this->room(
                 key: 'approval_room',
                 label: 'Approval Room',
-                state: $approvals === []
-                    ? 'idle'
-                    : 'waiting_for_human',
-                agents: [],
+                state: $approvalAgents !== [] || $approvals !== []
+                    ? 'waiting_for_human'
+                    : 'idle',
+                agents: $approvalAgents,
                 actionableCount: count($approvals),
             ),
             $this->room(
                 key: 'operations_area',
                 label: 'Operations Area',
-                state: $blockers !== []
+                state: $blockers !== [] || $hasBlockedAgent
                     ? 'blocked'
-                    : ($retries !== [] ? 'retrying' : 'idle'),
-                agents: $this->agentsForLayer($agents, 'operations'),
+                    : (
+                        $retries !== [] || $hasRetryingAgent
+                        ? 'retrying'
+                        : 'idle'
+                    ),
+                agents: $operationsAgents,
                 actionableCount: count($blockers) + count($retries),
             ),
             $this->room(
                 key: 'archive',
                 label: 'Completed Work',
-                state: $doneTickets > 0
+                state: $archiveAgents !== [] || $doneTickets > 0
                     ? 'completed'
                     : 'idle',
-                agents: array_values(array_filter(
-                    $agents,
-                    static fn (array $agent): bool => $agent['officeState']
-                        === 'completed',
-                )),
+                agents: $archiveAgents,
                 actionableCount: 0,
                 completedItems: $doneTickets,
             ),
@@ -327,7 +361,10 @@ final readonly class BuildOfficeProjection
     }
 
     /**
-     * Build one room backed by an operational layer.
+     * Build one normal working room backed by an operational layer.
+     *
+     * Agents in Approval, Operations, or Completed Work are excluded because their
+     * authoritative state has moved them out of their normal layer room.
      *
      * @param  list<array<string, mixed>>  $agents
      * @param  array<string, array<string, mixed>>  $layers
@@ -340,7 +377,11 @@ final readonly class BuildOfficeProjection
         array $agents,
         array $layers,
     ): array {
-        $layerAgents = $this->agentsForLayer($agents, $layer);
+        $layerAgents = $this->agentsForRoom(
+            agents: $agents,
+            room: $key,
+        );
+
         $layerState = $this->string(
             $layers[$layer]['state'] ?? 'idle',
             'idle',
@@ -349,16 +390,11 @@ final readonly class BuildOfficeProjection
         return $this->room(
             key: $key,
             label: $label,
-            state: $this->officeLayerState($layerState),
+            state: $layerAgents === []
+                ? 'idle'
+                : $this->officeLayerState($layerState),
             agents: $layerAgents,
-            actionableCount: count(array_filter(
-                $layerAgents,
-                static fn (array $agent): bool => in_array(
-                    $agent['officeState'],
-                    ['blocked', 'retrying', 'waiting_for_human'],
-                    true,
-                ),
-            )),
+            actionableCount: 0,
         );
     }
 

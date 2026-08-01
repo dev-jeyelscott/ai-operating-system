@@ -9,6 +9,39 @@ describe('buildAgentPositions', () => {
         expect(positions['01KEXECUTION000000000000000']).toEqual([0, 0.65, -6]);
     });
 
+    it('changes the target when authoritative room assignment changes', () => {
+        const projection = officeProjectionFixture();
+        const agent = projection.agents[0];
+
+        const working = buildAgentPositions([
+            {
+                ...agent,
+                room: 'development_floor',
+                officeState: 'implementing',
+            },
+        ]);
+
+        const waitingForHuman = buildAgentPositions([
+            {
+                ...agent,
+                room: 'approval_room',
+                officeState: 'waiting_for_human',
+            },
+        ]);
+
+        const completed = buildAgentPositions([
+            {
+                ...agent,
+                room: 'archive',
+                officeState: 'completed',
+            },
+        ]);
+
+        expect(working[agent.id]).toEqual([0, 0.65, -6]);
+        expect(waitingForHuman[agent.id]).toEqual([-7, 0.65, 2]);
+        expect(completed[agent.id]).toEqual([0, 0.65, 5]);
+    });
+
     it('is deterministic regardless of input order', () => {
         const projection = officeProjectionFixture();
         const first = projection.agents[0];
