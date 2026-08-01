@@ -18,6 +18,11 @@ use App\Infrastructure\Documents\PlainTextDocumentParser;
 use App\Infrastructure\Persistence\EloquentTransactionManager;
 use App\Infrastructure\QualityAssurance\SimulationQualityAssuranceProvider;
 use App\Infrastructure\Workflows\RoadmapWorkflowTransitionGuardEvaluator;
+use App\Models\Artifact;
+use App\Models\Evidence;
+use App\Models\ExecutionAttempt;
+use App\Models\NotificationEvent;
+use App\Observers\SensitivePersistenceObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +56,9 @@ class AppServiceProvider extends ServiceProvider
             EloquentTransactionManager::class,
         );
 
-        /* Roadmap guards are explicit and every unknown guard fails closed. */
+        /*
+         * Roadmap guards are explicit and every unknown guard fails closed.
+         */
         $this->app->bind(
             WorkflowTransitionGuardEvaluator::class,
             RoadmapWorkflowTransitionGuardEvaluator::class,
@@ -103,6 +110,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureSensitivePersistenceObservers();
     }
 
     /**
@@ -117,6 +125,28 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->configurePasswordPolicy();
+    }
+
+    /**
+     * Register fail-closed redaction boundaries for sensitive records.
+     */
+    private function configureSensitivePersistenceObservers(): void
+    {
+        Artifact::observe(
+            SensitivePersistenceObserver::class,
+        );
+
+        Evidence::observe(
+            SensitivePersistenceObserver::class,
+        );
+
+        NotificationEvent::observe(
+            SensitivePersistenceObserver::class,
+        );
+
+        ExecutionAttempt::observe(
+            SensitivePersistenceObserver::class,
+        );
     }
 
     /**

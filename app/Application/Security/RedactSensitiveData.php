@@ -4,16 +4,24 @@ declare(strict_types=1);
 
 namespace App\Application\Security;
 
+use App\Support\Security\SensitiveValueRedactor;
 use JsonException;
 use Throwable;
 
 /**
- * Produces safe infrastructure-error messages for durable operational state.
+ * Produces safe infrastructure and persistence content.
  */
-final class RedactSensitiveData
+final readonly class RedactSensitiveData
 {
     /**
-     * Remove credentials, URLs, headers, and request bodies from diagnostic text.
+     * Inject the application-wide sensitive-value redactor.
+     */
+    public function __construct(
+        private SensitiveValueRedactor $redactor,
+    ) {}
+
+    /**
+     * Remove payloads, URLs, credentials, headers, and request bodies.
      */
     public function message(string $value): string
     {
@@ -37,11 +45,45 @@ final class RedactSensitiveData
             $value,
         );
 
-        return trim(is_string($redacted) ? $redacted : '');
+        $safeValue = trim(
+            is_string($redacted)
+                ? $redacted
+                : '',
+        );
+
+        return $this->redactor->message($safeValue);
     }
 
     /**
-     * Build the only persisted outbox error representation.
+     * Recursively sanitize structured content before persistence.
+     *
+     * @param  array<array-key, mixed>  $values
+     * @return array<array-key, mixed>
+     */
+    public function values(array $values): array
+    {
+        return $this->redactor->redact($values);
+    }
+
+    /**
+     * Sanitize a list of free-form claims or messages.
+     *
+     * @param  list<string>  $values
+     * @return list<string>
+     */
+    public function strings(array $values): array
+    {
+        $redacted = [];
+
+        foreach ($values as $value) {
+            $redacted[] = $this->message($value);
+        }
+
+        return $redacted;
+    }
+
+    /**
+     * Build the only permitted persisted infrastructure-error representation.
      *
      * @throws JsonException
      */
@@ -52,7 +94,9 @@ final class RedactSensitiveData
         return json_encode([
             'error_code' => $errorCode,
             'exception_type' => $exception::class,
-            'sanitized_message' => $this->message($exception->getMessage()),
+            'sanitized_message' => $this->message(
+                $exception->getMessage(),
+            ),
         ], JSON_THROW_ON_ERROR);
     }
 }

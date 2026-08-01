@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Responses;
 
+use App\Support\Security\SensitiveValueRedactor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 final class ApiErrorResponse
 {
     /**
-     * Build the canonical JSON error envelope used by APIs and explicit
-     * JSON requests.
+     * Build the canonical JSON error envelope.
+     *
+     * Public error details are sanitized as a final defense in depth. Field
+     * names are retained so validation clients can still identify inputs.
      *
      * @param  array<string, mixed>  $details
      */
@@ -29,18 +32,34 @@ final class ApiErrorResponse
             '',
         );
 
+        $redactor = app(SensitiveValueRedactor::class);
+
+        $safeMessage = $redactor->message($message);
+
+        if (
+            $safeMessage
+            === SensitiveValueRedactor::REDACTION_FAILED
+        ) {
+            $safeMessage = 'The request could not be completed safely.';
+        }
+
         $response = response()->json([
             'error' => [
                 'code' => $code,
-                'message' => $message,
+                'message' => $safeMessage,
                 'retryable' => $retryable,
                 'request_id' => $requestId,
-                'details' => $details,
+                'details' => $redactor->redactValues(
+                    $details,
+                ),
             ],
         ], $status);
 
         if ($requestId !== '') {
-            $response->headers->set('X-Request-ID', $requestId);
+            $response->headers->set(
+                'X-Request-ID',
+                $requestId,
+            );
         }
 
         if ($retryAfterSeconds !== null) {
