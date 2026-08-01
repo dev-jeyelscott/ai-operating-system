@@ -59,9 +59,6 @@ export default function OfficeCanvas({
                 far: 120,
             }}
             dpr={quality.dpr}
-            fallback={
-                <OfficeCanvasFallback onRendererFailure={onRendererFailure} />
-            }
             frameloop={reducedMotion ? 'demand' : 'always'}
             gl={{
                 antialias: quality.antialias,
@@ -99,32 +96,6 @@ export default function OfficeCanvas({
                 reducedMotion={reducedMotion}
             />
         </Canvas>
-    );
-}
-
-/**
- * Notify the DOM-first shell when React Three Fiber cannot create its WebGL
- * renderer and briefly render an accessible local status.
- */
-function OfficeCanvasFallback({
-    onRendererFailure,
-}: {
-    onRendererFailure: (reason: OfficeRendererFailureReason) => void;
-}) {
-    useEffect(() => {
-        onRendererFailure('webgl_unavailable');
-    }, [onRendererFailure]);
-
-    return (
-        <div
-            role="alert"
-            className="flex min-h-96 flex-col items-center justify-center gap-2 p-8 text-center"
-        >
-            <h3 className="font-medium">The 3D renderer is unavailable</h3>
-            <p className="max-w-lg text-sm text-muted-foreground">
-                Switching to the accessible office fallback.
-            </p>
-        </div>
     );
 }
 
