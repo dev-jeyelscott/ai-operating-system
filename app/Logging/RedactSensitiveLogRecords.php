@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Logging;
 
 use App\Support\Security\SensitiveValueRedactor;
-use Monolog\Logger;
+use Illuminate\Log\Logger;
 use Monolog\LogRecord;
 
 /**

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Logging;
 
+use Illuminate\Log\Logger;
 use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\FormattableHandlerInterface;
-use Monolog\Logger;
 
 /**
  * Applies the application's stable JSON log format.

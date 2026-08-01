@@ -48,10 +48,17 @@ final readonly class DocumentUploadInspector
 
         $byteSize = filesize($realPath);
 
-        if (! is_int($byteSize) || $byteSize < 0) {
+        if ($byteSize === false) {
             throw DocumentProcessingException::permanent(
                 failureCode: DocumentProcessingFailureCode::UploadUnreadable,
                 message: 'The uploaded document size could not be determined.',
+            );
+        }
+
+        if ($byteSize === 0) {
+            throw DocumentProcessingException::permanent(
+                failureCode: DocumentProcessingFailureCode::UploadUnreadable,
+                message: 'The document must not be empty.',
             );
         }
 

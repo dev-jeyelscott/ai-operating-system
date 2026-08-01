@@ -9,7 +9,6 @@ use App\Domain\Documents\DocumentStatus;
 use App\Jobs\ParseDocumentVersionJob;
 use App\Models\DocumentVersion;
 use Illuminate\Support\Facades\Queue;
-use LogicException;
 
 dataset('permanent document processing failures', [
     DocumentProcessingFailureCode::UnsupportedMediaType,

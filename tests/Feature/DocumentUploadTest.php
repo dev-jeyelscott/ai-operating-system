@@ -52,10 +52,15 @@ test(
             'user' => $user,
         ] = documentUploadOwner();
 
-        $upload = UploadedFile::fake()->create(
+        $contents = <<<'MARKDOWN'
+# Architecture
+
+This document defines the initial architecture baseline.
+MARKDOWN;
+
+        $upload = UploadedFile::fake()->createWithContent(
             'architecture.md',
-            128,
-            'text/markdown',
+            $contents,
         );
 
         Queue::fake();
@@ -92,6 +97,7 @@ test(
                 'text/markdown',
                 'text/plain',
             ])
+            ->byte_size->toBe(strlen($contents))
             ->storage_disk->toBe('documents')
             ->storage_path->toStartWith(
                 "documents/organizations/{$organization->id}/projects/{$project->id}/",
@@ -125,6 +131,15 @@ test(
 
         Queue::fake();
 
+        /*
+         * Keep an allowed .txt extension so this test reaches server-side
+         * MIME inspection instead of stopping at the extension rule.
+         */
+        $spoofedPdf = UploadedFile::fake()->createWithContent(
+            'architecture.txt',
+            "%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n",
+        );
+
         $this
             ->actingAs($user)
             ->from(
@@ -140,11 +155,7 @@ test(
                 ]),
                 [
                     'title' => 'Unsupported PDF',
-                    'document' => UploadedFile::fake()->create(
-                        'architecture.pdf',
-                        128,
-                        'application/pdf',
-                    ),
+                    'document' => $spoofedPdf,
                 ],
             )
             ->assertRedirect(
@@ -167,7 +178,7 @@ test(
 );
 
 test(
-    'oversized supported documents are rejected before storage',
+    'empty documents are rejected before storage or queue dispatch',
     function (): void {
         [
             'organization' => $organization,
@@ -191,12 +202,64 @@ test(
                     'project' => $project,
                 ]),
                 [
-                    'title' => 'Oversized document',
-                    'document' => UploadedFile::fake()->create(
-                        'large.txt',
-                        20_481,
-                        'text/plain',
+                    'title' => 'Empty document',
+                    'document' => UploadedFile::fake()->createWithContent(
+                        'empty.txt',
+                        '',
                     ),
+                ],
+            )
+            ->assertRedirect()
+            ->assertSessionHasErrors([
+                'document' => 'The document must not be empty.',
+            ]);
+
+        expect(Document::query()->count())->toBe(0);
+
+        Storage::disk('documents')
+            ->assertDirectoryEmpty('/');
+
+        Queue::assertNothingPushed();
+    },
+);
+
+test(
+    'oversized supported documents are rejected before storage',
+    function (): void {
+        [
+            'organization' => $organization,
+            'project' => $project,
+            'user' => $user,
+        ] = documentUploadOwner();
+
+        Queue::fake();
+
+        /*
+         * This fixture intentionally uses the reported fake size because
+         * this test verifies Laravel's HTTP max-file validation boundary.
+         */
+        $oversizedUpload = UploadedFile::fake()->create(
+            'large.txt',
+            20_481,
+            'text/plain',
+        );
+
+        $this
+            ->actingAs($user)
+            ->from(
+                route('organizations.projects.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+            )
+            ->post(
+                route('organizations.projects.documents.store', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                [
+                    'title' => 'Oversized document',
+                    'document' => $oversizedUpload,
                 ],
             )
             ->assertRedirect()
@@ -230,10 +293,9 @@ test(
                 ]),
                 [
                     'title' => 'Foreign document',
-                    'document' => UploadedFile::fake()->create(
+                    'document' => UploadedFile::fake()->createWithContent(
                         'architecture.txt',
-                        128,
-                        'text/plain',
+                        'Foreign project content.',
                     ),
                 ],
             )
@@ -278,10 +340,9 @@ test(
                 ]),
                 [
                     'title' => 'First',
-                    'document' => UploadedFile::fake()->create(
+                    'document' => UploadedFile::fake()->createWithContent(
                         'first.txt',
-                        128,
-                        'text/plain',
+                        'First document content.',
                     ),
                 ],
             );
@@ -301,10 +362,9 @@ test(
                 ]),
                 [
                     'title' => 'Blocked',
-                    'document' => UploadedFile::fake()->create(
+                    'document' => UploadedFile::fake()->createWithContent(
                         'blocked.txt',
-                        128,
-                        'text/plain',
+                        'Blocked document content.',
                     ),
                 ],
             );
