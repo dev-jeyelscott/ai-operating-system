@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# shellcheck source=bin/lib/operations.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/operations.sh"
+
+backup_directory=''
+target_database=''
+replace_existing='false'
+
+# Display command usage.
+usage() {
+    cat <<'TEXT'
+Usage:
+  bin/restore-database \
+      --backup /path/to/backup \
+      --target restored_database \
+      [--replace-existing]
+
+Required environment variables:
+  PGHOST
+  PGPORT
+  PGUSER
+  PGPASSWORD
+  RESTORE_CONFIRM_DATABASE
+
+Optional environment variables:
+  PGADMIN_DATABASE
+  PGSSLMODE
+  PG_TOOLS_MODE
+  PG_DOCKER_SERVICE
+  PG_DOCKER_CONTAINER
+  RESTORE_EVIDENCE_ROOT
+TEXT
+}
+
+while (( $# > 0 )); do
+    case "$1" in
+        --backup)
+            backup_directory="${2:-}"
+            shift 2
+            ;;
+        --target)
+            target_database="${2:-}"
+            shift 2
+            ;;
+        --replace-existing)
+            replace_existing='true'
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "Unknown restore argument: ${1}"
+            ;;
+    esac
+done
+
+[[ -n "$backup_directory" ]] || {
+    fail 'The --backup argument is required.'
+}
+
+[[ -n "$target_database" ]] || {
+    fail 'The --target argument is required.'
+}
+
+assert_safe_database_name "$target_database"
+
+require_env PGHOST
+require_env PGPORT
+require_env PGUSER
+require_env PGPASSWORD
+require_env RESTORE_CONFIRM_DATABASE
+
+[[ "$RESTORE_CONFIRM_DATABASE" == "$target_database" ]] || {
+    fail 'RESTORE_CONFIRM_DATABASE must exactly match the restore target.'
+}
+
+validate_pg_tool_mode
+
+if [[ "${PG_TOOLS_MODE:-native}" == 'native' ]]; then
+    require_command psql
+    require_command createdb
+    require_command dropdb
+    require_command pg_restore
+fi
+
+readonly manifest="${backup_directory}/manifest.env"
+readonly dump_file="${backup_directory}/database.dump"
+
+[[ -f "$manifest" ]] || {
+    fail "Backup manifest does not exist: ${manifest}"
+}
+
+[[ -f "$dump_file" ]] || {
+    fail "Backup archive does not exist: ${dump_file}"
+}
+
+readonly source_database="$(manifest_value source_database "$manifest")"
+readonly expected_sha256="$(manifest_value dump_sha256 "$manifest")"
+readonly actual_sha256="$(sha256_file "$dump_file")"
+readonly admin_database="${PGADMIN_DATABASE:-postgres}"
+
+[[ -n "$source_database" ]] || {
+    fail 'Backup manifest does not contain source_database.'
+}
+
+[[ -n "$expected_sha256" ]] || {
+    fail 'Backup manifest does not contain dump_sha256.'
+}
+
+[[ "$expected_sha256" == "$actual_sha256" ]] || {
+    fail 'Backup checksum verification failed.'
+}
+
+[[ "$target_database" != "$source_database" ]] || {
+    fail 'Restore target must differ from the source database.'
+}
+
+run_pg_tool pg_restore \
+    --list \
+    - \
+    < "$dump_file" \
+    > /dev/null
+
+# Return whether the target database currently exists.
+database_exists() {
+    local result
+
+    result="$(
+        run_pg_tool psql \
+            --host="$PGHOST" \
+            --port="$PGPORT" \
+            --username="$PGUSER" \
+            --dbname="$admin_database" \
+            --tuples-only \
+            --no-align \
+            --command="SELECT 1 FROM pg_database WHERE datname = '${target_database}';"
+    )"
+
+    [[ "$(printf '%s' "$result" | tr -d '[:space:]')" == '1' ]]
+}
+
+created_target='false'
+restore_completed='false'
+
+# Remove a newly created incomplete target after restore failure.
+cleanup_incomplete_restore() {
+    local exit_code=$?
+
+    if [[ "$restore_completed" != 'true' && "$created_target" == 'true' ]]; then
+        set +e
+
+        log "Removing incomplete restore target: ${target_database}"
+
+        run_pg_tool dropdb \
+            --force \
+            --host="$PGHOST" \
+            --port="$PGPORT" \
+            --username="$PGUSER" \
+            --maintenance-db="$admin_database" \
+            "$target_database" \
+            >/dev/null 2>&1
+    fi
+
+    exit "$exit_code"
+}
+
+trap cleanup_incomplete_restore ERR
+
+if database_exists; then
+    [[ "$replace_existing" == 'true' ]] || {
+        fail "Restore target already exists: ${target_database}"
+    }
+
+    log "Dropping explicitly confirmed restore target: ${target_database}"
+
+    run_pg_tool dropdb \
+        --force \
+        --host="$PGHOST" \
+        --port="$PGPORT" \
+        --username="$PGUSER" \
+        --maintenance-db="$admin_database" \
+        "$target_database"
+fi
+
+log "Creating isolated restore target: ${target_database}"
+
+run_pg_tool createdb \
+    --host="$PGHOST" \
+    --port="$PGPORT" \
+    --username="$PGUSER" \
+    --maintenance-db="$admin_database" \
+    --template=template0 \
+    "$target_database"
+
+created_target='true'
+
+log "Restoring PostgreSQL archive into: ${target_database}"
+
+run_pg_tool pg_restore \
+    --host="$PGHOST" \
+    --port="$PGPORT" \
+    --username="$PGUSER" \
+    --dbname="$target_database" \
+    --exit-on-error \
+    --no-owner \
+    --no-privileges \
+    - \
+    < "$dump_file"
+
+run_pg_tool psql \
+    --host="$PGHOST" \
+    --port="$PGPORT" \
+    --username="$PGUSER" \
+    --dbname="$target_database" \
+    --no-align \
+    --tuples-only \
+    --command='SELECT 1;' \
+    | grep -qx '1'
+
+restore_completed='true'
+
+readonly restore_id="$(
+    printf '%s-%s\n' "$(utc_operation_id)" "$$"
+)"
+readonly evidence_root="${
+    RESTORE_EVIDENCE_ROOT:-${PROJECT_ROOT}/storage/app/operations/restores
+}"
+readonly evidence_directory="${evidence_root}/${restore_id}"
+
+mkdir -p "$evidence_directory"
+chmod 0700 "$evidence_root" "$evidence_directory"
+
+cat > "${evidence_directory}/manifest.env" <<EVIDENCE
+format_version=1
+restore_id=${restore_id}
+restored_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+backup_id=$(manifest_value backup_id "$manifest")
+source_database=${source_database}
+target_database=${target_database}
+dump_sha256=${actual_sha256}
+result=passed
+EVIDENCE
+
+chmod 0600 "${evidence_directory}/manifest.env"
+
+log "Database restore completed: ${target_database}"
+
+printf '%s\n' "$evidence_directory"

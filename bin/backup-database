@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# shellcheck source=bin/lib/operations.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/operations.sh"
+
+# Display command usage.
+usage() {
+    cat <<'TEXT'
+Usage:
+  bin/backup-database
+
+Required environment variables:
+  PGHOST
+  PGPORT
+  PGDATABASE
+  PGUSER
+  PGPASSWORD
+
+Optional environment variables:
+  PGSSLMODE
+  PG_TOOLS_MODE
+  PG_DOCKER_SERVICE
+  PG_DOCKER_CONTAINER
+  BACKUP_ROOT
+  BACKUP_RETENTION_DAYS
+  APP_RELEASE
+TEXT
+}
+
+if [[ "${1:-}" == '--help' ]]; then
+    usage
+    exit 0
+fi
+
+require_env PGHOST
+require_env PGPORT
+require_env PGDATABASE
+require_env PGUSER
+require_env PGPASSWORD
+
+validate_pg_tool_mode
+
+if [[ "${PG_TOOLS_MODE:-native}" == 'native' ]]; then
+    require_command pg_dump
+    require_command pg_restore
+fi
+
+umask 077
+
+readonly backup_root="${
+    BACKUP_ROOT:-${PROJECT_ROOT}/storage/app/operations/backups/database
+}"
+readonly backup_id="$(
+    printf '%s-%s\n' "$(utc_operation_id)" "$$"
+)"
+readonly backup_directory="${backup_root}/${backup_id}"
+readonly partial_dump="${backup_directory}/database.dump.partial"
+readonly final_dump="${backup_directory}/database.dump"
+readonly manifest="${backup_directory}/manifest.env"
+readonly table_of_contents="${backup_directory}/database.toc"
+
+mkdir -p "$backup_directory"
+chmod 0700 "$backup_root" "$backup_directory"
+
+log "Creating PostgreSQL custom-format backup: ${backup_id}"
+
+run_pg_tool pg_dump \
+    --host="$PGHOST" \
+    --port="$PGPORT" \
+    --username="$PGUSER" \
+    --dbname="$PGDATABASE" \
+    --format=custom \
+    --compress=9 \
+    --no-owner \
+    --no-privileges \
+    --file=- \
+    > "$partial_dump"
+
+[[ -s "$partial_dump" ]] || {
+    fail 'PostgreSQL backup archive is empty.'
+}
+
+mv "$partial_dump" "$final_dump"
+
+run_pg_tool pg_restore \
+    --list \
+    - \
+    < "$final_dump" \
+    > "$table_of_contents"
+
+[[ -s "$table_of_contents" ]] || {
+    fail 'PostgreSQL backup table of contents is empty.'
+}
+
+readonly dump_sha256="$(sha256_file "$final_dump")"
+
+cat > "$manifest" <<MANIFEST
+format_version=1
+backup_id=${backup_id}
+created_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+source_database=${PGDATABASE}
+source_host=${PGHOST}
+source_port=${PGPORT}
+dump_file=database.dump
+dump_sha256=${dump_sha256}
+application_release=${APP_RELEASE:-unknown}
+MANIFEST
+
+chmod 0600 \
+    "$final_dump" \
+    "$manifest" \
+    "$table_of_contents"
+
+ln -sfn "$backup_id" "${backup_root}/latest"
+
+readonly retention_days="${BACKUP_RETENTION_DAYS:-35}"
+
+[[ "$retention_days" =~ ^[0-9]+$ ]] || {
+    fail 'BACKUP_RETENTION_DAYS must be a non-negative integer.'
+}
+
+if (( retention_days > 0 )); then
+    find "$backup_root" \
+        -mindepth 1 \
+        -maxdepth 1 \
+        -type d \
+        -mtime "+${retention_days}" \
+        -exec rm -rf -- {} +
+fi
+
+log "Database backup completed: ${backup_directory}"
+
+printf '%s\n' "$backup_directory"

@@ -1,0 +1,92 @@
+name: disaster-recovery
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 1 1,4,7,10 *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: disaster-recovery
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    name: Rehearse database and object restoration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: 'postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15'
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd
+          "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Start pinned MinIO service
+        run: |
+          docker run \
+            --detach \
+            --name aios-dr-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER=sail \
+            --env MINIO_ROOT_PASSWORD=password \
+            'minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e' \
+            server /data
+
+          timeout 60 bash -c \
+            'until curl --fail --silent http://127.0.0.1:9000/minio/health/ready; do sleep 2; done'
+
+      - name: Validate recovery-tool prerequisites
+        run: |
+          aws --version
+          jq --version
+          docker version
+
+      - name: Run disaster-recovery rehearsal
+        env:
+          PG_TOOLS_MODE: docker
+          PG_DOCKER_CONTAINER: ${{ job.services.postgres.id }}
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGADMIN_DATABASE: postgres
+
+          AWS_ACCESS_KEY_ID: sail
+          AWS_SECRET_ACCESS_KEY: password
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ENDPOINT_URL: http://127.0.0.1:9000
+        run: bash bin/dr-rehearsal
+
+      - name: Upload recovery evidence
+        if: always()
+        # v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: disaster-recovery-evidence
+          path: storage/app/operations/dr-rehearsals/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Remove MinIO service
+        if: always()
+        run: docker rm --force aios-dr-minio || true
