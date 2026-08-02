@@ -248,7 +248,7 @@ it('renders project-scoped operational metrics', function (): void {
     $response
         ->assertOk()
         ->assertInertia(
-            fn(Assert $page): Assert => $page
+            fn (Assert $page): Assert => $page
                 ->component('projects/operations/metrics')
                 ->where('organization.id', $organization->id)
                 ->where('project.id', $project->id)
