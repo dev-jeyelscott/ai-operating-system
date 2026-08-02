@@ -174,14 +174,36 @@ it('renders project-scoped operational metrics', function (): void {
         'approved_at' => null,
     ]);
 
+    /*
+     * Create the required roadmap hierarchy for the durable ticket fixture.
+     */
+    $phase = $roadmap->phases()->create([
+        'stable_id' => 'AIOS-142-PHASE',
+        'name' => 'Operational metrics',
+        'position' => 1,
+    ]);
+
+    /*
+     * Create the milestone that owns the operational metrics ticket.
+     */
+    $milestone = $phase->milestones()->create([
+        'roadmap_id' => $roadmap->id,
+        'stable_id' => 'AIOS-142-MILESTONE',
+        'name' => 'Operational metrics validation',
+        'position' => 1,
+    ]);
+
+    /*
+     * Create a valid roadmap ticket for the active lease fixture.
+     */
     $ticket = RoadmapTask::query()->create([
         'roadmap_id' => $roadmap->id,
-        'roadmap_phase_id' => null,
-        'roadmap_milestone_id' => null,
+        'roadmap_phase_id' => $phase->id,
+        'roadmap_milestone_id' => $milestone->id,
         'stable_id' => 'AIOS-142-TEST',
         'title' => 'Operational metrics test ticket',
         'objective' => 'Provide a valid ticket for the active lease fixture.',
-        'ticket_type' => 'implementation',
+        'ticket_type' => 'enhancement',
         'scope' => [
             'included' => [
                 'Queue lease metrics',

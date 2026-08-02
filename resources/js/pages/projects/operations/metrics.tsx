@@ -1,4 +1,5 @@
 import { Head, Link, usePoll } from '@inertiajs/react';
+import type { Gauge } from 'lucide-react';
 import {
     Activity,
     AlertTriangle,
@@ -6,7 +7,6 @@ import {
     CheckCircle2,
     Clock3,
     DatabaseZap,
-    Gauge,
     RefreshCw,
     RotateCcw,
     Workflow,

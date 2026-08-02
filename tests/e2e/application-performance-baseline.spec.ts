@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test  } from '@playwright/test';
+import type {Page} from '@playwright/test';
 
 type OfficeFixture = {
     email: string;
