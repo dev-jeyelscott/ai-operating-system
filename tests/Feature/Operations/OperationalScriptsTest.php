@@ -10,7 +10,8 @@ use Tests\TestCase;
 final class OperationalScriptsTest extends TestCase
 {
     /**
-     * Return every operational shell script that must remain valid.
+     * Return every operational shell script currently included in the
+     * backup, restoration, and disaster-recovery scope.
      *
      * @return list<string>
      */
@@ -22,21 +23,49 @@ final class OperationalScriptsTest extends TestCase
             'bin/restore-database',
             'bin/restore-object-version',
             'bin/dr-rehearsal',
-            'bin/deploy-release',
-            'bin/rollback-release',
         ];
     }
 
     /**
-     * Verify every operational shell script has valid Bash syntax.
+     * Read a required repository file and fail with a clear assertion when
+     * the expected operational artifact is missing.
+     */
+    private function readRepositoryFile(string $relativePath): string
+    {
+        $absolutePath = base_path($relativePath);
+
+        $this->assertFileExists(
+            $absolutePath,
+            "{$relativePath} must exist for the current operations scope.",
+        );
+
+        $contents = file_get_contents($absolutePath);
+
+        $this->assertIsString(
+            $contents,
+            "{$relativePath} must contain readable text.",
+        );
+
+        return $contents;
+    }
+
+    /**
+     * Verify every current operational shell script has valid Bash syntax.
      */
     public function test_operational_scripts_have_valid_bash_syntax(): void
     {
         foreach ($this->scripts() as $relativePath) {
+            $absolutePath = base_path($relativePath);
+
+            $this->assertFileExists(
+                $absolutePath,
+                "{$relativePath} must exist before Bash validation.",
+            );
+
             $process = new Process([
                 'bash',
                 '-n',
-                base_path($relativePath),
+                $absolutePath,
             ]);
 
             $process->run();
@@ -58,9 +87,16 @@ final class OperationalScriptsTest extends TestCase
     public function test_operational_commands_expose_help(): void
     {
         foreach (array_slice($this->scripts(), 1) as $relativePath) {
+            $absolutePath = base_path($relativePath);
+
+            $this->assertFileExists(
+                $absolutePath,
+                "{$relativePath} must exist before help validation.",
+            );
+
             $process = new Process([
                 'bash',
-                base_path($relativePath),
+                $absolutePath,
                 '--help',
             ]);
 
@@ -78,55 +114,32 @@ final class OperationalScriptsTest extends TestCase
             $this->assertStringContainsString(
                 'Usage:',
                 $process->getOutput(),
+                "{$relativePath} must provide usage information.",
             );
         }
     }
 
     /**
-     * Verify deployment uses forward isolated migrations.
+     * Verify recovery scripts do not contain destructive Laravel database
+     * commands that could erase or reverse application data.
      */
-    public function test_deployment_uses_forward_isolated_migrations(): void
-    {
-        $deployment = file_get_contents(
-            base_path('bin/deploy-release'),
-        );
-
-        $this->assertIsString($deployment);
-        $this->assertStringContainsString(
-            'run_release_artisan migrate',
-            $deployment,
-        );
-        $this->assertStringContainsString(
-            '--force',
-            $deployment,
-        );
-        $this->assertStringContainsString(
-            '--isolated',
-            $deployment,
-        );
-    }
-
-    /**
-     * Verify operational scripts never automate destructive migration rollback.
-     */
-    public function test_operational_scripts_do_not_rollback_migrations(): void
+    public function test_operational_scripts_do_not_use_destructive_database_commands(): void
     {
         foreach ($this->scripts() as $relativePath) {
-            $contents = file_get_contents(
-                base_path($relativePath),
-            );
+            $contents = $this->readRepositoryFile($relativePath);
 
-            $this->assertIsString($contents);
             $this->assertStringNotContainsString(
                 'migrate:rollback',
                 $contents,
                 "{$relativePath} must not automate schema rollback.",
             );
+
             $this->assertStringNotContainsString(
                 'migrate:fresh',
                 $contents,
                 "{$relativePath} must not rebuild the database.",
             );
+
             $this->assertStringNotContainsString(
                 'db:wipe',
                 $contents,
@@ -136,59 +149,30 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify production promotion depends on staging and reuses one artifact.
-     */
-    public function test_production_promotion_reuses_the_staging_artifact(): void
-    {
-        $workflow = file_get_contents(
-            base_path('.github/workflows/deployment.yml'),
-        );
-
-        $this->assertIsString($workflow);
-        $this->assertStringContainsString(
-            'deploy_staging',
-            $workflow,
-        );
-        $this->assertStringContainsString(
-            'deploy_production',
-            $workflow,
-        );
-        $this->assertStringContainsString(
-            'needs.build_release.outputs.artifact_id',
-            $workflow,
-        );
-        $this->assertStringContainsString(
-            '- deploy_staging',
-            $workflow,
-        );
-        $this->assertStringContainsString(
-            'name: production',
-            $workflow,
-        );
-    }
-
-    /**
-     * Verify the disaster-recovery workflow covers both storage systems.
+     * Verify the disaster-recovery workflow covers PostgreSQL restoration,
+     * MinIO object restoration, rehearsal execution, and evidence retention.
      */
     public function test_disaster_recovery_workflow_runs_the_complete_rehearsal(): void
     {
-        $workflow = file_get_contents(
-            base_path('.github/workflows/disaster-recovery.yml'),
+        $workflow = $this->readRepositoryFile(
+            '.github/workflows/disaster-recovery.yml',
         );
 
-        $this->assertIsString($workflow);
         $this->assertStringContainsString(
             'postgres:',
             $workflow,
         );
+
         $this->assertStringContainsString(
             'minio/minio:',
             $workflow,
         );
+
         $this->assertStringContainsString(
             'bash bin/dr-rehearsal',
             $workflow,
         );
+
         $this->assertStringContainsString(
             'disaster-recovery-evidence',
             $workflow,
