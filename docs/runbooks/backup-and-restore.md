@@ -25,13 +25,14 @@ Follow the complete
 Do not:
 
 - restore over the active production database as the first step;
-- pre-encode the S3 object key or version ID;
 - delete current or non-current object versions during recovery;
 - retry a failed copy until the existing current version is inspected;
 - expose credentials in command history or retained evidence.
 
-The object restore command accepts the raw key and raw version ID and performs
-the required S3 CopySource encoding internally.
+Do not pre-encode the S3 object key or version ID. Pass both values exactly as
+returned by S3.
+
+The object restore command accepts the raw key and raw version ID and performs the required S3 CopySource encoding internally.
 
 ## Preconditions and diagnosis
 

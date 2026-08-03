@@ -89,34 +89,67 @@ manifest_value() {
     ' "$manifest_path"
 }
 
+# Percent-encode one UTF-8 value using the RFC 3986 unreserved character set.
+#
+# Object-key path separators may be preserved when the caller explicitly sets
+# preserve_slashes to true. All other reserved and non-ASCII bytes are encoded
+# as uppercase percent-encoded octets.
+url_encode_rfc3986() {
+    local input="$1"
+    local preserve_slashes="${2:-false}"
+    local encoded=''
+    local character=''
+    local encoded_byte=''
+    local index=0
+    local LC_ALL=C
+
+    for ((index = 0; index < ${#input}; index++)); do
+        character="${input:index:1}"
+
+        case "$character" in
+            [a-zA-Z0-9.~_-])
+                encoded+="$character"
+                ;;
+            /)
+                if [[ "$preserve_slashes" == 'true' ]]; then
+                    encoded+='/'
+                else
+                    encoded+='%2F'
+                fi
+                ;;
+            *)
+                printf -v encoded_byte '%%%02X' "'$character"
+                encoded+="$encoded_byte"
+                ;;
+        esac
+    done
+
+    printf '%s' "$encoded"
+}
+
 # Build the URL-encoded CopySource value required for one S3 object version.
 #
-# The bucket name and path separators remain readable. Every individual object
-# key segment and the version ID are URL-encoded so valid characters such as
-# spaces, plus signs, number signs, question marks, and Unicode cannot change
-# the CopySource request semantics.
+# The bucket name and object-key path separators remain readable. Reserved
+# characters and UTF-8 bytes in the key and version ID are percent encoded.
 build_versioned_s3_copy_source() {
     local bucket="$1"
     local object_key="$2"
     local version_id="$3"
+    local encoded_object_key=''
+    local encoded_version_id=''
 
-    require_command jq
+    encoded_object_key="$(
+        url_encode_rfc3986 "$object_key" true
+    )"
 
-    jq -rn \
-        --arg bucket "$bucket" \
-        --arg object_key "$object_key" \
-        --arg version_id "$version_id" '
-            def encode_s3_key:
-                split("/")
-                | map(@uri)
-                | join("/");
+    encoded_version_id="$(
+        url_encode_rfc3986 "$version_id"
+    )"
 
-            $bucket
-            + "/"
-            + ($object_key | encode_s3_key)
-            + "?versionId="
-            + ($version_id | @uri)
-        '
+    printf '%s/%s?versionId=%s\n' \
+        "$bucket" \
+        "$encoded_object_key" \
+        "$encoded_version_id"
 }
 
 # Validate the configured PostgreSQL tool execution mode.
