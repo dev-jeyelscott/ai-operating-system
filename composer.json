@@ -80,6 +80,9 @@
             "bash bin/check-frontend-dependency-audit",
             "pnpm audit signatures"
         ],
+        "security:sign-off": [
+            "@php artisan security:sign-off --manifest=docs/security/security-review.json"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
@@ -89,7 +92,8 @@
             "@lint:check",
             "@types:check",
             "@php artisan test",
-            "pnpm run quality"
+            "pnpm run quality",
+            "@security:sign-off"
         ],
         "types:check": [
             "phpstan analyse"
