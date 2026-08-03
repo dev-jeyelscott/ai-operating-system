@@ -312,7 +312,7 @@ final class PrepareDemoEnvironmentCommand extends Command
     /**
      * Encode the manifest without losing Unicode or URL readability.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     private function encode(array $payload): string
     {
