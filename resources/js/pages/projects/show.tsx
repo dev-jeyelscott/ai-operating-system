@@ -18,6 +18,7 @@ import ProjectApprovalInboxController from '@/actions/App/Http/Controllers/Appro
 import DevelopmentQueueController from '@/actions/App/Http/Controllers/Development/DevelopmentQueueController';
 import ProjectOperationsDashboardController from '@/actions/App/Http/Controllers/Operations/ProjectOperationsDashboardController';
 import { index as roadmapIndex } from '@/actions/App/Http/Controllers/Planning/RoadmapController';
+import StartProjectController from '@/actions/App/Http/Controllers/Projects/StartProjectController';
 import QualityAssuranceReportController from '@/actions/App/Http/Controllers/QualityAssurance/QualityAssuranceReportController';
 import { Button } from '@/components/ui/button';
 import {
@@ -185,6 +186,33 @@ export default function ShowProject({
                                     Configure project
                                 </Link>
                             </Button>
+                        )}
+
+                        {permissions.start && !isArchived && (
+                            <Form
+                                {...StartProjectController.form({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                {({ processing }) => (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="idempotency_key"
+                                            value={`start-project:${project.id}:${crypto.randomUUID()}`}
+                                        />
+                                        <Button
+                                            type="submit"
+                                            disabled={processing}
+                                        >
+                                            {processing
+                                                ? 'Starting project...'
+                                                : 'Start this Project'}
+                                        </Button>
+                                    </>
+                                )}
+                            </Form>
                         )}
 
                         {permissions.update && (

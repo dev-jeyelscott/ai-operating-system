@@ -99,20 +99,14 @@ aws_cli s3api get-object \
 
 readonly previous_sha256="$(sha256_file "$previous_object")"
 
-readonly encoded_copy_source="$(
-    jq -nr \
-        --arg bucket "$bucket" \
-        --arg key "$object_key" \
-        --arg version "$version_id" \
-        '$bucket + "/" + ($key | @uri) + "?versionId=" + ($version | @uri)'
-)"
+readonly copy_source="${bucket}/${object_key}?versionId=${version_id}"
 
 readonly copy_result="${temporary_directory}/copy-result.json"
 
 aws_cli s3api copy-object \
     --bucket "$bucket" \
     --key "$object_key" \
-    --copy-source "$encoded_copy_source" \
+    --copy-source "$copy_source" \
     > "$copy_result"
 
 aws_cli s3api get-object \
@@ -130,9 +124,7 @@ readonly restored_sha256="$(sha256_file "$restored_object")"
 readonly restore_id="$(
     printf '%s-%s\n' "$(utc_operation_id)" "$$"
 )"
-readonly evidence_root="${
-    OBJECT_RESTORE_EVIDENCE_ROOT:-${PROJECT_ROOT}/storage/app/operations/object-restores
-}"
+readonly evidence_root="${OBJECT_RESTORE_EVIDENCE_ROOT:-${PROJECT_ROOT}/storage/app/operations/object-restores}"
 readonly evidence_directory="${evidence_root}/${restore_id}"
 
 mkdir -p "$evidence_directory"

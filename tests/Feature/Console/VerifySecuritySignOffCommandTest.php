@@ -108,6 +108,21 @@ test('a named security reviewer and product owner are required', function (): vo
         ->assertFailed();
 });
 
+test('instructional reviewer placeholders block sign-off', function (): void {
+    $manifest = aios150ValidManifest();
+    $manifest['reviewers'][0]['name'] = 'Actual Security Reviewer Name';
+
+    aios150WriteManifest($manifest);
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+    ])
+        ->expectsOutputToContain(
+            'reviewers.0.name must identify an actual reviewer.',
+        )
+        ->assertFailed();
+});
+
 /**
  * Return a complete valid security sign-off manifest.
  *

@@ -33,6 +33,7 @@ use App\Http\Controllers\Projects\ProjectConfigurationController;
 use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Projects\ProjectSetupController;
 use App\Http\Controllers\Projects\RestoreProjectController;
+use App\Http\Controllers\Projects\StartProjectController;
 use App\Http\Controllers\QualityAssurance\QualityAssuranceReportController;
 use App\Http\Controllers\QualityAssurance\SubmitSimulatedMergeDecisionController;
 use Illuminate\Support\Facades\Route;
@@ -91,6 +92,11 @@ Route::middleware(['auth', 'auth.session', 'verified'])->group(function (): void
                         ->middleware('throttle:project-commands')
                         ->can('manageIntegrations', 'project')
                         ->name('integrations.notion.test');
+
+                    Route::post('/{project}/start', StartProjectController::class)
+                        ->middleware('throttle:project-commands')
+                        ->can('start', 'project')
+                        ->name('start');
 
                     Route::post(
                         '/{project}/documents',

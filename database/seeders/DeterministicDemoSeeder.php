@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Domain\Audit\AuditActorType;
 use App\Domain\Documents\DocumentClassification;
 use App\Domain\Documents\DocumentStatus;
 use App\Domain\Identity\OrganizationRole;
+use App\Domain\Integrations\IntegrationProvider;
+use App\Domain\Integrations\NotionConnectionStatus;
 use App\Domain\Projects\Configuration\AutonomyLevel;
 use App\Domain\Projects\Configuration\ProjectConfigurationSchema;
 use App\Domain\Projects\Configuration\ReasoningLevel;
 use App\Domain\Projects\Configuration\RepositoryProvider;
+use App\Domain\Projects\ProjectSetupStep;
 use App\Domain\Projects\ProjectStatus;
 use App\Domain\Projects\ProjectType;
 use App\Domain\Simulation\DeterministicScenario;
@@ -20,6 +24,10 @@ use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
+use App\Models\ProjectConfigurationVersion;
+use App\Models\ProjectIntegration;
+use App\Models\ProjectSetupProgress;
+use App\Models\ProviderCredential;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -67,6 +75,8 @@ final class DeterministicDemoSeeder extends Seeder
     {
         $this->assertSafeEnvironment();
 
+        $this->call(ProjectDeliveryWorkflowSeeder::class);
+
         DB::transaction(function (): void {
             $user = $this->prepareUser();
             $organization = $this->prepareOrganization($user);
@@ -85,6 +95,13 @@ final class DeterministicDemoSeeder extends Seeder
                         scenario: $definition['scenario'],
                         seed: $definition['seed'],
                         definition: $document,
+                    );
+                }
+
+                if ($definition['slug'] === 'demo-happy-path') {
+                    $this->prepareStartProjectPreconditions(
+                        project: $project,
+                        user: $user,
                     );
                 }
             }
@@ -324,6 +341,99 @@ final class DeterministicDemoSeeder extends Seeder
                 $storagePath,
             ));
         }
+    }
+
+    /**
+     * Persist the complete, safe preconditions for the interactive happy path.
+     *
+     * These records make the demo use the same StartProject validation path as
+     * production requests without storing a usable external credential.
+     */
+    private function prepareStartProjectPreconditions(
+        Project $project,
+        User $user,
+    ): void {
+        $documentClasses = [
+            'Product Charter' => 'product_charter',
+            'Requirements' => 'requirements',
+            'Architecture Baseline' => 'architecture',
+        ];
+
+        foreach ($documentClasses as $title => $documentClass) {
+            Document::query()
+                ->where('project_id', $project->id)
+                ->where('title', $title)
+                ->update(['document_class' => $documentClass]);
+        }
+
+        $configuration = ProjectConfiguration::query()
+            ->where('project_id', $project->id)
+            ->firstOrFail();
+
+        ProjectConfigurationVersion::query()->firstOrCreate(
+            [
+                'project_id' => $project->id,
+                'revision' => $configuration->revision,
+            ],
+            [
+                'schema_version' => $configuration->schema_version,
+                'actor_type' => AuditActorType::System,
+                'actor_id' => 'deterministic-demo-seeder',
+                'change_reason' => 'deterministic_demo_fixture',
+                'snapshot' => $configuration->toVersionedArray(),
+                'created_at' => now(),
+            ],
+        );
+
+        ProjectSetupProgress::query()->updateOrCreate(
+            ['project_id' => $project->id],
+            [
+                'current_step' => ProjectSetupStep::Review,
+                'completed_steps' => array_map(
+                    static fn (ProjectSetupStep $step): string => $step->value,
+                    ProjectSetupStep::ordered(),
+                ),
+                'completed_at' => now(),
+            ],
+        );
+
+        $credential = ProviderCredential::query()->updateOrCreate(
+            [
+                'organization_id' => $project->organization_id,
+                'project_id' => $project->id,
+                'provider' => IntegrationProvider::Notion,
+            ],
+            [
+                'secret_ciphertext' => 'deterministic-demo-placeholder-ciphertext',
+                'version' => 1,
+                'created_by_user_id' => $user->id,
+                'last_rotated_by_user_id' => null,
+                'rotated_at' => null,
+            ],
+        );
+
+        ProjectIntegration::query()->updateOrCreate(
+            [
+                'organization_id' => $project->organization_id,
+                'project_id' => $project->id,
+                'provider' => IntegrationProvider::Notion,
+            ],
+            [
+                'workspace_id' => '00000000-0000-4000-8000-000000000001',
+                'workspace_name' => 'AIOS Demonstration Workspace',
+                'database_id' => '00000000-0000-4000-8000-000000000002',
+                'database_name' => 'AIOS Demonstration Tracker',
+                'data_source_id' => '00000000-0000-4000-8000-000000000003',
+                'data_source_name' => 'AIOS Demonstration Tracker Source',
+                'connection_status' => NotionConnectionStatus::Connected,
+                'last_failure_code' => null,
+                'last_provider_request_id' => 'deterministic-demo-notion-test',
+                'last_tested_by_user_id' => $user->id,
+                'last_tested_at' => now(),
+                'last_connected_at' => now(),
+                'verified_credential_version' => $credential->version,
+            ],
+        );
     }
 
     /**

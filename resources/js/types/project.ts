@@ -49,6 +49,7 @@ export type ProjectPaginator = {
  */
 export type ProjectPermissions = {
     update: boolean;
+    start: boolean;
     archive: boolean;
     restore: boolean;
 };

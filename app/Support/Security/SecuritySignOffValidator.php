@@ -235,6 +235,11 @@ final readonly class SecuritySignOffValidator
                     'reviewers.%d.name is required.',
                     $index,
                 );
+            } elseif ($this->isPlaceholderReviewerName($name)) {
+                $violations[] = sprintf(
+                    'reviewers.%d.name must identify an actual reviewer.',
+                    $index,
+                );
             }
 
             if ($role !== '' && $name !== '') {
@@ -250,6 +255,17 @@ final readonly class SecuritySignOffValidator
                 );
             }
         }
+    }
+
+    /**
+     * Reject instructional reviewer placeholders that are not human identities.
+     */
+    private function isPlaceholderReviewerName(string $name): bool
+    {
+        return preg_match(
+            '/\b(actual|insert|replace|your)\b.*\b(name|reviewer|owner)\b/i',
+            $name,
+        ) === 1;
     }
 
     /**

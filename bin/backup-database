@@ -49,9 +49,7 @@ fi
 
 umask 077
 
-readonly backup_root="${
-    BACKUP_ROOT:-${PROJECT_ROOT}/storage/app/operations/backups/database
-}"
+readonly backup_root="${BACKUP_ROOT:-${PROJECT_ROOT}/storage/app/operations/backups/database}"
 readonly backup_id="$(
     printf '%s-%s\n' "$(utc_operation_id)" "$$"
 )"
@@ -75,7 +73,6 @@ run_pg_tool pg_dump \
     --compress=9 \
     --no-owner \
     --no-privileges \
-    --file=- \
     > "$partial_dump"
 
 [[ -s "$partial_dump" ]] || {
@@ -86,7 +83,6 @@ mv "$partial_dump" "$final_dump"
 
 run_pg_tool pg_restore \
     --list \
-    - \
     < "$final_dump" \
     > "$table_of_contents"
 

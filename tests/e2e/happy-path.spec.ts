@@ -121,10 +121,23 @@ test.describe.serial('AIOS happy-path acceptance', () => {
         });
 
         await expect(startButton).toBeEnabled();
+
+        const startResponse = page.waitForResponse(
+            (response) =>
+                response.request().method() === 'POST' &&
+                /\/organizations\/[^/]+\/projects\/[^/]+\/start$/.test(
+                    new URL(response.url()).pathname,
+                ),
+        );
+
         await startButton.click();
 
+        expect((await startResponse).status()).toBe(302);
+
+        await page.goto(happyPathProject.url);
+
         await expect(
-            page.getByText(/Planning|Workflow started/i),
+            page.getByText('Planning', { exact: true }).first(),
         ).toBeVisible();
 
         await page.goto(happyPathProject.url);

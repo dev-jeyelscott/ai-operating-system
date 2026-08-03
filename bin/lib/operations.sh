@@ -78,7 +78,7 @@ sha256_file() {
 # Read one value from a key=value operations manifest.
 manifest_value() {
     local key="$1"
-    local manifest="$2"
+    local manifest_path="$2"
 
     awk -F= -v expected_key="$key" '
         $1 == expected_key {
@@ -86,7 +86,7 @@ manifest_value() {
             print
             exit
         }
-    ' "$manifest"
+    ' "$manifest_path"
 }
 
 # Validate the configured PostgreSQL tool execution mode.

@@ -122,7 +122,6 @@ readonly admin_database="${PGADMIN_DATABASE:-postgres}"
 
 run_pg_tool pg_restore \
     --list \
-    - \
     < "$dump_file" \
     > /dev/null
 
@@ -209,7 +208,6 @@ run_pg_tool pg_restore \
     --exit-on-error \
     --no-owner \
     --no-privileges \
-    - \
     < "$dump_file"
 
 run_pg_tool psql \
@@ -227,9 +225,7 @@ restore_completed='true'
 readonly restore_id="$(
     printf '%s-%s\n' "$(utc_operation_id)" "$$"
 )"
-readonly evidence_root="${
-    RESTORE_EVIDENCE_ROOT:-${PROJECT_ROOT}/storage/app/operations/restores
-}"
+readonly evidence_root="${RESTORE_EVIDENCE_ROOT:-${PROJECT_ROOT}/storage/app/operations/restores}"
 readonly evidence_directory="${evidence_root}/${restore_id}"
 
 mkdir -p "$evidence_directory"

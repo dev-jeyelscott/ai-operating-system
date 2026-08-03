@@ -45,9 +45,7 @@ readonly source_database="aios_dr_source_${suffix//-/_}"
 readonly target_database="aios_dr_target_${suffix//-/_}"
 readonly bucket="aios-dr-${suffix}"
 readonly object_key='recovery/probe.txt'
-readonly evidence_directory="${
-    PROJECT_ROOT
-}/storage/app/operations/dr-rehearsals/${suffix}"
+readonly evidence_directory="${PROJECT_ROOT}/storage/app/operations/dr-rehearsals/${suffix}"
 readonly temporary_directory="$(mktemp -d)"
 
 mkdir -p "$evidence_directory"

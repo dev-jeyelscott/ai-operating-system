@@ -11,9 +11,7 @@ COMMIT_SHA="$(git rev-parse HEAD)"
 
 mkdir -p "${ARTIFACT_DIRECTORY}"
 
-/**
- * Run one acceptance step and preserve its complete output.
- */
+# Run one acceptance step and preserve its complete output.
 run_step() {
     local step_name="$1"
     shift

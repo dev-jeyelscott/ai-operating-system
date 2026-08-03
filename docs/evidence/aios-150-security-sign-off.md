@@ -5,9 +5,9 @@
 - Ticket: AIOS-150
 - Reviewed commit: `94c0694d776db1a3660154bccd1b7f6404746eed`
 - Reviewed at: `2026-08-03T15:12:05+08:00`
-- Security Reviewer: Actual Security Reviewer Name
-- Product Owner: Actual Product Owner Name
-- Decision: Approved
+- Security Reviewer: No current approval
+- Product Owner: No current approval
+- Decision: Invalidated; repeat the review for the final candidate
 - Target branch: develop
 
 ## Scope
@@ -122,6 +122,7 @@ Any accepted Medium, Low, or Informational finding must be recorded in
 
 ## Final disposition
 
-The reviewed MVP implementation is approved for the next release-candidate
-stage, subject to the normal CI, human review, branch protection, and release
-approval process.
+This historical review is invalidated because its reviewer identities were not
+recorded and its reviewed commit predates the current candidate. A final
+candidate requires a fresh review, named human approvals, and an updated
+machine-readable manifest.

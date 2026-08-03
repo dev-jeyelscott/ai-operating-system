@@ -170,6 +170,8 @@ final class ProjectController extends Controller
             ],
             'permissions' => [
                 'update' => $user->can('update', $project),
+                'start' => $user->can('start', $project)
+                    && $project->status->value === 'ready_for_planning',
                 'archive' => $user->can('archive', $project),
                 'restore' => $user->can('restore', $project),
             ],

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Application\Projects\GetStartProjectPreflight;
 use App\Domain\Documents\DocumentStatus;
 use App\Domain\Projects\ProjectStatus;
 use App\Models\DocumentVersion;
@@ -65,6 +66,22 @@ it('seeds approved analyzed documents with persistent simulation labels', functi
                 Storage::disk('local')->get($version->storage_path),
             ))->toBe($version->checksum_sha256);
     }
+});
+
+it('makes the happy-path project startable through the authoritative preflight', function (): void {
+    $this->seed(DeterministicDemoSeeder::class);
+
+    $project = Project::query()
+        ->where('slug', 'demo-happy-path')
+        ->firstOrFail();
+
+    $preflight = app(GetStartProjectPreflight::class)->handle(
+        organizationId: $project->organization_id,
+        projectId: $project->id,
+    );
+
+    expect($preflight->canStart)->toBeTrue()
+        ->and($preflight->blockers)->toBeEmpty();
 });
 
 it('includes explicit conflict, failure, and high-risk document evidence', function (): void {
