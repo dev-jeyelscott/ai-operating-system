@@ -33,7 +33,7 @@ it('rejects unsupported scenario slugs', function (): void {
 
     expect(fn (): array => $catalog->select('unknown_scenario', 1))
         ->toThrow(
-            \InvalidArgumentException::class,
+            InvalidArgumentException::class,
             'Unsupported deterministic scenario',
         );
 });
@@ -43,7 +43,7 @@ it('rejects negative deterministic seeds', function (): void {
 
     expect(fn (): array => $catalog->select('happy_path', -1))
         ->toThrow(
-            \InvalidArgumentException::class,
+            InvalidArgumentException::class,
             'seed must be zero or greater',
         );
 });

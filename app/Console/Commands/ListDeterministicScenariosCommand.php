@@ -56,18 +56,14 @@ final class ListDeterministicScenariosCommand extends Command
             return self::INVALID;
         }
 
+        /*
+         * Laravel exposes this optional scalar argument as string|null.
+         * The null check below provides all required narrowing.
+         */
         $argument = $this->argument('scenario');
 
-        if ($argument !== null && ! is_string($argument)) {
-            $this->components->error(
-                'The scenario argument must be a string.',
-            );
-
-            return self::INVALID;
-        }
-
         try {
-            if (is_string($argument) && trim($argument) !== '') {
+            if ($argument !== null && trim($argument) !== '') {
                 return $this->renderSelection(
                     scenario: $argument,
                     seed: $seed,

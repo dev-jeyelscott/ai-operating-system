@@ -79,11 +79,13 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             $request->ticketId,
             $request->ticketObjective,
         );
+
         $root = sprintf(
             'simulation://projects/%d/executions/%s',
             $request->projectId,
             $request->executionId,
         );
+
         $commit = hash('sha1', implode('|', [
             (string) $request->projectId,
             $request->ticketId,
@@ -93,16 +95,19 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             $request->simulationScenario,
             (string) $request->deterministicSeed,
         ]));
+
         $push = substr(
             hash('sha256', $commit.'|push'),
             0,
             24,
         );
+
         $pullRequest = substr(
             hash('sha256', $commit.'|pull-request'),
             0,
             24,
         );
+
         $path = 'app/Simulated/'.strtolower(
             preg_replace(
                 '/[^a-zA-Z0-9]/',
@@ -192,7 +197,9 @@ final readonly class SyntheticDevelopmentArtifactGenerator
                 'Simulation provider used; no repository access occurred.',
             ],
             'confidence' => 0.75,
-            'risks' => ['No real source-code QA occurred.'],
+            'risks' => [
+                'No real source-code QA occurred.',
+            ],
             'evidence_gaps' => [
                 'Real repository, command, CI, and review evidence remain required.',
             ],
@@ -240,6 +247,7 @@ final readonly class SyntheticDevelopmentArtifactGenerator
                     'summary' => 'Synthetic pull request skipped after validation failure.',
                 ],
             ];
+
             $data['validation_results'] = array_map(
                 static fn (string $command): array => [
                     'command' => $command,
@@ -248,6 +256,7 @@ final readonly class SyntheticDevelopmentArtifactGenerator
                 ],
                 $request->validationCommands,
             );
+
             $data['synthetic_commit_result'] = null;
             $data['synthetic_push_result'] = null;
             $data['synthetic_pull_request_result'] = null;
@@ -259,17 +268,13 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             $request->simulationScenario
             === self::WRONG_PULL_REQUEST_TARGET
         ) {
-            $pullRequestArtifact = $data['synthetic_pull_request_result'];
-
-            if (! is_array($pullRequestArtifact)) {
-                throw new InvalidArgumentException(
-                    'The wrong-target scenario requires a synthetic pull request.',
-                );
-            }
-
-            $pullRequestArtifact['target_branch'] = 'main';
+            /*
+             * The wrong-target scenario cannot also be the validation-failure
+             * scenario, so this artifact is guaranteed to contain the
+             * deterministic pull-request array created above.
+             */
+            $data['synthetic_pull_request_result']['target_branch'] = 'main';
             $data['target_branch'] = 'main';
-            $data['synthetic_pull_request_result'] = $pullRequestArtifact;
             $data['risks'] = [
                 ...$data['risks'],
                 'The synthetic pull request violates the develop-only target policy.',
@@ -278,6 +283,7 @@ final readonly class SyntheticDevelopmentArtifactGenerator
         }
 
         $temporary = DevelopmentExecutionResult::fromArray($data);
+
         $data['canonical_result_fingerprint'] = $this->validator
             ->fingerprint($temporary);
 

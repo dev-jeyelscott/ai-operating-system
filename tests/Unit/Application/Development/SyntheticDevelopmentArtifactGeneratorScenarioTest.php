@@ -18,7 +18,7 @@ it('rejects unknown development scenarios instead of treating them as success', 
 
     expect(fn () => $generator->generate($request))
         ->toThrow(
-            \InvalidArgumentException::class,
+            InvalidArgumentException::class,
             'Unsupported development simulation scenario',
         );
 });
@@ -39,7 +39,7 @@ it('produces a wrong-target result that deterministic validation rejects', funct
         ->toBe('main')
         ->and(fn () => $validator->validateResult($result))
         ->toThrow(
-            \InvalidArgumentException::class,
+            InvalidArgumentException::class,
             'Synthetic pull request target must be develop',
         );
 });
