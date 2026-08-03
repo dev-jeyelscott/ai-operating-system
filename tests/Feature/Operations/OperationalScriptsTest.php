@@ -10,8 +10,8 @@ use Tests\TestCase;
 final class OperationalScriptsTest extends TestCase
 {
     /**
-     * Return every operational shell script currently included in the
-     * backup, restoration, and disaster-recovery scope.
+     * Return every operational shell script included in backup, restoration,
+     * and disaster-recovery validation.
      *
      * @return list<string>
      */
@@ -27,8 +27,7 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Read a required repository file and fail with a clear assertion when
-     * the expected operational artifact is missing.
+     * Read a required repository file.
      */
     private function readRepositoryFile(string $relativePath): string
     {
@@ -57,11 +56,6 @@ final class OperationalScriptsTest extends TestCase
         foreach ($this->scripts() as $relativePath) {
             $absolutePath = base_path($relativePath);
 
-            $this->assertFileExists(
-                $absolutePath,
-                "{$relativePath} must exist before Bash validation.",
-            );
-
             $process = new Process([
                 'bash',
                 '-n',
@@ -87,16 +81,9 @@ final class OperationalScriptsTest extends TestCase
     public function test_operational_commands_expose_help(): void
     {
         foreach (array_slice($this->scripts(), 1) as $relativePath) {
-            $absolutePath = base_path($relativePath);
-
-            $this->assertFileExists(
-                $absolutePath,
-                "{$relativePath} must exist before help validation.",
-            );
-
             $process = new Process([
                 'bash',
-                $absolutePath,
+                base_path($relativePath),
                 '--help',
             ]);
 
@@ -120,8 +107,8 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify recovery scripts do not contain destructive Laravel database
-     * commands that could erase or reverse application data.
+     * Verify recovery scripts cannot invoke destructive Laravel database
+     * reset or rollback commands.
      */
     public function test_operational_scripts_do_not_use_destructive_database_commands(): void
     {
@@ -149,8 +136,8 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify the disaster-recovery workflow covers PostgreSQL restoration,
-     * MinIO object restoration, rehearsal execution, and evidence retention.
+     * Verify the disaster-recovery workflow covers PostgreSQL, object storage,
+     * rehearsal execution, and retained evidence.
      */
     public function test_disaster_recovery_workflow_runs_the_complete_rehearsal(): void
     {
@@ -158,21 +145,12 @@ final class OperationalScriptsTest extends TestCase
             '.github/workflows/disaster-recovery.yml',
         );
 
-        $this->assertStringContainsString(
-            'postgres:',
-            $workflow,
-        );
-
-        $this->assertStringContainsString(
-            'minio/minio:',
-            $workflow,
-        );
-
+        $this->assertStringContainsString('postgres:', $workflow);
+        $this->assertStringContainsString('minio/minio:', $workflow);
         $this->assertStringContainsString(
             'bash bin/dr-rehearsal',
             $workflow,
         );
-
         $this->assertStringContainsString(
             'disaster-recovery-evidence',
             $workflow,
@@ -180,7 +158,7 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify rehearsal evidence is written below the repository operation root.
+     * Verify rehearsal evidence stays below the repository operation root.
      */
     public function test_disaster_recovery_rehearsal_declares_a_valid_evidence_path(): void
     {
@@ -193,8 +171,7 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify backup and restore evidence paths resolve from one parameter
-     * expansion instead of a runtime command substitution.
+     * Verify backup and restore roots use safe parameter expansions.
      */
     public function test_operational_scripts_declare_valid_evidence_roots(): void
     {
@@ -215,7 +192,7 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify PostgreSQL custom backups stream through the host redirection.
+     * Verify PostgreSQL custom backups stream through host redirection.
      */
     public function test_database_backup_does_not_write_an_archive_inside_the_container(): void
     {
@@ -226,35 +203,101 @@ final class OperationalScriptsTest extends TestCase
     }
 
     /**
-     * Verify archive checks and restores read from standard input when no
-     * archive filename is supplied to pg_restore.
+     * Verify archive inspection and restore read from standard input without a
+     * literal dash filename.
      */
     public function test_postgresql_archive_commands_do_not_pass_a_literal_dash_filename(): void
     {
         $backup = $this->readRepositoryFile('bin/backup-database');
         $restore = $this->readRepositoryFile('bin/restore-database');
 
-        $this->assertStringNotContainsString("--list \\\n    - \\", $backup);
-        $this->assertStringNotContainsString("--list \\\n    - \\", $restore);
-        $this->assertStringNotContainsString("--no-privileges \\\n    - \\", $restore);
+        $this->assertStringNotContainsString(
+            "--list \\\n    - \\",
+            $backup,
+        );
+
+        $this->assertStringNotContainsString(
+            "--list \\\n    - \\",
+            $restore,
+        );
+
+        $this->assertStringNotContainsString(
+            "--no-privileges \\\n    - \\",
+            $restore,
+        );
     }
 
     /**
-     * Verify the AWS CLI receives the raw versioned copy source so it can
-     * construct the S3 CopySource header without double-encoding key slashes.
+     * Verify versioned S3 CopySource generation encodes reserved characters
+     * while preserving logical object-key path separators.
      */
-    public function test_object_version_restore_uses_a_raw_versioned_copy_source(): void
+    public function test_versioned_s3_copy_source_is_url_encoded(): void
+    {
+        $process = new Process(
+            [
+                'bash',
+                '-c',
+                <<<'BASH'
+source "$OPERATIONS_SCRIPT"
+build_versioned_s3_copy_source \
+    "$TEST_BUCKET" \
+    "$TEST_KEY" \
+    "$TEST_VERSION"
+BASH,
+            ],
+            base_path(),
+            [
+                'OPERATIONS_SCRIPT' => base_path('bin/lib/operations.sh'),
+                'TEST_BUCKET' => 'recovery-bucket',
+                'TEST_KEY' => 'recovery/encoded key/plus+hash#question?/résumé.txt',
+                'TEST_VERSION' => '3/L4+k?=',
+            ],
+        );
+
+        $process->run();
+
+        $this->assertTrue(
+            $process->isSuccessful(),
+            $process->getErrorOutput(),
+        );
+
+        $this->assertSame(
+            'recovery-bucket/recovery/encoded%20key/plus%2Bhash%23question%3F/r%C3%A9sum%C3%A9.txt?versionId=3%2FL4%2Bk%3F%3D',
+            trim($process->getOutput()),
+        );
+    }
+
+    /**
+     * Verify the restore command delegates CopySource construction to the
+     * shared encoder and validates copy response metadata.
+     */
+    public function test_object_version_restore_uses_encoded_copy_source_and_records_version_ids(): void
     {
         $script = $this->readRepositoryFile('bin/restore-object-version');
 
         $this->assertStringContainsString(
-            'readonly copy_source="${bucket}/${object_key}?versionId=${version_id}"',
+            'build_versioned_s3_copy_source',
             $script,
         );
+
         $this->assertStringContainsString(
             '--copy-source "$copy_source"',
             $script,
         );
-        $this->assertStringNotContainsString('encoded_copy_source', $script);
+
+        $this->assertStringContainsString(
+            '.CopySourceVersionId // empty',
+            $script,
+        );
+
+        $this->assertStringContainsString(
+            '.VersionId // empty',
+            $script,
+        );
+
+        $this->assertStringNotContainsString(
+            'readonly copy_source="${bucket}/${object_key}?versionId=${version_id}"',
+            $script,
+        );
     }
 }

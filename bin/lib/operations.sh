@@ -89,6 +89,36 @@ manifest_value() {
     ' "$manifest_path"
 }
 
+# Build the URL-encoded CopySource value required for one S3 object version.
+#
+# The bucket name and path separators remain readable. Every individual object
+# key segment and the version ID are URL-encoded so valid characters such as
+# spaces, plus signs, number signs, question marks, and Unicode cannot change
+# the CopySource request semantics.
+build_versioned_s3_copy_source() {
+    local bucket="$1"
+    local object_key="$2"
+    local version_id="$3"
+
+    require_command jq
+
+    jq -rn \
+        --arg bucket "$bucket" \
+        --arg object_key "$object_key" \
+        --arg version_id "$version_id" '
+            def encode_s3_key:
+                split("/")
+                | map(@uri)
+                | join("/");
+
+            $bucket
+            + "/"
+            + ($object_key | encode_s3_key)
+            + "?versionId="
+            + ($version_id | @uri)
+        '
+}
+
 # Validate the configured PostgreSQL tool execution mode.
 validate_pg_tool_mode() {
     case "${PG_TOOLS_MODE:-native}" in

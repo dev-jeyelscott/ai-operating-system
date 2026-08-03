@@ -1,11 +1,71 @@
 # AI Operating System documentation
 
-## Source-of-truth precedence
+## Canonical authority hierarchy
 
-The approved product specification and baseline define product intent. Accepted
-ADRs define durable architecture decisions. The implemented code, migrations,
-tests, and operational scripts define the current executable contract. Where a
-conflict is found, stop and resolve it through the project decision process.
+The following hierarchy governs product, implementation, operational, and
+release decisions.
+
+1. **Approved project documents and product specifications**
+
+   Approved product, architecture, security, data, testing, deployment, and
+   operational documents define the intended product and engineering
+   constraints.
+
+2. **Approved ADRs and explicitly approved change decisions**
+
+   Accepted architecture decision records and approved change decisions refine
+   or supersede earlier decisions within their stated scope. A draft or
+   proposed ADR has no authority until it is approved.
+
+3. **Approved Notion ticket**
+
+   The approved Notion ticket is the task-level authority for objective, scope,
+   exclusions, acceptance criteria, dependencies, required evidence, risk,
+   assigned role, and final disposition.
+
+4. **Repository implementation**
+
+   The repository is authoritative for currently implemented code, migrations,
+   tests, configuration, CI workflows, operational scripts, and versioned
+   documentation. Repository implementation does not silently override an
+   approved specification, ADR, change decision, or ticket.
+
+5. **Execution logs and generated artifacts**
+
+   Execution logs, provider output, reports, simulated diffs, command output,
+   and generated artifacts describe what an execution reported or produced.
+   They remain subject to evidence classification and verification.
+
+## Verification authority
+
+Verified external systems establish observed and verified state:
+
+- GitHub establishes repository, commit, branch, pull-request, review, and tag
+  state.
+- CI establishes whether required checks ran and passed for an exact commit.
+- Deployment systems establish deployment state.
+- PostgreSQL, Redis, object storage, Horizon, Reverb, and runtime monitoring
+  establish operational state.
+- Notion establishes the current externally published ticket state, subject to
+  reconciliation with the approved internal record.
+
+A provider claim or simulated artifact cannot replace verified external
+evidence.
+
+## Conflict handling
+
+A conflict between authorities must not be silently resolved.
+
+When a conflict is detected:
+
+1. Stop the affected workflow transition or consequential operation.
+2. Preserve both conflicting records and their provenance.
+3. Record the conflict as a blocker or human-decision request.
+4. Identify the highest applicable approved authority.
+5. Obtain an authorized decision.
+6. Update affected documents, tickets, implementation, and reconciliation state
+   explicitly.
+7. Preserve the decision in the audit history.
 
 ## Documentation index
 
@@ -27,5 +87,7 @@ conflict is found, stop and resolve it through the project decision process.
 
 Owners review their documents during release-candidate preparation and whenever
 the listed trigger occurs. Review confirms links, commands, role boundaries,
-and simulation labels remain accurate; it does not substitute for the required
-human approvals in release evidence.
+authority statements, and simulation labels remain accurate.
+
+Documentation review does not substitute for required human approvals or
+candidate-specific evidence.
