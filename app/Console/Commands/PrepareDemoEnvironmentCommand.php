@@ -216,6 +216,36 @@ final class PrepareDemoEnvironmentCommand extends Command
             );
         }
 
+        /**
+         * Native array_values communicates the sequential-key guarantee to
+         * PHPStan more precisely than Collection::values()->all().
+         *
+         * @var list<array{
+         *     name: string,
+         *     slug: string,
+         *     status: string,
+         *     url: string
+         * }> $projectManifest
+         */
+        $projectManifest = array_values(
+            $projects
+                ->map(
+                    static fn (Project $project): array => [
+                        'name' => $project->name,
+                        'slug' => $project->slug,
+                        'status' => $project->status->value,
+                        'url' => route(
+                            'organizations.projects.show',
+                            [
+                                'organization' => $organization,
+                                'project' => $project,
+                            ],
+                        ),
+                    ],
+                )
+                ->all(),
+        );
+
         return [
             'schemaVersion' => self::MANIFEST_SCHEMA_VERSION,
             'environment' => app()->environment(),
@@ -233,23 +263,7 @@ final class PrepareDemoEnvironmentCommand extends Command
                 'slug' => $organization->slug,
             ],
             'loginUrl' => route('login'),
-            'projects' => $projects
-                ->map(
-                    static fn (Project $project): array => [
-                        'name' => $project->name,
-                        'slug' => $project->slug,
-                        'status' => $project->status->value,
-                        'url' => route(
-                            'organizations.projects.show',
-                            [
-                                'organization' => $organization,
-                                'project' => $project,
-                            ],
-                        ),
-                    ],
-                )
-                ->values()
-                ->all(),
+            'projects' => $projectManifest,
             'nextCommand' => './bin/dev',
         ];
     }
