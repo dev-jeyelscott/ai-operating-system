@@ -61,7 +61,7 @@ export default function ProjectOffice({
         <>
             <Head title={`${project.name} office`} />
 
-            <main className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+            <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
                 <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                         <Button asChild variant="ghost" size="sm">
@@ -125,7 +125,7 @@ export default function ProjectOffice({
                     operationsUrl={operationsUrl}
                     telemetryEndpointUrl={officeTelemetryEndpointUrl}
                 />
-            </main>
+            </div>
         </>
     );
 }
