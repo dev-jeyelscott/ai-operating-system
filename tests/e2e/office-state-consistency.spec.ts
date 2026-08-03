@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 
 type OfficeFixture = {
     email: string;
@@ -73,7 +73,6 @@ async function login(page: Page, fixture: OfficeFixture) {
  * Authenticate and open the exact tenant-scoped office route.
  */
 async function openOffice(page: Page, fixture: OfficeFixture) {
-    await login(page, fixture);
     await page.goto(fixture.officeUrl);
 
     await expect(
@@ -88,12 +87,40 @@ async function openOffice(page: Page, fixture: OfficeFixture) {
 test.describe('3D office state consistency', () => {
     test.describe.configure({
         mode: 'serial',
+        timeout: 60_000,
     });
 
     let fixture: OfficeFixture;
+    let authenticationCookies: Awaited<ReturnType<BrowserContext['cookies']>>;
 
-    test.beforeEach(async ({ page }) => {
+    /*
+     * Authenticate only once. Every test still receives an isolated browser
+     * context, but the authenticated Laravel session cookie is copied into it.
+     */
+    test.beforeAll(async ({ browser }) => {
         fixture = prepareOfficeFixture(42);
+
+        const authenticationContext = await browser.newContext({
+            baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost',
+        });
+
+        const authenticationPage = await authenticationContext.newPage();
+
+        await login(authenticationPage, fixture);
+
+        authenticationCookies = await authenticationContext.cookies();
+
+        await authenticationContext.close();
+    });
+
+    /*
+     * Reset authoritative office state before every test without repeating the
+     * login request or invalidating the existing authenticated session.
+     */
+    test.beforeEach(async ({ page, context }) => {
+        fixture = prepareOfficeFixture(42);
+
+        await context.addCookies(authenticationCookies);
         await openOffice(page, fixture);
     });
 

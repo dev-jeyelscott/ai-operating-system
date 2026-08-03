@@ -117,12 +117,25 @@ final class PrepareOfficeE2ECommand extends Command
             'email' => $email,
         ]);
 
-        $user->forceFill([
+        $userAttributes = [
             'name' => 'Office E2E User',
             'email' => $email,
             'email_verified_at' => now(),
-            'password' => Hash::make($password),
-        ])->save();
+        ];
+
+        /*
+ * Preserve the current password hash when the deterministic password has not
+ * changed. Rehashing on every fixture refresh would invalidate authenticated
+ * browser sessions protected by Laravel's auth.session middleware.
+ */
+        if (
+            ! $user->exists
+            || ! Hash::check($password, (string) $user->password)
+        ) {
+            $userAttributes['password'] = Hash::make($password);
+        }
+
+        $user->forceFill($userAttributes)->save();
 
         $organization = Organization::query()->firstOrNew([
             'slug' => 'office-e2e',

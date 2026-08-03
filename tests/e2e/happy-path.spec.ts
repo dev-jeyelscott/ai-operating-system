@@ -96,12 +96,12 @@ test.describe.serial('AIOS happy-path acceptance', () => {
 
         await page.goto('/login');
 
-        await page
-            .getByLabel('Email address')
-            .fill(manifest.credentials.email);
+        await page.getByLabel('Email address').fill(manifest.credentials.email);
 
         await page
-            .getByLabel('Password')
+            .getByLabel('Password', {
+                exact: true,
+            })
             .fill(manifest.credentials.password);
 
         await page.getByRole('button', { name: 'Log in' }).click();
@@ -174,9 +174,7 @@ test.describe.serial('AIOS happy-path acceptance', () => {
             }),
         ).toBeVisible();
 
-        const simulationWarning = page.getByText(
-            'Simulated and unverified',
-        );
+        const simulationWarning = page.getByText('Simulated and unverified');
 
         await reloadUntilVisible(page, simulationWarning);
 
@@ -205,23 +203,17 @@ test.describe.serial('AIOS happy-path acceptance', () => {
         await confirmApproval.click();
 
         await expect(
-            page.getByText(
-                /terminal human decision and is now read-only/i,
-            ),
+            page.getByText(/terminal human decision and is now read-only/i),
         ).toBeVisible();
 
         await expect(
-            page.getByText(
-                /No repository merge will be performed/i,
-            ),
+            page.getByText(/No repository merge will be performed/i),
         ).toBeVisible();
 
         await page.reload();
 
         await expect(
-            page.getByText(
-                /terminal human decision and is now read-only/i,
-            ),
+            page.getByText(/terminal human decision and is now read-only/i),
         ).toBeVisible();
 
         await expect(approveMerge).toHaveCount(0);

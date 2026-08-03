@@ -656,7 +656,7 @@ function AgentTable({ agents }: { agents: OperationsAgent[] }) {
                                                 scope="row"
                                                 className="px-3 py-3 text-left font-medium"
                                             >
-                                                {agent.role}
+                                                {humanize(agent.role)}
                                             </th>
                                             <td className="px-3 py-3">
                                                 {humanize(agent.layer)}
