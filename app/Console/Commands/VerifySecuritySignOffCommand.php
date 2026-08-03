@@ -5,19 +5,18 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Support\Security\SecuritySignOffValidator;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-/**
- * Verifies the AIOS-150 security review and release sign-off.
- */
+#[Signature(
+    'security:sign-off {--manifest=docs/security/security-review.json : Repository-relative or absolute security review manifest path}',
+)]
+#[Description(
+    'Verify threat-model evidence and reject unresolved Critical or High findings.',
+)]
 final class VerifySecuritySignOffCommand extends Command
 {
-    protected $signature = 'security:sign-off
-        {--manifest=docs/security/security-review.json : Repository-relative or absolute security review manifest path}';
-
-    protected $description =
-        'Verify threat-model evidence and reject unresolved Critical or High findings.';
-
     /**
      * Inject the deterministic security sign-off validator.
      */
@@ -32,8 +31,19 @@ final class VerifySecuritySignOffCommand extends Command
      */
     public function handle(): int
     {
-        $manifest = trim((string) $this->option('manifest'));
-        $manifestPath = $this->resolveManifestPath($manifest);
+        $manifestOption = $this->option('manifest');
+
+        if (! is_string($manifestOption) || trim($manifestOption) === '') {
+            $this->components->error(
+                'The manifest option must contain a valid file path.',
+            );
+
+            return self::INVALID;
+        }
+
+        $manifestPath = $this->resolveManifestPath(
+            trim($manifestOption),
+        );
 
         $result = $this->validator->validate($manifestPath);
 
@@ -41,7 +51,12 @@ final class VerifySecuritySignOffCommand extends Command
             ['Field', 'Value'],
             [
                 ['Decision', $result->decision],
-                ['Reviewed commit', $result->reviewedCommit ?: 'Not provided'],
+                [
+                    'Reviewed commit',
+                    $result->reviewedCommit !== ''
+                        ? $result->reviewedCommit
+                        : 'Not provided',
+                ],
                 ['Dependencies', (string) $result->dependencyCount],
                 ['Findings', (string) $result->findingCount],
                 ['Violations', (string) count($result->violations)],

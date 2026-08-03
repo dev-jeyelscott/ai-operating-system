@@ -49,7 +49,7 @@ async function login(page: Page, fixture: OfficeFixture) {
     await page.goto('/login');
 
     await page.getByLabel(/email/i).fill(fixture.email);
-    await page.getByLabel(/password/i).fill(fixture.password);
+    await page.getByLabel('Password', { exact: true }).fill(fixture.password);
 
     await page
         .getByRole('button', {
@@ -211,8 +211,18 @@ test.describe('AIOS-149 critical accessibility flows', () => {
         ).toBeVisible();
 
         await expect(inspector.getByText(fixture.agentAction)).toBeVisible();
-        await expect(inspector.getByText('Simulated')).toBeVisible();
-        await expect(inspector.getByText('Unverified')).toBeVisible();
+
+        await expect(
+            inspector.getByText('Simulated', {
+                exact: true,
+            }),
+        ).toBeVisible();
+
+        await expect(
+            inspector.getByText('Unverified', {
+                exact: true,
+            }),
+        ).toBeVisible();
 
         await expectNoAccessibilityViolations(
             page,

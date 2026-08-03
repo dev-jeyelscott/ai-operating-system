@@ -41,9 +41,7 @@ function runFixture<T>(
         .findLast((line) => line.trim().startsWith('{'));
 
     if (!jsonLine) {
-        throw new Error(
-            `The ${action} fixture did not return a JSON payload.`,
-        );
+        throw new Error(`The ${action} fixture did not return a JSON payload.`);
     }
 
     return JSON.parse(jsonLine) as T;
@@ -58,15 +56,45 @@ test('reconstructs dashboard state after reconnect', async ({
     const fixture = runFixture<PreparedFixture>('prepare');
 
     await page.goto('/login');
-    await page.getByLabel('Email address').fill(fixture.email);
-    await page.getByLabel('Password').fill(fixture.password);
-    await page.getByRole('button', { name: 'Log in' }).click();
 
-    await page.goto(fixture.operationsUrl);
+    await page
+        .getByLabel('Email address', {
+            exact: true,
+        })
+        .fill(fixture.email);
+
+    await page
+        .getByLabel('Password', {
+            exact: true,
+        })
+        .fill(fixture.password);
+
+    await page
+        .getByRole('button', {
+            name: 'Log in',
+            exact: true,
+        })
+        .click();
+
+    /*
+    * Wait for Laravel and Inertia to finish authentication and persist the
+    * session cookie before requesting a protected organization route.
+    */
+    await page.waitForURL(/\/dashboard$/);
+
+    const operationsResponse = await page.goto(fixture.operationsUrl);
+
+    expect(operationsResponse).not.toBeNull();
+    expect(operationsResponse?.ok()).toBe(true);
+
+    await expect(page).toHaveURL(
+        new RegExp(`${fixture.operationsUrl}$`),
+    );
 
     await expect(
         page.getByRole('heading', {
             name: 'Operational dashboard',
+            exact: true,
         }),
     ).toBeVisible();
 
@@ -95,9 +123,7 @@ test('reconstructs dashboard state after reconnect', async ({
                     waitUntil: 'domcontentloaded',
                 });
 
-                return page
-                    .getByText(/Fingerprint/)
-                    .textContent();
+                return page.getByText(/Fingerprint/).textContent();
             },
             {
                 timeout: 30_000,
@@ -105,11 +131,7 @@ test('reconstructs dashboard state after reconnect', async ({
         )
         .not.toBe(originalFingerprint);
 
-    await expect(
-        page.getByText('Backend Engineer'),
-    ).toBeVisible();
+    await expect(page.getByText('Backend Engineer')).toBeVisible();
 
-    await expect(
-        page.getByText('Running').first(),
-    ).toBeVisible();
+    await expect(page.getByText('Running').first()).toBeVisible();
 });

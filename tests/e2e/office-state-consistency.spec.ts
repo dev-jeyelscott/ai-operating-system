@@ -47,16 +47,26 @@ function prepareOfficeFixture(sequence = 42): OfficeFixture {
 async function login(page: Page, fixture: OfficeFixture) {
     await page.goto('/login');
 
-    await page.getByLabel(/email/i).fill(fixture.email);
-    await page.getByLabel(/password/i).fill(fixture.password);
+    await page
+        .getByLabel('Email address', {
+            exact: true,
+        })
+        .fill(fixture.email);
+
+    await page
+        .getByLabel('Password', {
+            exact: true,
+        })
+        .fill(fixture.password);
 
     await page
         .getByRole('button', {
-            name: /log in/i,
+            name: 'Log in',
+            exact: true,
         })
         .click();
 
-    await expect(page).not.toHaveURL(/\/login$/);
+    await page.waitForURL(/\/dashboard$/);
 }
 
 /**
