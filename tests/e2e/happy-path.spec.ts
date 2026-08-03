@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 type DemoProject = {
     name: string;
