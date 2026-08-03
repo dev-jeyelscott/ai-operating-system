@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+ROOT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIRECTORY}"
+
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+ARTIFACT_DIRECTORY="storage/app/acceptance/AIOS-156/${RUN_ID}"
+COMMIT_SHA="$(git rev-parse HEAD)"
+
+mkdir -p "${ARTIFACT_DIRECTORY}"
+
+/**
+ * Run one acceptance step and preserve its complete output.
+ */
+run_step() {
+    local step_name="$1"
+    shift
+
+    printf '\n==> Running %s\n' "${step_name}"
+
+    "$@" 2>&1 | tee "${ARTIFACT_DIRECTORY}/${step_name}.log"
+}
+
+if [[ ! -x ./vendor/bin/sail ]]; then
+    echo "Laravel Sail is unavailable. Run Composer installation first."
+    exit 1
+fi
+
+run_step \
+    "environment-check" \
+    ./vendor/bin/sail artisan app:check
+
+run_step \
+    "route-inventory" \
+    ./vendor/bin/sail artisan route:list \
+        --json
+
+run_step \
+    "cross-project-acceptance" \
+    ./vendor/bin/sail artisan test \
+        tests/Feature/Security/CrossProjectAuthorizationAcceptanceTest.php \
+        --fail-on-warning \
+        --fail-on-skipped
+
+run_step \
+    "existing-organization-isolation" \
+    ./vendor/bin/sail artisan test \
+        tests/Feature/Security/OrganizationIsolationTest.php \
+        --fail-on-warning \
+        --fail-on-skipped
+
+run_step \
+    "organization-policy-matrix" \
+    ./vendor/bin/sail artisan test \
+        tests/Feature/Policies/OrganizationPolicyTest.php \
+        --fail-on-warning \
+        --fail-on-skipped
+
+run_step \
+    "project-permission-matrix" \
+    ./vendor/bin/sail artisan test \
+        tests/Unit/Policies/ProjectPermissionMatrixTest.php \
+        --fail-on-warning \
+        --fail-on-skipped
+
+run_step \
+    "complete-quality-suite" \
+    ./vendor/bin/sail composer ci:check
+
+COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+cat > "${ARTIFACT_DIRECTORY}/summary.json" <<JSON
+{
+    "ticket": "AIOS-156",
+    "status": "passed",
+    "commit": "${COMMIT_SHA}",
+    "completed_at": "${COMPLETED_AT}",
+    "evidence_directory": "${ARTIFACT_DIRECTORY}"
+}
+JSON
+
+printf '\nAIOS-156 acceptance suite passed.\n'
+printf 'Evidence: %s\n' "${ARTIFACT_DIRECTORY}"
