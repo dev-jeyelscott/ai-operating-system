@@ -1,11 +1,63 @@
 version: 2
+
 updates:
-  - package-ecosystem: "github-actions"
+  - package-ecosystem: "composer"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Manila"
     cooldown:
       default-days: 5
+    open-pull-requests-limit: 5
+    groups:
+      composer-production:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      composer-development:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Manila"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
+    groups:
+      frontend-production:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      frontend-development:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Manila"
+    cooldown:
+      default-days: 5
+    open-pull-requests-limit: 5
     groups:
       github-actions:
         patterns:

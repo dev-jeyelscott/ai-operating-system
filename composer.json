@@ -73,11 +73,19 @@
         "office-assets:check": [
             "bash bin/check-office-assets"
         ],
+        "supply-chain:check": [
+            "Composer\\Config::disableProcessTimeout",
+            "composer validate --strict",
+            "composer audit --locked --abandoned=fail --no-interaction",
+            "bash bin/check-frontend-dependency-audit",
+            "pnpm audit signatures"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
             "@containers:check",
             "@office-assets:check",
+            "@supply-chain:check",
             "@lint:check",
             "@types:check",
             "@php artisan test",

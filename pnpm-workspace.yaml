@@ -1,6 +1,13 @@
 packages:
   - '.'
 
+# Delay newly published versions before they become eligible for resolution.
+minimumReleaseAge: 1440
+
+# Reject Git, tarball, and other exotic transitive dependency sources.
+blockExoticSubdeps: true
+
+# Only explicitly reviewed packages may execute install-time build scripts.
 allowBuilds:
   sharp: true
   unrs-resolver: true

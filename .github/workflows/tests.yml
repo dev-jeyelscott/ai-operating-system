@@ -150,12 +150,6 @@ jobs:
       - name: Validate production configuration rules
         run: php artisan test tests/Feature/Console/ProductionConfigurationValidatorTest.php
 
-      - name: Validate Composer manifest
-        run: composer validate --strict
-
-      - name: Audit PHP dependencies
-        run: composer audit --no-interaction
-
       - name: Run PostgreSQL concurrency suite
         run: |
           php artisan test \
@@ -163,18 +157,8 @@ jobs:
             --fail-on-skipped \
             --fail-on-warning
 
-      - name: Run backend and frontend quality gates
+      - name: Run supply-chain, backend, and frontend quality gates
         run: composer ci:check
-
-      - name: Audit frontend dependencies
-        run: |
-          # Production dependencies remain fully blocking.
-          pnpm audit --prod --audit-level=high
-
-          # Temporary dev-only exception for the ESLint 9 dependency chain:
-          # minimatch 3 -> brace-expansion 1.x.
-          # Remove when upstream provides a compatible patched dependency.
-          pnpm audit             --dev             --audit-level=high             --ignore GHSA-mh99-v99m-4gvg
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
