@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(
+    cd "$(dirname "${BASH_SOURCE[0]}")/.."
+    pwd
+)"
+
+cd "${PROJECT_ROOT}"
+
+if [[ "${APP_ENV:-local}" == "production" ]]; then
+    printf '%s\n' \
+        'The deterministic demo wrapper may not run with APP_ENV=production.' \
+        >&2
+
+    exit 1
+fi
+
+# Reuse the canonical clean-clone bootstrap instead of duplicating setup logic.
+./bin/bootstrap
+
+# Seed and validate the explicit local demonstration fixtures.
+./vendor/bin/sail artisan app:demo:prepare
+
+printf '\n%s\n' \
+    'The demo data is ready.' \
+    'Run ./bin/dev to start Vite, Reverb, Horizon, and the scheduler.'
