@@ -147,19 +147,11 @@ export function OfficeAgentInspector({
  * Render one labelled inspector value with sufficient contrast for critical
  * operational information.
  */
-function InspectorFact({
-    label,
-    value,
-}: {
-    label: string;
-    value: string;
-}) {
+function InspectorFact({ label, value }: { label: string; value: string }) {
     return (
         <div className="rounded-md border p-3">
             <dt className="font-medium">{label}</dt>
-            <dd className="mt-1 break-words text-foreground">
-                {value}
-            </dd>
+            <dd className="mt-1 break-words text-foreground">{value}</dd>
         </div>
     );
 }
