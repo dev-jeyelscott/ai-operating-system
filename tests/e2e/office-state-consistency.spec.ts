@@ -13,6 +13,13 @@ type OfficeFixture = {
     projectionSequence: number;
 };
 
+const officeAuthenticationFile =
+    'playwright/.auth/office.json';
+
+test.use({
+    storageState: officeAuthenticationFile,
+});
+
 /**
  * Create or update the deterministic Laravel-owned office fixture.
  */
@@ -292,8 +299,17 @@ test.describe('3D office state consistency', () => {
             }),
         ).toBeVisible();
         await expect(dialog.getByText(fixture.agentAction)).toBeVisible();
-        await expect(dialog.getByText('Simulated')).toBeVisible();
-        await expect(dialog.getByText('Unverified')).toBeVisible();
+        await expect(
+            dialog.getByText('Simulated', {
+                exact: true,
+            }),
+        ).toBeVisible();
+
+        await expect(
+            dialog.getByText('Unverified', {
+                exact: true,
+            }),
+        ).toBeVisible();
 
         await page.keyboard.press('Escape');
 

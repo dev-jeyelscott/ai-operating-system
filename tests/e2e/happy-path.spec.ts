@@ -136,13 +136,9 @@ test.describe.serial('AIOS happy-path acceptance', () => {
 
         await page.goto(happyPathProject.url);
 
-        await expect(
-            page.getByText('Planning', { exact: true }).first(),
-        ).toBeVisible();
-
-        await page.goto(happyPathProject.url);
-
-        await page.getByRole('link', { name: 'Roadmap' }).click();
+        await page.getByRole('link', {
+            name: 'Roadmap',
+        }).click();
 
         await expect(
             page.getByRole('heading', {
@@ -156,13 +152,27 @@ test.describe.serial('AIOS happy-path acceptance', () => {
 
         await reloadUntilVisible(page, approveRoadmap);
         await expect(approveRoadmap).toBeEnabled();
+
+        const approvalResponsePromise = page.waitForResponse((response) => {
+            const pathname = new URL(response.url()).pathname;
+
+            return (
+                response.request().method() === 'POST' &&
+                /\/roadmaps\/\d+\/approve$/.test(pathname)
+            );
+        });
+
         await approveRoadmap.click();
 
-        await expect(
-            page.getByText('Approved', {
-                exact: true,
-            }),
-        ).toBeVisible();
+        const approvalResponse = await approvalResponsePromise;
+
+        expect(approvalResponse.status()).toBeLessThan(400);
+
+        await expect(page.getByTestId('roadmap-status')).toHaveText(
+            'Approved',
+        );
+
+        await expect(approveRoadmap).toHaveCount(0);
 
         const publishToNotion = page.getByRole('button', {
             name: 'Publish to Notion',

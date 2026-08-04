@@ -18,7 +18,7 @@ export default defineConfig({
     forbidOnly: Boolean(process.env.CI),
 
     /**
-     * Retry transient browser failures in CI but fail immediately locally.
+     * Retry browser failures in CI while preserving diagnostic evidence.
      */
     retries: process.env.CI ? 2 : 0,
 
@@ -30,10 +30,10 @@ export default defineConfig({
     use: {
         /**
          * Allow CI or another environment to override the application URL.
-         *
-         * Laravel Sail currently exposes the application through port 80.
          */
-        baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost',
+        baseURL:
+            process.env.PLAYWRIGHT_BASE_URL ??
+            'http://localhost',
 
         /**
          * Preserve diagnostic evidence for failed or retried tests.
@@ -44,7 +44,13 @@ export default defineConfig({
 
     projects: [
         {
+            name: 'office-auth',
+            testMatch: /office-auth\.setup\.ts/,
+        },
+        {
             name: 'chromium',
+            testIgnore: /office-auth\.setup\.ts/,
+            dependencies: ['office-auth'],
             use: {
                 ...devices['Desktop Chrome'],
             },

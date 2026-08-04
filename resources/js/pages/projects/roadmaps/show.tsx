@@ -100,7 +100,9 @@ export default function RoadmapShow(props: Props) {
                                     <Badge variant="outline">
                                         Revision {roadmap.revision}
                                     </Badge>
-                                    <Badge>{humanize(roadmap.status)}</Badge>
+                                    <Badge data-testid="roadmap-status">
+                                        {humanize(roadmap.status)}
+                                    </Badge>
                                 </>
                             )}
                         </div>

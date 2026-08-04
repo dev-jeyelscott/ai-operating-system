@@ -15,6 +15,13 @@ type NavigationMeasurement = {
     totalEncodedResourceBytes: number;
 };
 
+const officeAuthenticationFile =
+    'playwright/.auth/office.json';
+
+test.use({
+    storageState: officeAuthenticationFile,
+});
+
 /**
  * Prepare the deterministic office fixture through the existing Laravel command.
  */
