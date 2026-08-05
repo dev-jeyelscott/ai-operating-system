@@ -4,6 +4,12 @@ packages:
 # Delay newly published versions before they become eligible for resolution.
 minimumReleaseAge: 1440
 
+# Permit only these explicitly reviewed security patches to bypass the
+# one-day release-age delay.
+minimumReleaseAgeExclude:
+  - 'brace-expansion@1.1.18 || 5.0.9'
+  - 'undici@7.29.0'
+
 # Reject Git, tarball, and other exotic transitive dependency sources.
 blockExoticSubdeps: true
 
@@ -15,6 +21,9 @@ allowBuilds:
 publicHoistPattern:
   - '@inertiajs/core'
 
+# Force vulnerable transitive ranges to their smallest patched releases.
 overrides:
-  'minimatch@10.2.5>brace-expansion': 5.0.9
+  'brace-expansion@<1.1.18': 1.1.18
+  'brace-expansion@>=5.0.0 <5.0.9': 5.0.9
+  'undici@>=7.0.0 <7.29.0': 7.29.0
   sharp: 0.35.3
