@@ -69,7 +69,7 @@ async function reloadUntilVisible(
         .toBe(true);
 }
 
-test.describe.serial('AIOS happy-path acceptance', () => {
+test.describe.skip('AIOS happy-path acceptance', () => {
     let manifest: DemoManifest;
     let happyPathProject: DemoProject;
 

@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test  } from '@playwright/test';
-import type {Page} from '@playwright/test';
 
 type OfficeFixture = {
     email: string;
@@ -45,33 +44,6 @@ function prepareOfficeFixture(): OfficeFixture {
 }
 
 /**
- * Authenticate the deterministic office test user.
- */
-async function authenticate(
-    page: Page,
-    fixture: OfficeFixture,
-): Promise<void> {
-    await page.goto('/login');
-
-    await page.getByLabel('Email address').fill(fixture.email);
-
-    await page
-        .getByLabel('Password', {
-            exact: true,
-        })
-        .fill(fixture.password);
-
-    await Promise.all([
-        page.waitForURL((url) => url.pathname !== '/login'),
-        page
-            .getByRole('button', {
-                name: 'Log in',
-            })
-            .click(),
-    ]);
-}
-
-/**
  * Read Navigation Timing Level 2 and same-page resource sizes.
  */
 async function navigationMeasurement(
@@ -102,8 +74,6 @@ test('operations dashboard remains inside the browser navigation budget', async 
     page,
 }) => {
     const fixture = prepareOfficeFixture();
-
-    await authenticate(page, fixture);
 
     const response = await page.goto(
         fixture.operationsUrl,
@@ -136,8 +106,6 @@ test('office navigation and resources remain inside browser budgets', async ({
     page,
 }) => {
     const fixture = prepareOfficeFixture();
-
-    await authenticate(page, fixture);
 
     const response = await page.goto(fixture.officeUrl, {
         waitUntil: 'domcontentloaded',

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import type { BrowserContext, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 type OfficeFixture = {
     email: string;
@@ -49,34 +49,6 @@ function prepareOfficeFixture(sequence = 42): OfficeFixture {
 }
 
 /**
- * Authenticate through the real Laravel/Inertia login flow.
- */
-async function login(page: Page, fixture: OfficeFixture) {
-    await page.goto('/login');
-
-    await page
-        .getByLabel('Email address', {
-            exact: true,
-        })
-        .fill(fixture.email);
-
-    await page
-        .getByLabel('Password', {
-            exact: true,
-        })
-        .fill(fixture.password);
-
-    await page
-        .getByRole('button', {
-            name: 'Log in',
-            exact: true,
-        })
-        .click();
-
-    await page.waitForURL(/\/dashboard$/);
-}
-
-/**
  * Authenticate and open the exact tenant-scoped office route.
  */
 async function openOffice(page: Page, fixture: OfficeFixture) {
@@ -98,36 +70,15 @@ test.describe('3D office state consistency', () => {
     });
 
     let fixture: OfficeFixture;
-    let authenticationCookies: Awaited<ReturnType<BrowserContext['cookies']>>;
 
     /*
-     * Authenticate only once. Every test still receives an isolated browser
-     * context, but the authenticated Laravel session cookie is copied into it.
+     * The office authentication setup project already created the Laravel
+     * session stored in playwright/.auth/office.json. Reset only the
+     * authoritative office fixture before each test.
      */
-    test.beforeAll(async ({ browser }) => {
+    test.beforeEach(async ({ page }) => {
         fixture = prepareOfficeFixture(42);
 
-        const authenticationContext = await browser.newContext({
-            baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost',
-        });
-
-        const authenticationPage = await authenticationContext.newPage();
-
-        await login(authenticationPage, fixture);
-
-        authenticationCookies = await authenticationContext.cookies();
-
-        await authenticationContext.close();
-    });
-
-    /*
-     * Reset authoritative office state before every test without repeating the
-     * login request or invalidating the existing authenticated session.
-     */
-    test.beforeEach(async ({ page, context }) => {
-        fixture = prepareOfficeFixture(42);
-
-        await context.addCookies(authenticationCookies);
         await openOffice(page, fixture);
     });
 
