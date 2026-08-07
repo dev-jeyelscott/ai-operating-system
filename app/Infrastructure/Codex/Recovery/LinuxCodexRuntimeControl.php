@@ -23,6 +23,8 @@ final readonly class LinuxCodexRuntimeControl implements CodexRuntimeControl
 
     /**
      * Capture one process identity while the owning worker still controls it.
+     *
+     * @phpstan-impure
      */
     public function captureIdentity(
         int $processId,
@@ -47,6 +49,11 @@ final readonly class LinuxCodexRuntimeControl implements CodexRuntimeControl
 
     /**
      * Inspect only the exact recorded process.
+     *
+     * Process state is external to PHP and may change between consecutive
+     * invocations even when the same ProviderSession object is supplied.
+     *
+     * @phpstan-impure
      */
     public function inspect(
         ProviderSession $session,
@@ -98,6 +105,8 @@ final readonly class LinuxCodexRuntimeControl implements CodexRuntimeControl
 
     /**
      * Send SIGTERM and then SIGKILL only after exact identity verification.
+     *
+     * @phpstan-impure
      */
     public function terminate(
         ProviderSession $session,
@@ -122,7 +131,9 @@ final readonly class LinuxCodexRuntimeControl implements CodexRuntimeControl
         }
 
         if (! @posix_kill($processId, 15)) {
-            return $this->inspect($session);
+            return $this->inspect(
+                $session,
+            );
         }
 
         $deadline = hrtime(true)
@@ -164,7 +175,9 @@ final readonly class LinuxCodexRuntimeControl implements CodexRuntimeControl
         }
 
         if (! @posix_kill($processId, 9)) {
-            return $this->inspect($session);
+            return $this->inspect(
+                $session,
+            );
         }
 
         for ($attempt = 0; $attempt < 20; $attempt++) {
@@ -291,7 +304,7 @@ final readonly class LinuxCodexRuntimeControl implements CodexRuntimeControl
     }
 
     /**
-     * Read one bounded local procfs value.
+     * Read one local procfs value.
      */
     private function read(
         string $path,

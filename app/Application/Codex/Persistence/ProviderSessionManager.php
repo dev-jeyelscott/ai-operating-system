@@ -8,12 +8,14 @@ use App\Application\Codex\Data\CodexGatewayInitialization;
 use App\Application\Codex\Data\CodexProcessContext;
 use App\Application\Codex\Data\CodexProcessStatus;
 use App\Domain\Audit\AuditEventType;
+use App\Domain\Codex\CodexCleanupStatus;
 use App\Domain\Codex\ProviderSessionStatus;
 use App\Domain\Executions\ExecutionAttemptStatus;
 use App\Models\ExecutionAttempt;
 use App\Models\ProviderSession;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use LogicException;
 
 /**
@@ -46,8 +48,7 @@ final readonly class ProviderSessionManager
 
         if (
             $attempt->execution_id !== $context->executionId
-            || $attempt->id
-                !== $context->executionAttemptId
+            || $attempt->id !== $context->executionAttemptId
             || $attempt->execution_provider !== 'codex'
         ) {
             throw new LogicException(
@@ -139,46 +140,135 @@ final readonly class ProviderSessionManager
     /**
      * Persist provider and execution-attempt liveness without emitting noisy
      * audit events for every heartbeat.
+     *
+     * Provider-message heartbeats additionally record the timestamp of the last
+     * authenticated local provider message for stale-message diagnostics.
      */
     public function heartbeat(
         ProviderSession $session,
         ?CarbonImmutable $at = null,
+        bool $providerMessage = false,
     ): bool {
         $heartbeatAt = $at ?? CarbonImmutable::now();
 
-        return DB::transaction(function () use (
+        $changed = DB::transaction(function () use (
             $session,
             $heartbeatAt,
+            $providerMessage,
         ): bool {
-            $locked = ProviderSession::query()
+            $lockedSession = ProviderSession::query()
                 ->whereKey($session->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($locked->status->isTerminal()) {
+            if ($lockedSession->status->isTerminal()) {
                 return false;
             }
 
-            $locked->forceFill([
-                'heartbeat_at' => $heartbeatAt,
-            ])->save();
-
             $attempt = ExecutionAttempt::query()
-                ->whereKey($locked->execution_attempt_id)
+                ->whereKey($lockedSession->execution_attempt_id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             if (
                 $attempt->status
-                === ExecutionAttemptStatus::Running
+                !== ExecutionAttemptStatus::Running
             ) {
-                $attempt->forceFill([
-                    'heartbeat_at' => $heartbeatAt,
-                ])->save();
+                return false;
             }
+
+            if (
+                $lockedSession->heartbeat_at !== null
+                && $heartbeatAt->lessThan(
+                    $lockedSession->heartbeat_at,
+                )
+            ) {
+                return false;
+            }
+
+            $sessionAttributes = [
+                'heartbeat_at' => $heartbeatAt,
+            ];
+
+            if ($providerMessage) {
+                $sessionAttributes['last_provider_message_at'] = $heartbeatAt;
+            }
+
+            $lockedSession->forceFill(
+                $sessionAttributes,
+            )->save();
+
+            $attempt->forceFill([
+                'heartbeat_at' => $heartbeatAt,
+            ])->save();
 
             return true;
         });
+
+        if ($changed) {
+            $session->refresh();
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Persist the first recovery-required fact for a provider session.
+     *
+     * This method intentionally does not release a ticket lease, retry an
+     * execution, or infer provider success. Recovery policy owns those later
+     * decisions after liveness and cleanup are conclusive.
+     */
+    public function markRecoveryRequired(
+        ProviderSession $session,
+        string $reason,
+        ?CarbonImmutable $at = null,
+    ): bool {
+        $recoveryAt = $at ?? CarbonImmutable::now();
+
+        $normalizedReason = strtolower(
+            trim($reason),
+        );
+
+        if (
+            preg_match(
+                '/\A[a-z][a-z0-9_.-]{1,119}\z/D',
+                $normalizedReason,
+            ) !== 1
+        ) {
+            throw new InvalidArgumentException(
+                'Codex recovery reason must be a valid machine-readable code.',
+            );
+        }
+
+        $changed = DB::transaction(function () use (
+            $session,
+            $normalizedReason,
+            $recoveryAt,
+        ): bool {
+            $lockedSession = ProviderSession::query()
+                ->whereKey($session->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedSession->recovery_required_at !== null) {
+                return false;
+            }
+
+            $lockedSession->forceFill([
+                'recovery_required_at' => $recoveryAt,
+                'recovery_reason' => $normalizedReason,
+                'cleanup_status' => CodexCleanupStatus::Required->value,
+            ])->save();
+
+            return true;
+        });
+
+        if ($changed) {
+            $session->refresh();
+        }
+
+        return $changed;
     }
 
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Codex\CodexCleanupStatus;
+use App\Domain\Codex\CodexExecutionPhase;
 use App\Domain\Codex\ProviderSessionStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\DateFormat;
@@ -39,6 +41,18 @@ use LogicException;
  * @property ProviderSessionStatus $status
  * @property int $last_provider_sequence
  * @property string|null $last_provider_cursor
+ * @property array<string, int>|null $timeout_policy
+ * @property CodexExecutionPhase|null $lifecycle_phase
+ * @property CarbonImmutable|null $phase_started_at
+ * @property CarbonImmutable|null $phase_deadline_at
+ * @property CarbonImmutable|null $last_provider_message_at
+ * @property string|null $runtime_host_id
+ * @property string|null $runtime_identity_fingerprint
+ * @property string|null $workspace_path
+ * @property string|null $codex_home_path
+ * @property string|null $temporary_path
+ * @property CarbonImmutable|null $recovery_required_at
+ * @property string|null $recovery_reason
  * @property CarbonImmutable|null $process_started_at
  * @property CarbonImmutable|null $initialized_at
  * @property CarbonImmutable|null $heartbeat_at
@@ -46,13 +60,14 @@ use LogicException;
  * @property string|null $terminal_status
  * @property string|null $terminal_code
  * @property CarbonImmutable|null $cancellation_requested_at
- * @property string|null $cleanup_status
+ * @property CodexCleanupStatus|null $cleanup_status
  * @property CarbonImmutable|null $transcript_truncated_at
  * @property-read Organization $organization
  * @property-read Project $project
  * @property-read Execution $execution
  * @property-read ExecutionAttempt $executionAttempt
  * @property-read Collection<int, ProviderEvent> $events
+ * @property-read Collection<int, ProviderSessionCleanup> $cleanups
  */
 #[DateFormat('Y-m-d H:i:s.u')]
 #[Fillable([
@@ -74,6 +89,18 @@ use LogicException;
     'status',
     'last_provider_sequence',
     'last_provider_cursor',
+    'timeout_policy',
+    'lifecycle_phase',
+    'phase_started_at',
+    'phase_deadline_at',
+    'last_provider_message_at',
+    'runtime_host_id',
+    'runtime_identity_fingerprint',
+    'workspace_path',
+    'codex_home_path',
+    'temporary_path',
+    'recovery_required_at',
+    'recovery_reason',
     'process_started_at',
     'initialized_at',
     'heartbeat_at',
@@ -83,7 +110,6 @@ use LogicException;
     'cancellation_requested_at',
     'cleanup_status',
     'transcript_truncated_at',
-
 ])]
 final class ProviderSession extends Model
 {
@@ -187,7 +213,19 @@ final class ProviderSession extends Model
     }
 
     /**
-     * Cast persisted lifecycle values to stable types.
+     * Return idempotent cleanup records for this provider session.
+     *
+     * @return HasMany<ProviderSessionCleanup, $this>
+     */
+    public function cleanups(): HasMany
+    {
+        return $this->hasMany(
+            ProviderSessionCleanup::class,
+        );
+    }
+
+    /**
+     * Cast persisted lifecycle values to stable application types.
      *
      * @return array<string, string>
      */
@@ -197,11 +235,21 @@ final class ProviderSession extends Model
             'runtime_process_id' => 'integer',
             'status' => ProviderSessionStatus::class,
             'last_provider_sequence' => 'integer',
+            'timeout_policy' => 'array',
+            'lifecycle_phase' => CodexExecutionPhase::class,
+            'phase_started_at' => 'immutable_datetime',
+            'phase_deadline_at' => 'immutable_datetime',
+            'last_provider_message_at' => 'immutable_datetime',
+            'workspace_path' => 'encrypted',
+            'codex_home_path' => 'encrypted',
+            'temporary_path' => 'encrypted',
+            'recovery_required_at' => 'immutable_datetime',
             'process_started_at' => 'immutable_datetime',
             'initialized_at' => 'immutable_datetime',
             'heartbeat_at' => 'immutable_datetime',
             'terminal_at' => 'immutable_datetime',
             'cancellation_requested_at' => 'immutable_datetime',
+            'cleanup_status' => CodexCleanupStatus::class,
             'transcript_truncated_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
             'updated_at' => 'immutable_datetime',

@@ -15,6 +15,10 @@ interface CodexRuntimeControl
 {
     /**
      * Capture immutable identity for one currently running local process.
+     *
+     * The result depends on mutable operating-system process state.
+     *
+     * @phpstan-impure
      */
     public function captureIdentity(
         int $processId,
@@ -22,6 +26,11 @@ interface CodexRuntimeControl
 
     /**
      * Determine whether the exact recorded process is still running.
+     *
+     * The result depends on mutable operating-system process state and can
+     * legitimately change between consecutive calls.
+     *
+     * @phpstan-impure
      */
     public function inspect(
         ProviderSession $session,
@@ -29,6 +38,8 @@ interface CodexRuntimeControl
 
     /**
      * Terminate only the exact recorded process after identity verification.
+     *
+     * @phpstan-impure
      */
     public function terminate(
         ProviderSession $session,
