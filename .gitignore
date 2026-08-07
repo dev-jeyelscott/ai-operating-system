@@ -45,6 +45,7 @@ Thumbs.db
 
 # Playwright artifacts and reports
 /playwright-report
+/playwright
 /test-results
 /blob-report
 
