@@ -70,14 +70,30 @@
         "containers:check": [
             "bash bin/check-container-images"
         ],
+        "office-assets:check": [
+            "bash bin/check-office-assets"
+        ],
+        "supply-chain:check": [
+            "Composer\\Config::disableProcessTimeout",
+            "composer validate --strict",
+            "composer audit --locked --abandoned=fail --no-interaction",
+            "bash bin/check-frontend-dependency-audit",
+            "pnpm audit signatures"
+        ],
+        "security:sign-off": [
+            "@php artisan security:sign-off --manifest=docs/security/security-review.json"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
             "@containers:check",
+            "@office-assets:check",
+            "@supply-chain:check",
             "@lint:check",
             "@types:check",
             "@php artisan test",
-            "pnpm run quality"
+            "pnpm run quality",
+            "@security:sign-off"
         ],
         "types:check": [
             "phpstan analyse"
@@ -89,7 +105,7 @@
             "@php artisan test"
         ],
         "post-autoload-dump": [
-            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "Illuminate\\Foundation\\ComposerScripts::post-autoload-dump",
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
@@ -105,7 +121,7 @@
             "@php artisan migrate --graceful --ansi"
         ],
         "pre-package-uninstall": [
-            "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+            "Illuminate\\Foundation\\ComposerScripts::pre-package-uninstall"
         ]
     },
     "extra": {

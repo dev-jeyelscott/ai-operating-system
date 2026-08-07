@@ -22,7 +22,7 @@ final readonly class EloquentAuditEventRepository implements AuditEventRepositor
     ) {}
 
     /**
-     * Append one immutable audit event.
+     * Append one immutable and centrally redacted audit event.
      */
     public function append(AuditEventData $event): void
     {
@@ -36,6 +36,10 @@ final readonly class EloquentAuditEventRepository implements AuditEventRepositor
             'subject_type' => $event->subjectType,
             'subject_id' => $event->subjectId,
             'correlation_id' => $event->correlationId,
+            'causation_id' => $event->causationId,
+            'execution_id' => $event->executionId,
+            'schema_version' => $event->schemaVersion,
+            'deduplication_key' => $event->deduplicationKey,
             'metadata' => $this->redactor->redact($event->metadata),
             'occurred_at' => $event->occurredAt,
         ]);

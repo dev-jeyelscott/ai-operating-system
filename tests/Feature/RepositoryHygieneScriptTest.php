@@ -310,6 +310,20 @@ TOML,
         );
     }
 
+    public function test_zero_byte_tracked_markdown_file_fails_with_actionable_path(): void
+    {
+        $this->writeFile('docs/local-demo.md', '');
+        $this->runCommand(['git', 'add', 'docs/local-demo.md']);
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString(
+            'docs/local-demo.md',
+            $process->getErrorOutput(),
+        );
+    }
+
     public function test_each_approved_evidence_placeholder_pattern_fails(): void
     {
         $placeholders = [
@@ -318,6 +332,7 @@ TOML,
             'Merged pull requests: <number>',
             'Release scope: <scope>',
             'Verification state: TBD',
+            'Release decision: Pending',
         ];
 
         foreach ($placeholders as $placeholder) {
@@ -338,6 +353,76 @@ TOML,
                 $process->getErrorOutput(),
             );
         }
+    }
+
+    public function test_actual_reviewer_name_placeholder_fails(): void
+    {
+        $this->writeFile(
+            'docs/evidence/security.md',
+            "# Security evidence\n\nReviewer: Actual Security Reviewer Name\n",
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString(
+            'docs/evidence/security.md:3:',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_unclosed_release_evidence_code_fence_fails(): void
+    {
+        $this->writeFile(
+            'docs/releases/v0.1.0-rc.1.md',
+            "# Release\n\n```bash\nphp artisan test\n",
+        );
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString(
+            'docs/releases/v0.1.0-rc.1.md',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_invalid_tracked_bash_script_fails(): void
+    {
+        $this->writeFile(
+            'bin/invalid-script',
+            "#!/usr/bin/env bash\nif then\n",
+        );
+        $this->runCommand(['git', 'add', 'bin/invalid-script']);
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString(
+            'bin/invalid-script',
+            $process->getErrorOutput(),
+        );
+    }
+
+    public function test_malformed_bash_parameter_expansion_fails(): void
+    {
+        $this->writeFile(
+            'bin/malformed-parameter-expansion',
+            "#!/usr/bin/env bash\nvalue=\"\${\nVALUE:-fallback\n}\"\n",
+        );
+        $this->runCommand([
+            'git',
+            'add',
+            'bin/malformed-parameter-expansion',
+        ]);
+
+        $process = $this->runHygieneCheck();
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString(
+            'bin/malformed-parameter-expansion',
+            $process->getErrorOutput(),
+        );
     }
 
     public function test_mutable_github_action_reference_fails_with_actionable_path(): void

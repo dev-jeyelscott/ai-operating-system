@@ -6,6 +6,7 @@ namespace App\Http\Middleware;
 
 use App\Application\Identity\Data\OrganizationData;
 use App\Application\Identity\ResolveOrganizationContext;
+use App\Application\Notifications\ListUserNotifications;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -24,10 +25,11 @@ final class HandleInertiaRequests extends Middleware
     protected $rootView = 'app';
 
     /**
-     * Inject the organization-context resolver.
+     * Inject organization and notification read-model services.
      */
     public function __construct(
         private readonly ResolveOrganizationContext $resolveOrganizationContext,
+        private readonly ListUserNotifications $listUserNotifications,
     ) {}
 
     /**
@@ -45,17 +47,54 @@ final class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $status = $request->session()->get('status');
+
+        /*
+         * Resolve this once. Repeating organization resolution inside multiple
+         * shared props would duplicate queries and session writes.
+         */
+        $organizationContext = $this->organizationContext($request);
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
             ],
-            'organizationContext' => $this->organizationContext(
+            'organizationContext' => $organizationContext,
+
+            /*
+             * The closure allows Inertia partial reloads to request only the
+             * notification inbox during polling.
+             */
+            'notifications' => function () use (
                 $request,
-            ),
+                $organizationContext,
+            ): array {
+                $user = $request->user();
+                $currentOrganization = $organizationContext['current'];
+
+                if (
+                    ! $user instanceof User
+                    || $currentOrganization === null
+                ) {
+                    return [
+                        'unreadCount' => 0,
+                        'items' => [],
+                    ];
+                }
+
+                return $this->listUserNotifications->handle(
+                    organizationId: $currentOrganization['id'],
+                    recipientUserId: $user->id,
+                );
+            },
+
             'sidebarOpen' => ! $request->hasCookie('sidebar_state')
                 || $request->cookie('sidebar_state') === 'true',
+            'flash' => [
+                'status' => is_string($status) ? $status : null,
+            ],
         ];
     }
 
@@ -89,12 +128,12 @@ final class HandleInertiaRequests extends Middleware
 
         $preferredOrganizationId =
             $routeOrganization instanceof Organization
-                ? $routeOrganization->id
-                : (
-                    is_int($sessionOrganizationId)
-                        ? $sessionOrganizationId
-                        : null
-                );
+            ? $routeOrganization->id
+            : (
+                is_int($sessionOrganizationId)
+                ? $sessionOrganizationId
+                : null
+            );
 
         $context = $this->resolveOrganizationContext->handle(
             userId: $user->id,

@@ -35,6 +35,9 @@ final class ProjectPermissionMatrix
                 true,
             ),
 
+            ProjectPermission::Approve,
+            ProjectPermission::Start,
+            ProjectPermission::ManageIntegrations,
             ProjectPermission::Archive,
             ProjectPermission::Restore => in_array(
                 $role,

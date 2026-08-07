@@ -10,7 +10,7 @@ use App\Domain\Audit\AuditSubjectType;
 use Carbon\CarbonImmutable;
 
 /**
- * Immutable application payload representing one audit event to append.
+ * Immutable application payload representing one authoritative audit event.
  */
 final readonly class AuditEventData
 {
@@ -29,6 +29,10 @@ final readonly class AuditEventData
         public AuditSubjectType $subjectType,
         public string $subjectId,
         public ?string $correlationId,
+        public ?string $causationId,
+        public ?string $executionId,
+        public int $schemaVersion,
+        public ?string $deduplicationKey,
         public array $metadata,
         public CarbonImmutable $occurredAt,
     ) {}

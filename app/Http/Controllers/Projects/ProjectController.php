@@ -141,8 +141,37 @@ final class ProjectController extends Controller
         return Inertia::render('projects/show', [
             'organization' => $this->serializeOrganization($organization),
             'project' => $this->serializeProject($project),
+            'documentsUrl' => route(
+                'organizations.projects.documents.index',
+                [
+                    'organization' => $organization,
+                    'project' => $project,
+                ],
+            ),
+            'setupUrl' => route('organizations.projects.setup.start', [
+                'organization' => $organization,
+                'project' => $project,
+            ]),
+            'configurationUrls' => [
+                'settings' => route(
+                    'organizations.projects.settings.show',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+                'integrations' => route(
+                    'organizations.projects.integrations.index',
+                    [
+                        'organization' => $organization,
+                        'project' => $project,
+                    ],
+                ),
+            ],
             'permissions' => [
                 'update' => $user->can('update', $project),
+                'start' => $user->can('start', $project)
+                    && $project->status->value === 'ready_for_planning',
                 'archive' => $user->can('archive', $project),
                 'restore' => $user->can('restore', $project),
             ],

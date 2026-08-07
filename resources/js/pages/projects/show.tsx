@@ -1,5 +1,25 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Archive, ArrowLeft, Pencil, RotateCcw } from 'lucide-react';
+import {
+    Activity,
+    Archive,
+    ArrowLeft,
+    ClipboardCheck,
+    FileText,
+    Inbox,
+    ListTodo,
+    Map,
+    Pencil,
+    Plug,
+    RotateCcw,
+    Settings2,
+    SlidersHorizontal,
+} from 'lucide-react';
+import ProjectApprovalInboxController from '@/actions/App/Http/Controllers/Approvals/ProjectApprovalInboxController';
+import DevelopmentQueueController from '@/actions/App/Http/Controllers/Development/DevelopmentQueueController';
+import ProjectOperationsDashboardController from '@/actions/App/Http/Controllers/Operations/ProjectOperationsDashboardController';
+import { index as roadmapIndex } from '@/actions/App/Http/Controllers/Planning/RoadmapController';
+import StartProjectController from '@/actions/App/Http/Controllers/Projects/StartProjectController';
+import QualityAssuranceReportController from '@/actions/App/Http/Controllers/QualityAssurance/QualityAssuranceReportController';
 import { Button } from '@/components/ui/button';
 import {
     archive as archiveProject,
@@ -17,6 +37,12 @@ type Props = {
     organization: OrganizationSummary;
     project: ProjectSummary;
     permissions: ProjectPermissions;
+    documentsUrl: string;
+    setupUrl: string;
+    configurationUrls: {
+        settings: string;
+        integrations: string;
+    };
 };
 
 /**
@@ -26,6 +52,9 @@ export default function ShowProject({
     organization,
     project,
     permissions,
+    documentsUrl,
+    setupUrl,
+    configurationUrls,
 }: Props) {
     const isArchived = project.archivedAt !== null;
 
@@ -69,6 +98,123 @@ export default function ShowProject({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        <Button asChild>
+                            <Link
+                                href={ProjectOperationsDashboardController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <Activity aria-hidden="true" />
+                                Operational dashboard
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link
+                                href={ProjectApprovalInboxController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <Inbox aria-hidden="true" />
+                                Approval inbox
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link
+                                href={DevelopmentQueueController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <ListTodo aria-hidden="true" />
+                                Development queue
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link
+                                href={QualityAssuranceReportController({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <ClipboardCheck aria-hidden="true" />
+                                QA report
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link
+                                href={roadmapIndex({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                <Map aria-hidden="true" />
+                                Roadmap
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link href={documentsUrl}>
+                                <FileText aria-hidden="true" />
+                                Documents
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link href={configurationUrls.settings}>
+                                <SlidersHorizontal aria-hidden="true" />
+                                Settings
+                            </Link>
+                        </Button>
+
+                        <Button asChild variant="outline">
+                            <Link href={configurationUrls.integrations}>
+                                <Plug aria-hidden="true" />
+                                Integrations
+                            </Link>
+                        </Button>
+
+                        {permissions.update && !isArchived && (
+                            <Button asChild>
+                                <Link href={setupUrl}>
+                                    <Settings2 aria-hidden="true" />
+                                    Configure project
+                                </Link>
+                            </Button>
+                        )}
+
+                        {permissions.start && !isArchived && (
+                            <Form
+                                {...StartProjectController.form({
+                                    organization: organization.slug,
+                                    project: project.slug,
+                                })}
+                            >
+                                {({ processing }) => (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="idempotency_key"
+                                            value={`start-project:${project.id}:${crypto.randomUUID()}`}
+                                        />
+                                        <Button
+                                            type="submit"
+                                            disabled={processing}
+                                        >
+                                            {processing
+                                                ? 'Starting project...'
+                                                : 'Start this Project'}
+                                        </Button>
+                                    </>
+                                )}
+                            </Form>
+                        )}
+
                         {permissions.update && (
                             <Button asChild variant="outline">
                                 <Link

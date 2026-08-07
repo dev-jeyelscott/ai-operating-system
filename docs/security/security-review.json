@@ -1,0 +1,121 @@
+{
+    "schema_version": 1,
+    "ticket_id": "AIOS-150",
+    "reviewed_at": "2026-08-03T15:12:05+08:00",
+    "reviewed_commit": "94c0694d776db1a3660154bccd1b7f6404746eed",
+    "decision": "approved",
+    "reviewers": [
+        {
+            "role": "security_reviewer",
+            "name": "John Leward Escote"
+        },
+        {
+            "role": "product_owner",
+            "name": "John Leward Escote"
+        }
+    ],
+    "sign_off_evidence": "docs/evidence/aios-150-security-sign-off.md",
+    "dependencies": [
+        {
+            "ticket_id": "AIOS-010",
+            "status": "passed",
+            "evidence": [
+                "docs/security/threat-model.md",
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-137",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-138",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-139",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-140",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-141",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-142",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-143",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-144",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-145",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-146",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-147",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-148",
+            "status": "passed",
+            "evidence": [
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        },
+        {
+            "ticket_id": "AIOS-149",
+            "status": "passed",
+            "evidence": [
+                "docs/accessibility/aios-149-accessibility-audit.md",
+                "docs/evidence/aios-150-security-sign-off.md"
+            ]
+        }
+    ],
+    "findings": []
+}

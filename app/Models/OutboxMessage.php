@@ -1,0 +1,118 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * Stores one immutable domain-event envelope awaiting asynchronous delivery.
+ *
+ * Event identity and envelope fields are immutable after insertion. Dispatcher
+ * and recovery fields may change only while reserving, publishing, failing, or
+ * manually replaying a message.
+ *
+ * @property int $sequence
+ * @property string $event_id
+ * @property string $event_name
+ * @property string $aggregate_type
+ * @property string $aggregate_id
+ * @property int $organization_id
+ * @property int|null $project_id
+ * @property CarbonImmutable $occurred_at
+ * @property string $correlation_id
+ * @property string|null $causation_id
+ * @property string|null $execution_id
+ * @property int $schema_version
+ * @property array<string, mixed> $envelope
+ * @property CarbonImmutable|null $published_at
+ * @property CarbonImmutable $available_at
+ * @property CarbonImmutable|null $reserved_until
+ * @property string|null $reservation_token
+ * @property int $dispatch_attempts
+ * @property string|null $last_error
+ * @property CarbonImmutable|null $dead_lettered_at
+ * @property int $replay_count
+ * @property CarbonImmutable|null $last_replayed_at
+ * @property CarbonImmutable $created_at
+ */
+final class OutboxMessage extends Model
+{
+    /**
+     * Outbox ordering uses the database-generated monotonic sequence.
+     */
+    protected $primaryKey = 'sequence';
+
+    /**
+     * The outbox sequence is an auto-incrementing integer.
+     */
+    public $incrementing = true;
+
+    /**
+     * The primary key is represented as an integer.
+     */
+    protected $keyType = 'int';
+
+    /**
+     * The table stores created_at but intentionally has no updated_at column.
+     */
+    public $timestamps = false;
+
+    /**
+     * Attributes allowed during event persistence, dispatch, and recovery.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [
+        'event_id',
+        'event_name',
+        'aggregate_type',
+        'aggregate_id',
+        'organization_id',
+        'project_id',
+        'occurred_at',
+        'correlation_id',
+        'causation_id',
+        'execution_id',
+        'schema_version',
+        'envelope',
+        'published_at',
+        'available_at',
+        'reserved_until',
+        'reservation_token',
+        'dispatch_attempts',
+        'last_error',
+        'dead_lettered_at',
+        'replay_count',
+        'last_replayed_at',
+        'created_at',
+    ];
+
+    /**
+     * Define strict persistence casts for event, dispatcher, and recovery
+     * metadata.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'sequence' => 'integer',
+            'organization_id' => 'integer',
+            'project_id' => 'integer',
+            'schema_version' => 'integer',
+            'dispatch_attempts' => 'integer',
+            'replay_count' => 'integer',
+            'envelope' => 'array',
+            'occurred_at' => 'immutable_datetime',
+            'published_at' => 'immutable_datetime',
+            'available_at' => 'immutable_datetime',
+            'reserved_until' => 'immutable_datetime',
+            'dead_lettered_at' => 'immutable_datetime',
+            'last_replayed_at' => 'immutable_datetime',
+            'created_at' => 'immutable_datetime',
+        ];
+    }
+}

@@ -7,9 +7,7 @@ export default defineConfig({
 
     resolve: {
         alias: {
-            '@': fileURLToPath(
-                new URL('./resources/js', import.meta.url),
-            ),
+            '@': fileURLToPath(new URL('./resources/js', import.meta.url)),
         },
     },
 
@@ -20,9 +18,7 @@ export default defineConfig({
          * Playwright specifications live under tests/e2e and must only be
          * collected by the Playwright test runner.
          */
-        include: [
-            'resources/js/**/*.{test,spec}.{ts,tsx}',
-        ],
+        include: ['resources/js/**/*.{test,spec}.{ts,tsx}'],
 
         /**
          * Provide a browser-like DOM environment for React component tests.
@@ -48,5 +44,11 @@ export default defineConfig({
          * Restore mocks after each test to prevent cross-test contamination.
          */
         restoreMocks: true,
+
+        /**
+         * Limit concurrent jsdom workers to prevent CPU and memory contention
+         * in Docker, WSL, and constrained CI runners.
+         */
+        maxWorkers: 2,
     },
 });

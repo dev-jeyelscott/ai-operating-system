@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
+# Production dependencies must contain no unresolved high or critical advisories.
+pnpm audit \
+    --prod \
+    --audit-level=high
+
+# Development dependencies must contain no unresolved high or critical advisories.
+pnpm audit \
+    --dev \
+    --audit-level=high
+
+printf 'Frontend dependency audits passed without exceptions.\n'

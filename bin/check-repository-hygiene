@@ -32,15 +32,21 @@ readonly -a MACHINE_SPECIFIC_AGENT_PATTERNS=(
 )
 
 readonly EVIDENCE_DIRECTORY="docs/evidence"
+readonly RELEASE_DIRECTORY="docs/releases"
+readonly SECURITY_DIRECTORY="docs/security"
 readonly WORKFLOW_DIRECTORY=".github/workflows"
 
-readonly EVIDENCE_PLACEHOLDER_PATTERN='Add the .* here|Document any .* here|<number>|<scope>|(^|[^[:alnum:]_])TBD([^[:alnum:]_]|$)'
+readonly EVIDENCE_PLACEHOLDER_PATTERN='Add the .* here|Document any .* here|<number>|<scope>|Actual .* Name|INSERT NAME|REPLACE ME|(^|[^[:alnum:]_])(TODO|TBD|Pending)([^[:alnum:]_]|$)'
 
 failure_count=0
 
 declare -a tracked_backup_files=()
 declare -a empty_required_files=()
+declare -a empty_markdown_files=()
 declare -a unresolved_evidence_placeholders=()
+declare -a invalid_bash_scripts=()
+declare -a malformed_bash_parameter_expansions=()
+declare -a unclosed_markdown_fences=()
 declare -a mutable_workflow_actions=()
 declare -a machine_specific_agent_configuration=()
 
@@ -110,11 +116,36 @@ check_empty_required_files() {
     fi
 }
 
+# Reject empty tracked Markdown files. Documentation is release evidence and a
+# tracked empty file is never a useful placeholder.
+check_empty_markdown_files() {
+    local path
+
+    while IFS= read -r -d '' path; do
+        if [[ ! -s "$path" ]]; then
+            empty_markdown_files+=("$path")
+        fi
+    done < <(git ls-files -z '*.md')
+
+    if (( ${#empty_markdown_files[@]} > 0 )); then
+        report_failures \
+            'zero-byte tracked Markdown files were found:' \
+            "${empty_markdown_files[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
 # Detect known instructional placeholders in release-evidence Markdown files.
 check_unresolved_evidence_placeholders() {
     local match
+    local -a directories=()
 
-    [[ -d "$EVIDENCE_DIRECTORY" ]] || return
+    [[ -d "$EVIDENCE_DIRECTORY" ]] && directories+=("$EVIDENCE_DIRECTORY")
+    [[ -d "$RELEASE_DIRECTORY" ]] && directories+=("$RELEASE_DIRECTORY")
+    [[ -d "$SECURITY_DIRECTORY" ]] && directories+=("$SECURITY_DIRECTORY")
+
+    (( ${#directories[@]} > 0 )) || return
 
     while IFS= read -r match; do
         unresolved_evidence_placeholders+=("$match")
@@ -127,7 +158,7 @@ check_unresolved_evidence_placeholders() {
                 --include='*.md' \
                 --extended-regexp \
                 -- "$EVIDENCE_PLACEHOLDER_PATTERN" \
-                "$EVIDENCE_DIRECTORY" \
+                "${directories[@]}" \
                 || true
         } | sort
     )
@@ -136,6 +167,80 @@ check_unresolved_evidence_placeholders() {
         report_failures \
             'unresolved release-evidence placeholders were found:' \
             "${unresolved_evidence_placeholders[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Parse every tracked Bash entry point before CI executes it.
+check_bash_syntax() {
+    local path
+    local first_line
+
+    while IFS= read -r -d '' path; do
+        first_line=''
+        IFS= read -r first_line < "$path" || true
+
+        if [[ "$first_line" != '#!/usr/bin/env bash' ]]; then
+            continue
+        fi
+
+        if ! bash -n "$path"; then
+            invalid_bash_scripts+=("$path")
+        fi
+    done < <(git ls-files -z 'bin/*')
+
+    if (( ${#invalid_bash_scripts[@]} > 0 )); then
+        report_failures \
+            'tracked Bash scripts with invalid syntax were found:' \
+            "${invalid_bash_scripts[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Bash accepts a newline after `${` as a command substitution, which is almost
+# always a typo in a parameter expansion and fails only at runtime.
+check_malformed_bash_parameter_expansions() {
+    local path
+
+    while IFS= read -r -d '' path; do
+        if grep --line-number --extended-regexp '\$\{[[:space:]]*$' "$path" \
+            >/dev/null; then
+            malformed_bash_parameter_expansions+=("$path")
+        fi
+    done < <(git ls-files -z 'bin/*')
+
+    if (( ${#malformed_bash_parameter_expansions[@]} > 0 )); then
+        report_failures \
+            'tracked Bash scripts with malformed parameter expansions were found:' \
+            "${malformed_bash_parameter_expansions[@]}"
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Release evidence must render correctly in code-review and GitHub release UI.
+check_unclosed_markdown_fences() {
+    local path
+
+    for path in "$EVIDENCE_DIRECTORY" "$RELEASE_DIRECTORY"; do
+        [[ -d "$path" ]] || continue
+
+        while IFS= read -r -d '' markdown; do
+            if ! awk '
+                /^```/ { fences += 1 }
+                END { exit fences % 2 }
+            ' "$markdown"; then
+                unclosed_markdown_fences+=("$markdown")
+            fi
+        done < <(find "$path" -type f -name '*.md' -print0 | sort -z)
+    done
+
+    if (( ${#unclosed_markdown_fences[@]} > 0 )); then
+        report_failures \
+            'Markdown files with unclosed code fences were found:' \
+            "${unclosed_markdown_fences[@]}"
 
         failure_count=$((failure_count + 1))
     fi
@@ -236,7 +341,11 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 
 check_tracked_backup_files
 check_empty_required_files
+check_empty_markdown_files
 check_unresolved_evidence_placeholders
+check_bash_syntax
+check_malformed_bash_parameter_expansions
+check_unclosed_markdown_fences
 check_mutable_workflow_actions
 check_machine_specific_agent_configuration
 

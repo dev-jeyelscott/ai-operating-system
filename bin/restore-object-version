@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# shellcheck source=bin/lib/operations.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/operations.sh"
+
+bucket=''
+object_key=''
+version_id=''
+
+# Display command usage.
+usage() {
+    cat <<'TEXT'
+Usage:
+  bin/restore-object-version \
+      --bucket bucket-name \
+      --key path/to/object \
+      --version-id previous-version-id
+
+Pass the object key and version ID exactly as returned by S3. Do not
+pre-encode them. The command constructs the required URL-encoded CopySource.
+
+Required runtime:
+  aws
+  jq
+
+Required permissions:
+  s3:GetBucketVersioning
+  s3:GetObjectVersion
+  s3:GetObject
+  s3:PutObject
+
+Optional environment variables:
+  AWS_ENDPOINT_URL
+  OBJECT_RESTORE_EVIDENCE_ROOT
+TEXT
+}
+
+while (( $# > 0 )); do
+    case "$1" in
+        --bucket)
+            bucket="${2:-}"
+            shift 2
+            ;;
+        --key)
+            object_key="${2:-}"
+            shift 2
+            ;;
+        --version-id)
+            version_id="${2:-}"
+            shift 2
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "Unknown object restore argument: ${1}"
+            ;;
+    esac
+done
+
+[[ -n "$bucket" ]] || {
+    fail 'The --bucket argument is required.'
+}
+
+[[ -n "$object_key" ]] || {
+    fail 'The --key argument is required.'
+}
+
+[[ -n "$version_id" ]] || {
+    fail 'The --version-id argument is required.'
+}
+
+require_command aws
+require_command jq
+
+readonly versioning_status="$(
+    aws_cli s3api get-bucket-versioning \
+        --bucket "$bucket" \
+        --query Status \
+        --output text
+)"
+
+[[ "$versioning_status" == 'Enabled' ]] || {
+    fail "S3 versioning is not enabled for bucket: ${bucket}"
+}
+
+readonly temporary_directory="$(mktemp -d)"
+
+# Remove downloaded verification objects after completion.
+cleanup_temporary_files() {
+    rm -rf "$temporary_directory"
+}
+
+trap cleanup_temporary_files EXIT
+
+readonly previous_object="${temporary_directory}/previous-object"
+readonly restored_object="${temporary_directory}/restored-object"
+readonly copy_result="${temporary_directory}/copy-result.json"
+
+# Download the selected historical version before changing the current object.
+aws_cli s3api get-object \
+    --bucket "$bucket" \
+    --key "$object_key" \
+    --version-id "$version_id" \
+    "$previous_object" \
+    > /dev/null
+
+readonly previous_sha256="$(sha256_file "$previous_object")"
+
+# Build the URL-encoded source header value required by S3 CopyObject.
+readonly copy_source="$(
+    build_versioned_s3_copy_source \
+        "$bucket" \
+        "$object_key" \
+        "$version_id"
+)"
+
+# Copy the selected historical version into the same key. Versioning causes
+# this operation to create a new current version instead of deleting history.
+aws_cli s3api copy-object \
+    --bucket "$bucket" \
+    --key "$object_key" \
+    --copy-source "$copy_source" \
+    > "$copy_result"
+
+readonly copy_source_version_id="$(
+    jq -r '.CopySourceVersionId // empty' "$copy_result"
+)"
+
+readonly restored_version_id="$(
+    jq -r '.VersionId // empty' "$copy_result"
+)"
+
+# AWS S3 returns the source version ID. Some S3-compatible implementations may
+# omit it, but when present it must match the operator-selected version.
+if [[ -n "$copy_source_version_id" ]] \
+    && [[ "$copy_source_version_id" != "$version_id" ]]; then
+    fail 'S3 copied a source version different from the requested version.'
+fi
+
+# Download the new current object for content verification.
+aws_cli s3api get-object \
+    --bucket "$bucket" \
+    --key "$object_key" \
+    "$restored_object" \
+    > /dev/null
+
+readonly restored_sha256="$(sha256_file "$restored_object")"
+
+[[ "$previous_sha256" == "$restored_sha256" ]] || {
+    fail 'Restored object does not match the selected previous version.'
+}
+
+readonly restore_id="$(
+    printf '%s-%s\n' "$(utc_operation_id)" "$$"
+)"
+
+readonly evidence_root="${OBJECT_RESTORE_EVIDENCE_ROOT:-${PROJECT_ROOT}/storage/app/operations/object-restores}"
+readonly evidence_directory="${evidence_root}/${restore_id}"
+
+mkdir -p "$evidence_directory"
+chmod 0700 "$evidence_root" "$evidence_directory"
+
+# Persist privacy-safe, machine-readable recovery evidence.
+jq -n \
+    --arg restore_id "$restore_id" \
+    --arg restored_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --arg bucket "$bucket" \
+    --arg object_key "$object_key" \
+    --arg source_version_id "$version_id" \
+    --arg copy_source_version_id "$copy_source_version_id" \
+    --arg restored_version_id "$restored_version_id" \
+    --arg sha256 "$restored_sha256" \
+    '{
+        format_version: 1,
+        restore_id: $restore_id,
+        restored_at: $restored_at,
+        bucket: $bucket,
+        object_key: $object_key,
+        source_version_id: $source_version_id,
+        copy_source_version_id: (
+            if $copy_source_version_id == ""
+            then null
+            else $copy_source_version_id
+            end
+        ),
+        restored_version_id: (
+            if $restored_version_id == ""
+            then null
+            else $restored_version_id
+            end
+        ),
+        restored_sha256: $sha256,
+        result: "passed"
+    }' \
+    > "${evidence_directory}/manifest.json"
+
+cp "$copy_result" "${evidence_directory}/copy-result.json"
+
+chmod 0600 \
+    "${evidence_directory}/manifest.json" \
+    "${evidence_directory}/copy-result.json"
+
+log "Object version restored successfully: s3://${bucket}/${object_key}"
+
+printf '%s\n' "$evidence_directory"

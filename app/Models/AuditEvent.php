@@ -27,6 +27,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property array<string, mixed> $metadata
  * @property CarbonImmutable $occurred_at
  * @property CarbonImmutable $created_at
+ * @property string|null $causation_id
+ * @property string|null $execution_id
+ * @property int $schema_version
+ * @property string|null $deduplication_key
  */
 #[Fillable([
     'event_id',
@@ -40,6 +44,10 @@ use Illuminate\Database\Eloquent\Model;
     'correlation_id',
     'metadata',
     'occurred_at',
+    'causation_id',
+    'execution_id',
+    'schema_version',
+    'deduplication_key',
 ])]
 final class AuditEvent extends Model
 {
@@ -64,6 +72,7 @@ final class AuditEvent extends Model
             'actor_type' => AuditActorType::class,
             'event_type' => AuditEventType::class,
             'subject_type' => AuditSubjectType::class,
+            'schema_version' => 'integer',
             'metadata' => 'array',
             'occurred_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',

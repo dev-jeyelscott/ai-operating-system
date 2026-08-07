@@ -49,6 +49,44 @@ final readonly class ProjectPolicy
     }
 
     /**
+     * Allow only owners and administrators to make approval decisions.
+     */
+    public function approve(User $user, Project $project): Response
+    {
+        return $this->authorizePermission(
+            user: $user,
+            project: $project,
+            permission: ProjectPermission::Approve,
+        );
+    }
+
+    /**
+     * Allow only owners and administrators to start project delivery.
+     */
+    public function start(User $user, Project $project): Response
+    {
+        return $this->authorizePermission(
+            user: $user,
+            project: $project,
+            permission: ProjectPermission::Start,
+        );
+    }
+
+    /**
+     * Allow only owners and administrators to manage integration credentials.
+     */
+    public function manageIntegrations(
+        User $user,
+        Project $project,
+    ): Response {
+        return $this->authorizePermission(
+            user: $user,
+            project: $project,
+            permission: ProjectPermission::ManageIntegrations,
+        );
+    }
+
+    /**
      * Allow owners and administrators to archive projects.
      */
     public function archive(User $user, Project $project): Response

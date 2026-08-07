@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# shellcheck source=bin/lib/operations.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/operations.sh"
+
+# Display command usage.
+usage() {
+    cat <<'TEXT'
+Usage:
+  bin/dr-rehearsal
+
+The rehearsal:
+  1. Creates an isolated PostgreSQL fixture database.
+  2. Creates and validates a custom-format backup.
+  3. Restores it into another isolated database.
+  4. Creates two versions of an S3-compatible object.
+  5. Restores the first version as the new current version.
+  6. Writes evidence under storage/app/operations/dr-rehearsals.
+  7. Removes all temporary databases and object-storage fixtures.
+TEXT
+}
+
+if [[ "${1:-}" == '--help' ]]; then
+    usage
+    exit 0
+fi
+
+require_command aws
+require_command jq
+
+export PGHOST="${PGHOST:-127.0.0.1}"
+export PGPORT="${PGPORT:-5432}"
+export PGUSER="${PGUSER:-sail}"
+export PGPASSWORD="${PGPASSWORD:-password}"
+export PGADMIN_DATABASE="${PGADMIN_DATABASE:-postgres}"
+
+validate_pg_tool_mode
+
+readonly suffix="$(
+    printf '%s-%s\n' "$(date -u '+%Y%m%d%H%M%S')" "$$"
+)"
+readonly source_database="aios_dr_source_${suffix//-/_}"
+readonly target_database="aios_dr_target_${suffix//-/_}"
+readonly bucket="aios-dr-${suffix}"
+readonly object_key='recovery/probe.txt'
+readonly evidence_directory="${PROJECT_ROOT}/storage/app/operations/dr-rehearsals/${suffix}"
+readonly temporary_directory="$(mktemp -d)"
+
+mkdir -p "$evidence_directory"
+chmod 0700 "$evidence_directory"
+
+# Return whether one rehearsal database exists.
+database_exists() {
+    local database_name="$1"
+    local result
+
+    result="$(
+        run_pg_tool psql \
+            --host="$PGHOST" \
+            --port="$PGPORT" \
+            --username="$PGUSER" \
+            --dbname="$PGADMIN_DATABASE" \
+            --tuples-only \
+            --no-align \
+            --command="SELECT 1 FROM pg_database WHERE datname = '${database_name}';"
+    )"
+
+    [[ "$(printf '%s' "$result" | tr -d '[:space:]')" == '1' ]]
+}
+
+# Remove one rehearsal database when it exists.
+drop_rehearsal_database() {
+    local database_name="$1"
+
+    if database_exists "$database_name"; then
+        run_pg_tool dropdb \
+            --force \
+            --host="$PGHOST" \
+            --port="$PGPORT" \
+            --username="$PGUSER" \
+            --maintenance-db="$PGADMIN_DATABASE" \
+            "$database_name" \
+            >/dev/null
+    fi
+}
+
+# Remove every version and delete marker from the rehearsal bucket.
+delete_rehearsal_bucket() {
+    local versions
+    local object_count
+
+    if ! aws_cli s3api head-bucket --bucket "$bucket" >/dev/null 2>&1; then
+        return
+    fi
+
+    versions="$(
+        aws_cli s3api list-object-versions \
+            --bucket "$bucket"
+    )"
+
+    object_count="$(
+        jq '
+            ((.Versions // []) + (.DeleteMarkers // []))
+            | length
+        ' <<< "$versions"
+    )"
+
+    if (( object_count > 0 )); then
+        jq '{
+            Objects: (
+                ((.Versions // []) + (.DeleteMarkers // []))
+                | map({
+                    Key: .Key,
+                    VersionId: .VersionId
+                })
+            ),
+            Quiet: true
+        }' \
+            <<< "$versions" \
+            > "${temporary_directory}/delete-objects.json"
+
+        aws_cli s3api delete-objects \
+            --bucket "$bucket" \
+            --delete "file://${temporary_directory}/delete-objects.json" \
+            >/dev/null
+    fi
+
+    aws_cli s3api delete-bucket \
+        --bucket "$bucket" \
+        >/dev/null
+}
+
+# Remove every temporary rehearsal resource.
+cleanup_rehearsal() {
+    set +e
+
+    drop_rehearsal_database "$target_database"
+    drop_rehearsal_database "$source_database"
+    delete_rehearsal_bucket
+    rm -rf "$temporary_directory"
+}
+
+trap cleanup_rehearsal EXIT
+
+log 'Creating PostgreSQL recovery fixture.'
+
+run_pg_tool createdb \
+    --host="$PGHOST" \
+    --port="$PGPORT" \
+    --username="$PGUSER" \
+    --maintenance-db="$PGADMIN_DATABASE" \
+    --template=template0 \
+    "$source_database"
+
+cat <<'SQL' | run_pg_tool psql \
+    --host="$PGHOST" \
+    --port="$PGPORT" \
+    --username="$PGUSER" \
+    --dbname="$source_database" \
+    --set=ON_ERROR_STOP=1
+CREATE TABLE disaster_recovery_probe (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    probe_value text NOT NULL
+);
+
+INSERT INTO disaster_recovery_probe (probe_value)
+VALUES ('database-restore-passed');
+SQL
+
+export PGDATABASE="$source_database"
+
+readonly backup_directory="$(
+    BACKUP_ROOT="${evidence_directory}/database-backups" \
+    BACKUP_RETENTION_DAYS=1 \
+    "${PROJECT_ROOT}/bin/backup-database"
+)"
+
+RESTORE_CONFIRM_DATABASE="$target_database" \
+RESTORE_EVIDENCE_ROOT="${evidence_directory}/database-restore" \
+    "${PROJECT_ROOT}/bin/restore-database" \
+        --backup "$backup_directory" \
+        --target "$target_database" \
+        >/dev/null
+
+readonly restored_probe="$(
+    run_pg_tool psql \
+        --host="$PGHOST" \
+        --port="$PGPORT" \
+        --username="$PGUSER" \
+        --dbname="$target_database" \
+        --tuples-only \
+        --no-align \
+        --command='SELECT probe_value FROM disaster_recovery_probe LIMIT 1;'
+)"
+
+[[ "$restored_probe" == 'database-restore-passed' ]] || {
+    fail 'Restored PostgreSQL fixture did not contain the expected probe.'
+}
+
+log 'Creating object-storage recovery fixture.'
+
+aws_cli s3api create-bucket \
+    --bucket "$bucket" \
+    >/dev/null
+
+aws_cli s3api put-bucket-versioning \
+    --bucket "$bucket" \
+    --versioning-configuration Status=Enabled
+
+printf '%s' 'object-version-one' \
+    > "${temporary_directory}/version-one.txt"
+
+printf '%s' 'object-version-two' \
+    > "${temporary_directory}/version-two.txt"
+
+readonly first_version_id="$(
+    aws_cli s3api put-object \
+        --bucket "$bucket" \
+        --key "$object_key" \
+        --body "${temporary_directory}/version-one.txt" \
+        --query VersionId \
+        --output text
+)"
+
+[[ -n "$first_version_id" && "$first_version_id" != 'None' ]] || {
+    fail 'Object-storage fixture did not return a version ID.'
+}
+
+aws_cli s3api put-object \
+    --bucket "$bucket" \
+    --key "$object_key" \
+    --body "${temporary_directory}/version-two.txt" \
+    >/dev/null
+
+OBJECT_RESTORE_EVIDENCE_ROOT="${evidence_directory}/object-restore" \
+    "${PROJECT_ROOT}/bin/restore-object-version" \
+        --bucket "$bucket" \
+        --key "$object_key" \
+        --version-id "$first_version_id" \
+        >/dev/null
+
+aws_cli s3api get-object \
+    --bucket "$bucket" \
+    --key "$object_key" \
+    "${temporary_directory}/current-object.txt" \
+    >/dev/null
+
+readonly restored_object="$(
+    cat "${temporary_directory}/current-object.txt"
+)"
+
+[[ "$restored_object" == 'object-version-one' ]] || {
+    fail 'Restored object does not contain the expected previous version.'
+}
+
+cat > "${evidence_directory}/result.md" <<EVIDENCE
+# Disaster-Recovery Rehearsal
+
+- Rehearsal ID: \`${suffix}\`
+- Executed at: \`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\`
+- PostgreSQL backup: passed
+- PostgreSQL restore into isolated database: passed
+- PostgreSQL restored data validation: passed
+- S3-compatible bucket versioning: passed
+- Previous object-version restoration: passed
+- Temporary-resource cleanup: scheduled by exit handler
+- Overall result: passed
+EVIDENCE
+
+chmod 0600 "${evidence_directory}/result.md"
+
+log "Disaster-recovery rehearsal passed: ${evidence_directory}"
+
+printf '%s\n' "$evidence_directory"

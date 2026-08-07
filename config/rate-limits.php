@@ -64,6 +64,17 @@ return [
             ),
         ],
 
+        'upload' => [
+            'per_minute' => (int) env(
+                'RATE_LIMIT_DOCUMENT_UPLOAD_PER_MINUTE',
+                10,
+            ),
+            'per_hour' => (int) env(
+                'RATE_LIMIT_DOCUMENT_UPLOAD_PER_HOUR',
+                100,
+            ),
+        ],
+
         'archive' => [
             'per_minute' => (int) env(
                 'RATE_LIMIT_PROJECT_ARCHIVE_PER_MINUTE',
@@ -85,5 +96,28 @@ return [
                 50,
             ),
         ],
+    ],
+
+    'credentials' => [
+        'per_minute' => (int) env(
+            'RATE_LIMIT_PROJECT_CREDENTIALS_PER_MINUTE',
+            5,
+        ),
+        'per_hour' => (int) env(
+            'RATE_LIMIT_PROJECT_CREDENTIALS_PER_HOUR',
+            20,
+        ),
+    ],
+
+    'integration_test' => [
+        'per_minute' => (int) env(
+            'RATE_LIMIT_NOTION_TEST_PER_MINUTE',
+            5,
+        ),
+
+        'per_hour' => (int) env(
+            'RATE_LIMIT_NOTION_TEST_PER_HOUR',
+            20,
+        ),
     ],
 ];

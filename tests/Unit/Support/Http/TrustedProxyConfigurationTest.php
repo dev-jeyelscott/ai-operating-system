@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Support\Http\TrustedProxyConfiguration;
 use Illuminate\Http\Request;
-use InvalidArgumentException;
 
 test('empty proxy configuration trusts no explicit proxy', function (): void {
     expect(TrustedProxyConfiguration::proxies(null))

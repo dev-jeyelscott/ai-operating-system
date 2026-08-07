@@ -141,8 +141,10 @@ jobs:
       - name: Prepare application
         run: |
           cp .env.example .env
+          sed -i "s/^APP_ENV=.*/APP_ENV=${APP_ENV}/" .env
+          sed -i "s/^DB_DATABASE=.*/DB_DATABASE=${DB_DATABASE}/" .env
           php artisan key:generate
-          php artisan migrate:fresh --force
+          php artisan migrate --force
 
       - name: Validate environment
         run: php artisan app:check
@@ -150,32 +152,46 @@ jobs:
       - name: Validate production configuration rules
         run: php artisan test tests/Feature/Console/ProductionConfigurationValidatorTest.php
 
-      - name: Validate Composer manifest
-        run: composer validate --strict
+      - name: Run PostgreSQL concurrency suite
+        run: |
+          php artisan test \
+            --testsuite=Concurrency \
+            --fail-on-skipped \
+            --fail-on-warning
 
-      - name: Audit PHP dependencies
-        run: composer audit --no-interaction
-
-      - name: Run backend and frontend quality gates
+      - name: Run supply-chain, backend, and frontend quality gates
         run: composer ci:check
-
-      - name: Audit frontend dependencies
-        run: pnpm audit --audit-level=high
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Start application
+        env:
+          # Browser authentication spans multiple HTTP requests.
+          SESSION_DRIVER: database
         run: |
           php artisan serve \
             --host=127.0.0.1 \
             --port=8000 \
             > storage/logs/e2e-server.log 2>&1 &
 
+          php artisan queue:work redis \
+            --queue=default \
+            --sleep=1 \
+            --tries=1 \
+            --timeout=120 \
+            > storage/logs/e2e-queue.log 2>&1 &
+
+          php artisan schedule:work \
+            > storage/logs/e2e-scheduler.log 2>&1 &
+
           timeout 60 bash -c \
             'until curl --fail --silent http://127.0.0.1:8000/up > /dev/null; do sleep 2; done'
 
       - name: Run browser tests
+        env:
+          # Keep Artisan commands executed by Playwright aligned with the server.
+          SESSION_DRIVER: database
         run: pnpm test:e2e
 
       - name: Upload browser artifacts on failure
@@ -188,4 +204,6 @@ jobs:
             playwright-report/
             test-results/
             storage/logs/e2e-server.log
+            storage/logs/e2e-queue.log
+            storage/logs/e2e-scheduler.log
           if-no-files-found: ignore

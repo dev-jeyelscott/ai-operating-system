@@ -7,9 +7,10 @@ export default defineConfig({
     testDir: './tests/e2e',
 
     /**
-     * Run independent browser tests concurrently.
+     * Browser fixtures share one database and must not race their seeders.
      */
-    fullyParallel: true,
+    fullyParallel: false,
+    workers: 1,
 
     /**
      * Prevent accidentally committed test.only calls from passing CI.
@@ -17,7 +18,7 @@ export default defineConfig({
     forbidOnly: Boolean(process.env.CI),
 
     /**
-     * Retry transient browser failures in CI but fail immediately locally.
+     * Retry browser failures in CI while preserving diagnostic evidence.
      */
     retries: process.env.CI ? 2 : 0,
 
@@ -29,8 +30,6 @@ export default defineConfig({
     use: {
         /**
          * Allow CI or another environment to override the application URL.
-         *
-         * Laravel Sail currently exposes the application through port 80.
          */
         baseURL:
             process.env.PLAYWRIGHT_BASE_URL ??
@@ -45,7 +44,13 @@ export default defineConfig({
 
     projects: [
         {
+            name: 'office-auth',
+            testMatch: /office-auth\.setup\.ts/,
+        },
+        {
             name: 'chromium',
+            testIgnore: /office-auth\.setup\.ts/,
+            dependencies: ['office-auth'],
             use: {
                 ...devices['Desktop Chrome'],
             },

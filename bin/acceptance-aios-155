@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+ROOT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIRECTORY}"
+
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+ARTIFACT_DIRECTORY="storage/app/acceptance/AIOS-155/${RUN_ID}"
+COMMIT_SHA="$(git rev-parse HEAD)"
+
+mkdir -p "${ARTIFACT_DIRECTORY}"
+
+# Run one acceptance step and preserve its complete output.
+run_step() {
+    local step_name="$1"
+    shift
+
+    printf '\n==> Running %s\n' "${step_name}"
+
+    "$@" 2>&1 | tee "${ARTIFACT_DIRECTORY}/${step_name}.log"
+}
+
+if [[ ! -x ./vendor/bin/sail ]]; then
+    echo "Laravel Sail is unavailable. Run Composer installation first."
+    exit 1
+fi
+
+run_step \
+    "environment-check" \
+    ./vendor/bin/sail artisan app:check
+
+run_step \
+    "scenario-catalog" \
+    ./vendor/bin/sail artisan simulation:scenarios \
+        --seed=155 \
+        --json
+
+run_step \
+    "acceptance-contract" \
+    ./vendor/bin/sail artisan test \
+        tests/Feature/Acceptance/FailureRetryDuplicateSideEffectAcceptanceTest.php \
+        --fail-on-warning \
+        --fail-on-skipped
+
+run_step \
+    "concurrency-suite" \
+    ./vendor/bin/sail artisan test \
+        --testsuite=Concurrency \
+        --fail-on-warning \
+        --fail-on-skipped
+
+run_step \
+    "complete-quality-suite" \
+    ./vendor/bin/sail composer ci:check
+
+run_step \
+    "happy-path-browser-prerequisite" \
+    ./vendor/bin/sail pnpm exec playwright test \
+        tests/e2e/happy-path.spec.ts
+
+COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+cat > "${ARTIFACT_DIRECTORY}/summary.json" <<JSON
+{
+    "ticket": "AIOS-155",
+    "status": "passed",
+    "commit": "${COMMIT_SHA}",
+    "scenario_seed": 155,
+    "scenario_count": 14,
+    "completed_at": "${COMPLETED_AT}",
+    "evidence_directory": "${ARTIFACT_DIRECTORY}"
+}
+JSON
+
+printf '\nAIOS-155 acceptance suite passed.\n'
+printf 'Evidence: %s\n' "${ARTIFACT_DIRECTORY}"
