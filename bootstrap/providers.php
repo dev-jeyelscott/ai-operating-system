@@ -2,6 +2,7 @@
 
 use App\Providers\AppServiceProvider;
 use App\Providers\AuditServiceProvider;
+use App\Providers\CodexServiceProvider;
 use App\Providers\CommandBusServiceProvider;
 use App\Providers\DomainEventsServiceProvider;
 use App\Providers\FortifyServiceProvider;
@@ -17,6 +18,7 @@ use App\Providers\RateLimitServiceProvider;
 return [
     AppServiceProvider::class,
     AuditServiceProvider::class,
+    CodexServiceProvider::class,
     CommandBusServiceProvider::class,
     DomainEventsServiceProvider::class,
     FortifyServiceProvider::class,
