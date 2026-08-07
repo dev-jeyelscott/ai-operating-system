@@ -68,7 +68,7 @@ final class RedispatchQualityAssuranceRetry implements DomainEventConsumer
             ->whereKey($executionId)
             ->where(
                 'capability',
-                'quality_assurance.simulation',
+                'quality_assurance.review',
             )
             ->firstOrFail();
 

@@ -6,6 +6,7 @@ namespace App\Application\Development\Consumers;
 
 use App\Application\Events\Contracts\DomainEventConsumer;
 use App\Application\Events\Data\StoredDomainEvent;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Jobs\ProcessDevelopmentExecutionJob;
 use App\Models\Execution;
@@ -37,7 +38,10 @@ final class RedispatchDevelopmentRetry implements DomainEventConsumer
 
         $execution = Execution::query()
             ->forProject($event->projectId)->whereKey($executionId)
-            ->where('capability', 'development.simulation')->firstOrFail();
+            ->forCapability(
+                ExecutionCapability::DevelopmentExecute,
+            )
+            ->firstOrFail();
 
         if ($execution->status !== ExecutionStatus::Queued || $execution->cancel_requested_at !== null) {
             return;

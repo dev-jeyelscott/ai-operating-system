@@ -6,6 +6,7 @@ namespace App\Application\Development\Consumers;
 
 use App\Application\Events\Contracts\DomainEventConsumer;
 use App\Application\Events\Data\StoredDomainEvent;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Jobs\ProcessDevelopmentExecutionJob;
 use App\Models\Execution;
@@ -41,9 +42,12 @@ final class DispatchDevelopmentExecution implements DomainEventConsumer
             throw new \UnexpectedValueException('Ticket lease event payload is invalid.');
         }
 
-        $execution = Execution::query()->forProject($event->projectId)->whereKey($executionId)->where('capability', 'development.simulation')->firstOrFail();
+        $execution = Execution::query()->forProject($event->projectId)
+            ->whereKey($executionId)->forCapability(
+                ExecutionCapability::DevelopmentExecute,
+            )->firstOrFail();
         TicketExecutionLease::query()->where('project_id', $event->projectId)->where('execution_id', $execution->id)->where('roadmap_task_id', $ticketId)->whereKey($leaseId)->active()->firstOrFail();
-        RoadmapTask::query()->whereHas('roadmap', fn ($query) => $query->where('project_id', $event->projectId))->whereKey($ticketId)->firstOrFail();
+        RoadmapTask::query()->whereHas('roadmap', fn($query) => $query->where('project_id', $event->projectId))->whereKey($ticketId)->firstOrFail();
 
         if ($execution->status !== ExecutionStatus::Queued || $execution->cancel_requested_at !== null) {
             return;

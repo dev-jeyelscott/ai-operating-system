@@ -6,6 +6,7 @@ namespace App\Application\Planning;
 
 use App\Application\Planning\Contracts\ExecutionProvider;
 use App\Application\Planning\Providers\ValidatingPlanningExecutionProvider;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Projects\Configuration\ProviderPolicy;
 use LogicException;
 
@@ -43,15 +44,18 @@ final readonly class ExecutionProviderRegistry
 
         foreach ($policy->fallbackOrder as $providerId) {
             $provider = $providers[$providerId] ?? null;
+            $effectiveCapability = ExecutionCapability::fromStored(
+                $capability,
+            )->value;
 
             if (
                 $provider !== null
-                && $provider->supports($capability)
+                && $provider->supports($effectiveCapability)
             ) {
                 return new ValidatingPlanningExecutionProvider(
                     provider: $provider,
                     validator: $this->validator,
-                    capability: $capability,
+                    capability: $effectiveCapability,
                 );
             }
         }

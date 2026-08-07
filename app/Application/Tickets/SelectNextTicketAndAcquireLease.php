@@ -9,6 +9,7 @@ use App\Application\Tickets\Data\TicketExecutionPolicyFacts;
 use App\Application\Tickets\Data\TicketRankingContext;
 use App\Application\Tickets\Data\TicketSelectionRequest;
 use App\Application\Tickets\Data\TicketSelectionResult;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\Tickets\TicketStatus;
 use App\Models\Execution;
@@ -136,7 +137,7 @@ final readonly class SelectNextTicketAndAcquireLease
                         ->active()
                         ->where('project_id', $project->id)
                         ->pluck('roadmap_task_id')
-                        ->map(static fn (mixed $id): int => (int) $id)
+                        ->map(static fn(mixed $id): int => (int) $id)
                         ->all(),
                 );
 
@@ -172,12 +173,12 @@ final readonly class SelectNextTicketAndAcquireLease
                      */
                     if (
                         TicketExecutionLease::query()
-                            ->active()
-                            ->where(
-                                'roadmap_task_id',
-                                $lockedTicket->id,
-                            )
-                            ->exists()
+                        ->active()
+                        ->where(
+                            'roadmap_task_id',
+                            $lockedTicket->id,
+                        )
+                        ->exists()
                     ) {
                         continue;
                     }
@@ -254,13 +255,13 @@ final readonly class SelectNextTicketAndAcquireLease
      */
     private function validateExecution(Execution $execution): void
     {
-        if (! in_array(
-            $execution->capability,
-            ['development', 'development.simulation'],
-            true,
-        )) {
-            throw new \LogicException(
-                'Execution does not support development simulation.',
+        if (
+            ! ExecutionCapability::DevelopmentExecute->accepts(
+                $execution->capability,
+            )
+        ) {
+            throw new LogicException(
+                'Execution does not support development work.',
             );
         }
 
@@ -315,7 +316,7 @@ final readonly class SelectNextTicketAndAcquireLease
             $dependencyStatuses = array_values(
                 $candidate->dependencies
                     ->map(
-                        static fn (
+                        static fn(
                             TaskDependency $dependency,
                         ): TicketStatus => $dependency->dependsOn->status,
                     )
@@ -418,7 +419,7 @@ final readonly class SelectNextTicketAndAcquireLease
                 ->where('roadmap_task_id', $ticket->id)
                 ->orderBy('depends_on_task_id')
                 ->pluck('depends_on_task_id')
-                ->map(static fn (mixed $id): int => (int) $id)
+                ->map(static fn(mixed $id): int => (int) $id)
                 ->all(),
         );
 
@@ -436,7 +437,7 @@ final readonly class SelectNextTicketAndAcquireLease
                 ->lock('for share')
                 ->pluck('status')
                 ->map(
-                    static fn (
+                    static fn(
                         mixed $status,
                     ): TicketStatus => TicketStatus::from(
                         (string) $status,

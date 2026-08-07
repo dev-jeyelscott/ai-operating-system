@@ -27,7 +27,7 @@ final class GetDevelopmentExecutionInspector
         $execution = Execution::query()
             ->forProject($project->id)
             ->whereKey($executionId)
-            ->whereIn('capability', ['development', 'development.simulation'])
+            ->whereIn('capability', ['development', 'development.execute'])
             ->with([
                 'attempts',
                 'projectContextSnapshot',
@@ -60,7 +60,7 @@ final class GetDevelopmentExecutionInspector
             ->orderBy('sequence')
             ->get();
         $serializedArtifacts = array_values($artifacts
-            ->map(fn (Artifact $artifact): array => $this->serializeArtifact($artifact))
+            ->map(fn(Artifact $artifact): array => $this->serializeArtifact($artifact))
             ->all());
         $artifactTypes = $artifacts->pluck('artifact_type')->all();
         $context = $execution->projectContextSnapshot;
@@ -104,7 +104,7 @@ final class GetDevelopmentExecutionInspector
                 'createdAt' => $context->created_at->toISOString(),
             ],
             'attempts' => $execution->attempts
-                ->map(fn (ExecutionAttempt $attempt): array => $this->serializeAttempt($attempt))
+                ->map(fn(ExecutionAttempt $attempt): array => $this->serializeAttempt($attempt))
                 ->values()
                 ->all(),
             'artifacts' => $serializedArtifacts,
@@ -122,15 +122,20 @@ final class GetDevelopmentExecutionInspector
                 'pullRequest' => $this->repositoryArtifact($serializedArtifacts, 'synthetic_pull_request'),
             ],
             'assumptions' => $artifacts->pluck('assumptions')->flatten()
-                ->filter(static fn (mixed $assumption): bool => is_string($assumption))
+                ->filter(static fn(mixed $assumption): bool => is_string($assumption))
                 ->unique()->values()->all(),
             'confidence' => $artifacts->pluck('confidence')->filter()->first(),
             'risks' => ['Simulation did not inspect or modify a real repository.'],
             'evidenceGaps' => $artifacts->contains('evidence_still_required', true)
                 ? ['Real repository, command, CI, review, and merge evidence remain required.'] : [],
             'missingArtifacts' => array_values(array_diff([
-                'implementation_plan', 'changed_file_manifest', 'validation_result',
-                'synthetic_branch', 'synthetic_commit', 'synthetic_push', 'synthetic_pull_request',
+                'implementation_plan',
+                'changed_file_manifest',
+                'validation_result',
+                'synthetic_branch',
+                'synthetic_commit',
+                'synthetic_push',
+                'synthetic_pull_request',
             ], $artifactTypes)),
             'lease' => $this->serializeLease($lease, $execution),
             'retry' => [
@@ -140,14 +145,14 @@ final class GetDevelopmentExecutionInspector
                 'nextAttemptAt' => $execution->next_attempt_at?->toISOString(),
             ],
             'error' => $this->latestError($execution->attempts),
-            'auditTimeline' => $audit->map(static fn (AuditEvent $event): array => [
+            'auditTimeline' => $audit->map(static fn(AuditEvent $event): array => [
                 'sequence' => $event->sequence,
                 'type' => $event->event_type->value,
                 'attemptId' => is_int($event->metadata['attempt_id'] ?? null) ? $event->metadata['attempt_id'] : null,
                 'leaseId' => is_string($event->metadata['lease_id'] ?? null) ? $event->metadata['lease_id'] : null,
                 'occurredAt' => $event->occurred_at->toISOString(),
             ])->values()->all(),
-            'lifecycleEvents' => $events->map(static fn (OutboxMessage $event): array => [
+            'lifecycleEvents' => $events->map(static fn(OutboxMessage $event): array => [
                 'sequence' => $event->sequence,
                 'eventId' => $event->event_id,
                 'name' => $event->event_name,
@@ -161,11 +166,19 @@ final class GetDevelopmentExecutionInspector
     private function serializeAttempt(ExecutionAttempt $attempt): array
     {
         return [
-            'id' => $attempt->id, 'number' => $attempt->attempt_number,
-            'status' => $attempt->status->value, 'provider' => $attempt->execution_provider,
+            'id' => $attempt->id,
+            'number' => $attempt->attempt_number,
+            'status' => $attempt->status->value,
+            'provider' => $attempt->execution_provider,
             'modelIdentifier' => $attempt->model_identifier,
             'requestedReasoning' => $attempt->requested_reasoning_level->value,
             'effectiveReasoning' => $attempt->effective_reasoning_level->value,
+            'effectiveCapability' => $attempt->effective_capability,
+            'protocolVersion' => $attempt->provider_protocol_version,
+            'sandboxProfile' => $attempt->provider_sandbox_profile,
+            'providerSelectionSource' => $attempt
+                ->provider_selection_source,
+            'simulationScenario' => $attempt->simulation_scenario,
             'reasoningSource' => $attempt->reasoning_resolution_source,
             'reasoningEscalationReason' => $attempt->reasoning_escalation_reason,
             'simulationMode' => $attempt->simulation_mode,
@@ -173,8 +186,10 @@ final class GetDevelopmentExecutionInspector
             'actualState' => $attempt->actual_state,
             'confidence' => $attempt->confidence,
             'error' => $attempt->error_code === null ? null : [
-                'code' => $attempt->error_code, 'message' => $attempt->error_message,
-                'retryable' => $attempt->retryable, 'retryDelaySeconds' => $attempt->retry_delay_seconds,
+                'code' => $attempt->error_code,
+                'message' => $attempt->error_message,
+                'retryable' => $attempt->retryable,
+                'retryDelaySeconds' => $attempt->retry_delay_seconds,
             ],
             'deadlineAt' => $attempt->deadline_at?->toISOString(),
             'heartbeatAt' => $attempt->heartbeat_at?->toISOString(),
@@ -187,14 +202,19 @@ final class GetDevelopmentExecutionInspector
     private function serializeArtifact(Artifact $artifact): array
     {
         return [
-            'id' => $artifact->id, 'type' => $artifact->artifact_type, 'name' => $artifact->name,
-            'provider' => $artifact->execution_provider, 'reference' => $artifact->external_reference,
-            'simulationMode' => $artifact->simulation_mode, 'simulationSeed' => $artifact->simulation_seed,
-            'assumptions' => $artifact->assumptions, 'confidence' => $artifact->confidence,
+            'id' => $artifact->id,
+            'type' => $artifact->artifact_type,
+            'name' => $artifact->name,
+            'provider' => $artifact->execution_provider,
+            'reference' => $artifact->external_reference,
+            'simulationMode' => $artifact->simulation_mode,
+            'simulationSeed' => $artifact->simulation_seed,
+            'assumptions' => $artifact->assumptions,
+            'confidence' => $artifact->confidence,
             'actualState' => $artifact->actual_state,
             'evidenceStillRequired' => $artifact->evidence_still_required,
             'details' => $this->safeArtifactDetails($artifact),
-            'evidence' => $artifact->evidence->map(fn (Evidence $evidence): array => $this->serializeEvidence($evidence))->values()->all(),
+            'evidence' => $artifact->evidence->map(fn(Evidence $evidence): array => $this->serializeEvidence($evidence))->values()->all(),
             'createdAt' => $artifact->created_at->toISOString(),
         ];
     }
@@ -207,7 +227,12 @@ final class GetDevelopmentExecutionInspector
             'changed_file_manifest' => ['files' => $this->structuredList(Arr::get($artifact->metadata, 'files'), ['path', 'change_type', 'summary'])],
             'validation_result', 'validation_failure' => ['validations' => $this->structuredList(Arr::get($artifact->metadata, 'validations'), ['command', 'status', 'summary'])],
             'synthetic_branch', 'synthetic_commit', 'synthetic_push', 'synthetic_pull_request' => Arr::only($artifact->metadata, [
-                'kind', 'identifier', 'reference', 'target_branch', 'synthetic', 'evidence_still_required',
+                'kind',
+                'identifier',
+                'reference',
+                'target_branch',
+                'synthetic',
+                'evidence_still_required',
             ]),
             default => [],
         };
@@ -217,11 +242,16 @@ final class GetDevelopmentExecutionInspector
     private function serializeEvidence(Evidence $evidence): array
     {
         return [
-            'id' => $evidence->id, 'classification' => $evidence->classification->value,
-            'type' => $evidence->evidence_type, 'provider' => $evidence->provider,
-            'sourceReference' => $evidence->source_reference, 'commitSha' => $evidence->commit_sha,
-            'claims' => $evidence->claims, 'confidence' => $evidence->confidence,
-            'verified' => $evidence->isVerified(), 'createdAt' => $evidence->created_at->toISOString(),
+            'id' => $evidence->id,
+            'classification' => $evidence->classification->value,
+            'type' => $evidence->evidence_type,
+            'provider' => $evidence->provider,
+            'sourceReference' => $evidence->source_reference,
+            'commitSha' => $evidence->commit_sha,
+            'claims' => $evidence->claims,
+            'confidence' => $evidence->confidence,
+            'verified' => $evidence->isVerified(),
+            'createdAt' => $evidence->created_at->toISOString(),
         ];
     }
 
@@ -251,7 +281,8 @@ final class GetDevelopmentExecutionInspector
         foreach ($artifacts as $artifact) {
             if ($artifact['type'] === $type) {
                 return [
-                    'name' => $artifact['name'], 'reference' => $artifact['reference'],
+                    'name' => $artifact['name'],
+                    'reference' => $artifact['reference'],
                     ...$artifact['details'],
                 ];
             }
@@ -281,8 +312,10 @@ final class GetDevelopmentExecutionInspector
         $expired = $lease->expires_at->isPast();
 
         return [
-            'id' => $lease->id, 'owner' => $lease->owner,
-            'active' => $active, 'expired' => $expired,
+            'id' => $lease->id,
+            'owner' => $lease->owner,
+            'active' => $active,
+            'expired' => $expired,
             'expiredButExecutionLive' => $active && $expired && ! $execution->status->isTerminal(),
             'expiresAt' => $lease->expires_at->toISOString(),
             'heartbeatAt' => $lease->heartbeat_at->toISOString(),
@@ -298,11 +331,13 @@ final class GetDevelopmentExecutionInspector
      */
     private function latestError(Collection $attempts): ?array
     {
-        $attempt = $attempts->reverse()->first(static fn (ExecutionAttempt $candidate): bool => $candidate->error_code !== null);
+        $attempt = $attempts->reverse()->first(static fn(ExecutionAttempt $candidate): bool => $candidate->error_code !== null);
 
         return $attempt instanceof ExecutionAttempt ? [
-            'attemptNumber' => $attempt->attempt_number, 'code' => $attempt->error_code,
-            'message' => $attempt->error_message, 'retryable' => $attempt->retryable,
+            'attemptNumber' => $attempt->attempt_number,
+            'code' => $attempt->error_code,
+            'message' => $attempt->error_message,
+            'retryable' => $attempt->retryable,
             'retryDelaySeconds' => $attempt->retry_delay_seconds,
         ] : null;
     }
@@ -325,7 +360,7 @@ final class GetDevelopmentExecutionInspector
         }
 
         return array_map(
-            static fn (mixed $item): array => is_array($item) ? Arr::only($item, $keys) : [],
+            static fn(mixed $item): array => is_array($item) ? Arr::only($item, $keys) : [],
             $value,
         );
     }

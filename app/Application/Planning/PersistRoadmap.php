@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Planning;
 
+use App\Application\Executions\Data\ProviderSelection;
 use App\Application\Planning\Data\PlanningExecutionRequest;
 use App\Application\Planning\Data\PlanningExecutionResult;
 use App\Models\Execution;
@@ -26,7 +27,7 @@ final readonly class PersistRoadmap
         private RecordRoadmapLifecycleEvent $events,
     ) {}
 
-    public function handle(Execution $execution, PlanningExecutionRequest $request, PlanningExecutionResult $result, string $providerId): Roadmap
+    public function handle(Execution $execution, PlanningExecutionRequest $request, PlanningExecutionResult $result, ProviderSelection $selection): Roadmap
     {
         if ($execution->project_id !== $request->projectId || $execution->project_context_snapshot_id !== $request->contextSnapshotId) {
             throw new LogicException('Planning execution and immutable request ownership are inconsistent.');
@@ -38,7 +39,7 @@ final readonly class PersistRoadmap
         $inputFingerprint = RoadmapCommandFingerprint::make($request->toArray());
         $outputFingerprint = RoadmapCommandFingerprint::make($generatedSnapshot);
 
-        $persist = fn (): Roadmap => DB::transaction(function () use ($execution, $request, $result, $providerId, $graph, $readiness, $generatedSnapshot, $inputFingerprint, $outputFingerprint): Roadmap {
+        $persist = fn(): Roadmap => DB::transaction(function () use ($execution, $request, $result, $selection, $graph, $readiness, $generatedSnapshot, $inputFingerprint, $outputFingerprint): Roadmap {
             Project::query()->whereKey($execution->project_id)->lockForUpdate()->firstOrFail();
 
             $existing = Roadmap::query()
@@ -64,9 +65,13 @@ final readonly class PersistRoadmap
                 'schema_version' => $result->schemaVersion,
                 'revision' => $revision,
                 'content_version' => 1,
-                'provider_id' => $providerId,
-                'scenario' => $request->scenario,
-                'seed' => $request->seed,
+                'provider_id' => $selection->providerId,
+                'scenario' => $selection->simulation
+                    ? $request->scenario
+                    : null,
+                'seed' => $selection->simulation
+                    ? $request->seed
+                    : null,
                 'input_fingerprint' => $inputFingerprint,
                 'output_fingerprint' => $outputFingerprint,
                 'candidate_fingerprint' => $outputFingerprint,
@@ -78,12 +83,24 @@ final readonly class PersistRoadmap
                 'constraints' => $result->constraints,
                 'definition_of_done' => $result->definitionOfDone,
                 'required_approvals' => $result->requiredApprovals,
-                'document_inventory' => array_map(static fn ($document): array => $document->toArray(), $result->documentInventory),
+                'document_inventory' => array_map(static fn($document): array => $document->toArray(), $result->documentInventory),
                 'document_summary' => $result->documentSummary,
                 'architecture_concerns' => $result->architectureConcerns,
                 'security_concerns' => $result->securityConcerns,
                 'readiness_reasons' => $readiness['reasons'],
-                'metadata' => ['simulation' => $providerId === 'simulation', 'verification' => 'unverified'],
+                'metadata' => [
+                    'provider_protocol_version' => $selection
+                        ->protocolVersion,
+                    'provider_sandbox_profile' => $selection
+                        ->sandboxProfile,
+                    'effective_capability' => $selection
+                        ->effectiveCapability
+                        ->value,
+                    'provider_selection_source' => $selection
+                        ->selectionSource,
+                    'simulation' => $selection->simulation,
+                    'verification' => 'unverified',
+                ],
                 'derived_graph' => $graph,
                 'generated_snapshot' => $generatedSnapshot,
                 'regeneration_feedback' => null,
@@ -123,8 +140,8 @@ final readonly class PersistRoadmap
                     'objective' => $task->objective,
                     'ticket_type' => $task->ticketType,
                     'scope' => $task->scope,
-                    'acceptance_criteria' => array_map(static fn ($criterion): array => $criterion->toArray(), $task->acceptanceCriteria),
-                    'source_references' => array_map(static fn ($reference): array => $reference->toArray(), $task->sourceReferences),
+                    'acceptance_criteria' => array_map(static fn($criterion): array => $criterion->toArray(), $task->acceptanceCriteria),
+                    'source_references' => array_map(static fn($reference): array => $reference->toArray(), $task->sourceReferences),
                     'evidence_requirements' => $task->evidenceRequirements,
                     'priority' => $task->priority,
                     'risk' => $task->risk,

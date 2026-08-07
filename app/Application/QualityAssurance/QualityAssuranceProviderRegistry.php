@@ -6,6 +6,7 @@ namespace App\Application\QualityAssurance;
 
 use App\Application\QualityAssurance\Contracts\QualityAssuranceExecutionProvider;
 use App\Application\QualityAssurance\Providers\ValidatingQualityAssuranceExecutionProvider;
+use App\Domain\Executions\ExecutionCapability;
 use LogicException;
 
 /**
@@ -45,14 +46,18 @@ final readonly class QualityAssuranceProviderRegistry
         foreach ($fallbackOrder as $providerId) {
             $provider = $providersById[$providerId] ?? null;
 
+            $effectiveCapability = ExecutionCapability::fromStored(
+                $capability,
+            )->value;
+
             if (
                 $provider !== null
-                && $provider->supports($capability)
+                && $provider->supports($effectiveCapability)
             ) {
                 return new ValidatingQualityAssuranceExecutionProvider(
                     provider: $provider,
                     validator: $this->validator,
-                    capability: $capability,
+                    capability: $effectiveCapability,
                 );
             }
         }

@@ -6,6 +6,7 @@ namespace App\Application\Development;
 
 use App\Application\Development\Contracts\DevelopmentExecutionProvider;
 use App\Application\Development\Providers\ValidatingDevelopmentExecutionProvider;
+use App\Domain\Executions\ExecutionCapability;
 use LogicException;
 
 /**
@@ -45,14 +46,18 @@ final readonly class DevelopmentProviderRegistry
         foreach ($fallbackOrder as $providerId) {
             $provider = $providers[$providerId] ?? null;
 
+            $effectiveCapability = ExecutionCapability::fromStored(
+                $capability,
+            )->value;
+
             if (
                 $provider !== null
-                && $provider->supports($capability)
+                && $provider->supports($effectiveCapability)
             ) {
                 return new ValidatingDevelopmentExecutionProvider(
                     provider: $provider,
                     validator: $this->validator,
-                    capability: $capability,
+                    capability: $effectiveCapability,
                 );
             }
         }

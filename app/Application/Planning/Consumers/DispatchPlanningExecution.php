@@ -6,6 +6,7 @@ namespace App\Application\Planning\Consumers;
 
 use App\Application\Events\Contracts\DomainEventConsumer;
 use App\Application\Events\Data\StoredDomainEvent;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Jobs\ProcessPlanningExecutionJob;
 use App\Models\Execution;
@@ -40,23 +41,26 @@ final class DispatchPlanningExecution implements DomainEventConsumer
         $feedbackFingerprint = $payload['feedback_fingerprint'] ?? null;
 
         if (
-            ! is_string($executionId)
-            || ! Str::isUlid($executionId)
-            || ! is_int($projectId)
-            || ! is_int($snapshotId)
-            || $capability !== 'planning.roadmap'
-            || $projectId !== $event->projectId
-            || ($event->eventName === 'roadmap.regeneration_requested'
-                && (! is_string($feedbackFingerprint) || preg_match('/\A[0-9a-f]{64}\z/', $feedbackFingerprint) !== 1))
+            ! is_string($capability)
+            || ! ExecutionCapability::PlanningGenerate->accepts(
+                $capability,
+            )
         ) {
-            throw new UnexpectedValueException('The project start event payload is invalid.');
+            throw new UnexpectedValueException(
+                'The project start capability is invalid.',
+            );
         }
 
         $execution = Execution::query()
             ->forProject($projectId)
             ->whereKey($executionId)
-            ->where('project_context_snapshot_id', $snapshotId)
-            ->where('capability', 'planning.roadmap')
+            ->where(
+                'project_context_snapshot_id',
+                $snapshotId,
+            )
+            ->forCapability(
+                ExecutionCapability::PlanningGenerate,
+            )
             ->firstOrFail();
 
         if ($execution->status !== ExecutionStatus::Queued) {

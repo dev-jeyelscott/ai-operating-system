@@ -12,6 +12,7 @@ use App\Domain\Development\DevelopmentFailureClassification;
 use App\Domain\Development\DevelopmentStage;
 use App\Domain\Development\DevelopmentStageStatus;
 use App\Domain\Development\DevelopmentValidationStatus;
+use App\Domain\Executions\ExecutionCapability;
 use Illuminate\Support\Str;
 
 final class DevelopmentResultValidator
@@ -93,7 +94,11 @@ final class DevelopmentResultValidator
 
         $this->text($result->providerIdentifier, 'provider identifier', 100);
 
-        if ($result->capability !== 'development.simulation') {
+        if (
+            ! ExecutionCapability::DevelopmentExecute->accepts(
+                $result->capability,
+            )
+        ) {
             throw new \InvalidArgumentException('Development result capability is invalid.');
         }
 
@@ -101,8 +106,8 @@ final class DevelopmentResultValidator
             throw new \InvalidArgumentException('Development result confidence is invalid.');
         }
 
-        $expectedStages = array_map(static fn (DevelopmentStage $stage): string => $stage->value, DevelopmentStage::cases());
-        $actualStages = array_map(static fn ($stage): string => $stage->stage->value, $result->stageResults);
+        $expectedStages = array_map(static fn(DevelopmentStage $stage): string => $stage->value, DevelopmentStage::cases());
+        $actualStages = array_map(static fn($stage): string => $stage->stage->value, $result->stageResults);
 
         if ($actualStages !== $expectedStages) {
             throw new \InvalidArgumentException('Development stages are missing or out of order.');
@@ -131,8 +136,10 @@ final class DevelopmentResultValidator
         }
 
         $artifacts = array_filter([
-            $result->syntheticBranchResult, $result->syntheticCommitResult,
-            $result->syntheticPushResult, $result->syntheticPullRequestResult,
+            $result->syntheticBranchResult,
+            $result->syntheticCommitResult,
+            $result->syntheticPushResult,
+            $result->syntheticPullRequestResult,
         ]);
 
         $expectedArtifactKinds = ['branch', 'commit', 'push', 'pull_request'];
@@ -149,9 +156,11 @@ final class DevelopmentResultValidator
         }
 
         if ($result->outcome === DevelopmentExecutionOutcome::Succeeded) {
-            if (count($artifacts) !== 4
-                || array_any($result->validationResults, static fn ($validation): bool => $validation->status !== DevelopmentValidationStatus::Passed)
-                || array_any($result->stageResults, static fn ($stage): bool => $stage->status !== DevelopmentStageStatus::Passed)) {
+            if (
+                count($artifacts) !== 4
+                || array_any($result->validationResults, static fn($validation): bool => $validation->status !== DevelopmentValidationStatus::Passed)
+                || array_any($result->stageResults, static fn($stage): bool => $stage->status !== DevelopmentStageStatus::Passed)
+            ) {
                 throw new \InvalidArgumentException('Successful development result contradicts failed or missing stages.');
             }
         }

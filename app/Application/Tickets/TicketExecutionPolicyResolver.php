@@ -44,7 +44,7 @@ final class TicketExecutionPolicyResolver
     public function resolveForContext(
         Project $project,
         int $contextSnapshotId,
-        string $capability = 'development.simulation',
+        string $capability = 'development.execute',
         int $attemptCount = 0,
         int $retryLimit = 3,
     ): TicketExecutionPolicyFacts {
@@ -82,7 +82,7 @@ final class TicketExecutionPolicyResolver
             $capability,
             [
                 'development',
-                'development.simulation',
+                'development.execute',
             ],
             true,
         ) && in_array(
@@ -187,10 +187,10 @@ final class TicketExecutionPolicyResolver
             ->orderBy('roadmap_task_id')
             ->pluck('roadmap_task_id')
             ->map(
-                static fn (mixed $roadmapTaskId): int => (int) $roadmapTaskId,
+                static fn(mixed $roadmapTaskId): int => (int) $roadmapTaskId,
             )
             ->filter(
-                static fn (int $roadmapTaskId): bool => $roadmapTaskId > 0,
+                static fn(int $roadmapTaskId): bool => $roadmapTaskId > 0,
             )
             ->all();
 

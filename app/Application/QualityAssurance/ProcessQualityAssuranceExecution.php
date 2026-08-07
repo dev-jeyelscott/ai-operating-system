@@ -11,6 +11,7 @@ use App\Application\QualityAssurance\Data\QualityAssuranceExecutionRequest;
 use App\Application\Security\RedactSensitiveData;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Evidence\EvidenceClassification;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Models\Artifact;
 use App\Models\Evidence;
@@ -63,9 +64,8 @@ final readonly class ProcessQualityAssuranceExecution
                     ->whereKey(
                         $lockedAssessment->review_execution_id,
                     )
-                    ->where(
-                        'capability',
-                        'quality_assurance.simulation',
+                    ->forCapability(
+                        ExecutionCapability::QualityAssuranceReview,
                     )
                     ->lockForUpdate()
                     ->firstOrFail();
@@ -88,25 +88,24 @@ final readonly class ProcessQualityAssuranceExecution
                         $lockedAssessment
                             ->implementation_execution_id,
                     )
-                    ->whereIn('capability', [
-                        'development',
-                        'development.simulation',
-                    ])
+                    ->forCapability(
+                        ExecutionCapability::DevelopmentExecute,
+                    )
                     ->lock('for share')
                     ->firstOrFail();
 
                 $implementationAttempt =
                     ExecutionAttempt::query()
-                        ->where(
-                            'execution_id',
-                            $implementationExecution->id,
-                        )
-                        ->whereKey(
-                            $lockedAssessment
-                                ->implementation_attempt_id,
-                        )
-                        ->lock('for share')
-                        ->firstOrFail();
+                    ->where(
+                        'execution_id',
+                        $implementationExecution->id,
+                    )
+                    ->whereKey(
+                        $lockedAssessment
+                            ->implementation_attempt_id,
+                    )
+                    ->lock('for share')
+                    ->firstOrFail();
 
                 $ticket = RoadmapTask::query()
                     ->whereKey(
@@ -114,7 +113,7 @@ final readonly class ProcessQualityAssuranceExecution
                     )
                     ->whereHas(
                         'roadmap',
-                        static fn ($query) => $query->where(
+                        static fn($query) => $query->where(
                             'project_id',
                             $project->id,
                         ),
@@ -154,20 +153,31 @@ final readonly class ProcessQualityAssuranceExecution
                     ));
                 }
 
+                $provider = $this->providers->resolve(
+                    fallbackOrder: $fallbackOrder,
+                    capability: $reviewExecution->capability,
+                );
+
+                $selection = ProviderSelection::fromProvider(
+                    requestedCapability: $reviewExecution->capability,
+                    provider: $provider,
+                    selectionSource: 'immutable_configuration_snapshot',
+                );
+
                 $reviewAttempt = $this->attempts->startAttempt(
                     execution: $reviewExecution,
-                    context: new ExecutionAttemptContext(
-                        executionProvider: 'simulation',
-                        modelIdentifier: null,
+                    context: ExecutionAttemptContext::fromProviderSelection(
+                        selection: $selection,
                         requestedReasoningLevel: $reviewExecution
                             ->requested_reasoning_level,
                         effectiveReasoningLevel: $reviewExecution
                             ->requested_reasoning_level,
                         reasoningResolutionSource: 'layer_3_final_qa_policy',
                         reasoningEscalationReason: 'final_qa_and_merge_advisory',
-                        simulationMode: 'simulated',
-                        simulationSeed: (string)
-                        $lockedAssessment->simulation_seed,
+                        simulationScenario: $lockedAssessment
+                            ->simulation_scenario,
+                        simulationSeed: (string) $lockedAssessment
+                            ->simulation_seed,
                     ),
                 );
 
@@ -260,7 +270,7 @@ final readonly class ProcessQualityAssuranceExecution
                 result: $result,
                 request: $request,
             );
-        } catch (InvalidArgumentException|LogicException $exception) {
+        } catch (InvalidArgumentException | LogicException $exception) {
             $this->failAttempt(
                 assessment: $runningAssessment,
                 attempt: $reviewAttempt,
@@ -308,22 +318,22 @@ final readonly class ProcessQualityAssuranceExecution
 
                     $lockedReviewAttempt =
                         ExecutionAttempt::query()
-                            ->where(
-                                'execution_id',
-                                $lockedReviewExecution->id,
-                            )
-                            ->whereKey($reviewAttempt->id)
-                            ->lockForUpdate()
-                            ->firstOrFail();
+                        ->where(
+                            'execution_id',
+                            $lockedReviewExecution->id,
+                        )
+                        ->whereKey($reviewAttempt->id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
 
                     $lockedImplementationExecution =
                         Execution::query()
-                            ->forProject($assessment->project_id)
-                            ->whereKey(
-                                $implementationExecution->id,
-                            )
-                            ->lock('for share')
-                            ->firstOrFail();
+                        ->forProject($assessment->project_id)
+                        ->whereKey(
+                            $implementationExecution->id,
+                        )
+                        ->lock('for share')
+                        ->firstOrFail();
 
                     $lockedTicket = RoadmapTask::query()
                         ->whereKey($ticket->id)
@@ -339,7 +349,7 @@ final readonly class ProcessQualityAssuranceExecution
 
                     if (
                         $lockedReviewExecution
-                            ->cancel_requested_at !== null
+                        ->cancel_requested_at !== null
                     ) {
                         $this->attempts->completeAttempt(
                             attempt: $lockedReviewAttempt,
@@ -546,11 +556,23 @@ final readonly class ProcessQualityAssuranceExecution
         ExecutionAttempt $reviewAttempt,
         QaAssessmentResult $result,
     ): void {
-        $reference = sprintf(
-            'simulation://projects/%d/executions/%s/qa-assessment',
-            $reviewExecution->project_id,
-            $reviewExecution->id,
-        );
+        $simulated = $reviewAttempt->simulation_mode !== null;
+
+        $classification = $simulated
+            ? EvidenceClassification::SimulatedOutput
+            : EvidenceClassification::ReportedEvidence;
+
+        $reference = $simulated
+            ? sprintf(
+                'simulation://projects/%d/executions/%s/qa-assessment',
+                $reviewExecution->project_id,
+                $reviewExecution->id,
+            )
+            : sprintf(
+                'execution://projects/%d/executions/%s/qa-assessment',
+                $reviewExecution->project_id,
+                $reviewExecution->id,
+            );
 
         $metadata = [
             'synthetic' => true,
@@ -602,10 +624,10 @@ final readonly class ProcessQualityAssuranceExecution
             'execution_attempt_id' => $reviewAttempt->id,
             'artifact_type' => 'qa_assessment',
             'name' => 'Simulated Layer 3 QA assessment',
-            'execution_provider' => 'simulation',
+            'execution_provider' => $reviewAttempt->execution_provider,
             'external_reference' => $reference,
             'media_type' => 'application/json',
-            'simulation_mode' => 'simulated',
+            'simulation_mode' => $reviewAttempt->simulation_mode,
             'simulation_seed' => $reviewAttempt->simulation_seed,
             'assumptions' => [
                 'Synthetic Layer 3 assessment only.',

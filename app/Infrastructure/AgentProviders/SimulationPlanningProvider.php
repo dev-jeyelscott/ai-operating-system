@@ -15,6 +15,8 @@ use App\Application\Planning\Data\PlanningPhase;
 use App\Application\Planning\Data\PlanningRoadmapDefinition;
 use App\Application\Planning\Data\PlanningSourceReference;
 use App\Application\Planning\Data\PlanningTask;
+use App\Application\Executions\Data\ExecutionProviderMetadata;
+use App\Domain\Executions\ExecutionCapability;
 use InvalidArgumentException;
 
 /**
@@ -48,13 +50,27 @@ final class SimulationPlanningProvider implements ExecutionProvider
     {
         return 'simulation';
     }
-
+    
     /**
-     * Support only deterministic roadmap planning.
+     * Support the canonical Layer 1 planning capability.
      */
     public function supports(string $capability): bool
     {
-        return $capability === 'planning.roadmap';
+        return $capability
+            === ExecutionCapability::PlanningGenerate->value;
+    }
+
+    /**
+     * Return immutable metadata for deterministic planning simulation.
+     */
+    public function metadata(): ExecutionProviderMetadata
+    {
+        return new ExecutionProviderMetadata(
+            modelIdentifier: null,
+            protocolVersion: 'simulation.v1',
+            sandboxProfile: 'simulation.noop',
+            simulation: true,
+        );
     }
 
     /**
@@ -77,9 +93,7 @@ final class SimulationPlanningProvider implements ExecutionProvider
 
         $sourceReferences = $request->documents;
 
-        [$gaps, $conflicts, $risks, $humanDecisionRequired] = match (
-            $request->scenario
-        ) {
+        [$gaps, $conflicts, $risks, $humanDecisionRequired] = match ($request->scenario) {
             self::MISSING_DOCUMENTS => [
                 ['Required source documents are missing.'],
                 [],
@@ -154,10 +168,10 @@ final class SimulationPlanningProvider implements ExecutionProvider
         );
 
         $task = new PlanningTask(
-            stableId: 'task-plan-'.substr(
+            stableId: 'task-plan-' . substr(
                 hash(
                     'sha256',
-                    $request->contextFingerprint.'|'.$request->seed,
+                    $request->contextFingerprint . '|' . $request->seed,
                 ),
                 0,
                 12,
@@ -200,7 +214,7 @@ final class SimulationPlanningProvider implements ExecutionProvider
                 ? 'blocked'
                 : 'publishable',
             documentInventory: array_map(
-                static fn (
+                static fn(
                     PlanningSourceReference $reference,
                 ): PlanningDocument => new PlanningDocument(
                     source: $reference,

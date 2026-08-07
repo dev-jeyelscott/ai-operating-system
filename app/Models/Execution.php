@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\Projects\Configuration\ReasoningLevel;
 use Carbon\CarbonImmutable;
@@ -216,6 +217,22 @@ final class Execution extends Model
             ->where('status', ExecutionStatus::RetryScheduled)
             ->whereNotNull('next_attempt_at')
             ->where('next_attempt_at', '<=', $at);
+    }
+
+    /**
+     * Scope executions to a canonical capability and its supported legacy values.
+     *
+     * @param  Builder<Execution>  $query
+     * @return Builder<Execution>
+     */
+    public function scopeForCapability(
+        Builder $query,
+        ExecutionCapability $capability,
+    ): Builder {
+        return $query->whereIn(
+            $query->getModel()->qualifyColumn('capability'),
+            $capability->storedValues(),
+        );
     }
 
     /**

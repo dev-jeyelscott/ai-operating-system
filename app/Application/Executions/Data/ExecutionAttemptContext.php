@@ -23,7 +23,49 @@ final readonly class ExecutionAttemptContext
         public ?string $reasoningEscalationReason = null,
         public ?string $simulationMode = null,
         public ?string $simulationSeed = null,
+        public ?string $providerProtocolVersion = null,
+        public ?string $providerSandboxProfile = null,
+        public ?string $effectiveCapability = null,
+        public ?string $providerSelectionSource = null,
+        public ?string $simulationScenario = null,
     ) {}
+
+    /**
+     * Build an attempt context from one resolved provider selection.
+     *
+     * Simulation-only fields are left null for every non-simulation provider.
+     */
+    public static function fromProviderSelection(
+        ProviderSelection $selection,
+        ReasoningLevel $requestedReasoningLevel,
+        ReasoningLevel $effectiveReasoningLevel,
+        string $reasoningResolutionSource,
+        ?string $reasoningEscalationReason = null,
+        ?string $simulationScenario = null,
+        ?string $simulationSeed = null,
+    ): self {
+        return new self(
+            executionProvider: $selection->providerId,
+            modelIdentifier: $selection->modelIdentifier,
+            requestedReasoningLevel: $requestedReasoningLevel,
+            effectiveReasoningLevel: $effectiveReasoningLevel,
+            reasoningResolutionSource: $reasoningResolutionSource,
+            reasoningEscalationReason: $reasoningEscalationReason,
+            simulationMode: $selection->simulation
+                ? 'simulated'
+                : null,
+            simulationSeed: $selection->simulation
+                ? $simulationSeed
+                : null,
+            providerProtocolVersion: $selection->protocolVersion,
+            providerSandboxProfile: $selection->sandboxProfile,
+            effectiveCapability: $selection->effectiveCapability->value,
+            providerSelectionSource: $selection->selectionSource,
+            simulationScenario: $selection->simulation
+                ? $simulationScenario
+                : null,
+        );
+    }
 
     /**
      * Convert the context into execution-attempt persistence attributes.
@@ -35,11 +77,23 @@ final readonly class ExecutionAttemptContext
         return [
             'execution_provider' => $this->executionProvider,
             'model_identifier' => $this->modelIdentifier,
-            'requested_reasoning_level' => $this->requestedReasoningLevel,
-            'effective_reasoning_level' => $this->effectiveReasoningLevel,
-            'reasoning_resolution_source' => $this->reasoningResolutionSource,
-            'reasoning_escalation_reason' => $this->reasoningEscalationReason,
+            'provider_protocol_version' => $this
+                ->providerProtocolVersion,
+            'provider_sandbox_profile' => $this
+                ->providerSandboxProfile,
+            'effective_capability' => $this->effectiveCapability,
+            'provider_selection_source' => $this
+                ->providerSelectionSource,
+            'requested_reasoning_level' => $this
+                ->requestedReasoningLevel,
+            'effective_reasoning_level' => $this
+                ->effectiveReasoningLevel,
+            'reasoning_resolution_source' => $this
+                ->reasoningResolutionSource,
+            'reasoning_escalation_reason' => $this
+                ->reasoningEscalationReason,
             'simulation_mode' => $this->simulationMode,
+            'simulation_scenario' => $this->simulationScenario,
             'simulation_seed' => $this->simulationSeed,
         ];
     }

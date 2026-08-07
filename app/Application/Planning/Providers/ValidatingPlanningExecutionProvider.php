@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Planning\Providers;
 
+use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Application\Planning\Contracts\ExecutionProvider;
 use App\Application\Planning\Data\PlanningExecutionRequest;
 use App\Application\Planning\Data\PlanningExecutionResult;
@@ -37,6 +38,14 @@ final readonly class ValidatingPlanningExecutionProvider implements ExecutionPro
     }
 
     /**
+     * Return metadata from the wrapped provider.
+     */
+    public function metadata(): ExecutionProviderMetadata
+    {
+        return $this->provider->metadata();
+    }
+
+    /**
      * Delegate capability discovery to the underlying provider.
      */
     public function supports(string $capability): bool
@@ -65,9 +74,9 @@ final readonly class ValidatingPlanningExecutionProvider implements ExecutionPro
             throw $exception;
         } catch (
             InvalidArgumentException
-            |JsonException
-            |TypeError
-            |ValueError $exception
+            | JsonException
+            | TypeError
+            | ValueError $exception
         ) {
             throw ProviderResultRejected::fromThrowable(
                 providerId: $this->provider->id(),

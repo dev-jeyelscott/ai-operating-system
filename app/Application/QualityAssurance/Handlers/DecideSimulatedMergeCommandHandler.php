@@ -273,8 +273,8 @@ final readonly class DecideSimulatedMergeCommandHandler
                     'ticket_status_before' => $statusBefore->value,
                     'ticket_status_after' => $statusAfter->value,
                     'terminal_marker' => $command->action->isTerminal()
-                            ? 'T'
-                            : null,
+                        ? 'T'
+                        : null,
                     'simulated' => true,
                     'actual_state' => 'unverified',
                     'decided_at' => $occurredAt,
@@ -355,7 +355,7 @@ final readonly class DecideSimulatedMergeCommandHandler
 
         if (
             $reviewExecution->capability
-            !== 'quality_assurance.simulation'
+            !== 'quality_assurance.review'
             || $reviewExecution->status
             !== ExecutionStatus::Completed
         ) {

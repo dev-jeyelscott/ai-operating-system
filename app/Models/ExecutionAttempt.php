@@ -52,6 +52,11 @@ use LogicException;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  * @property-read Execution $execution
+ * @property string|null $provider_protocol_version
+ * @property string|null $provider_sandbox_profile
+ * @property string|null $effective_capability
+ * @property string|null $provider_selection_source
+ * @property string|null $simulation_scenario
  */
 #[DateFormat('Y-m-d H:i:s.u')]
 #[Fillable([
@@ -65,6 +70,11 @@ use LogicException;
     'reasoning_escalation_reason',
     'simulation_mode',
     'simulation_seed',
+    'provider_protocol_version',
+    'provider_sandbox_profile',
+    'effective_capability',
+    'provider_selection_source',
+    'simulation_scenario',
 ])]
 final class ExecutionAttempt extends Model
 {
@@ -98,6 +108,11 @@ final class ExecutionAttempt extends Model
                     'reasoning_escalation_reason',
                     'simulation_mode',
                     'simulation_seed',
+                    'provider_protocol_version',
+                    'provider_sandbox_profile',
+                    'effective_capability',
+                    'provider_selection_source',
+                    'simulation_scenario',
                 ] as $attribute
             ) {
                 if ($attempt->isDirty($attribute)) {

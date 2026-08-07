@@ -6,6 +6,7 @@ namespace App\Application\Planning;
 
 use App\Application\Approvals\Commands\RequestApproval;
 use App\Application\Executions\Data\ExecutionAttemptContext;
+use App\Application\Executions\Data\ProviderSelection;
 use App\Application\Executions\ExecutionResilienceManager;
 use App\Application\Planning\Data\PlanningDiagnostic;
 use App\Application\Planning\Data\PlanningExecutionRequest;
@@ -82,15 +83,25 @@ final readonly class ProcessPlanningExecution
             ),
         );
 
-        $attempt = $this->attempts->startAttempt($execution, new ExecutionAttemptContext(
-            executionProvider: $provider->id(),
-            modelIdentifier: null,
-            requestedReasoningLevel: $execution->requested_reasoning_level,
-            effectiveReasoningLevel: $execution->requested_reasoning_level,
-            reasoningResolutionSource: 'immutable_configuration_snapshot',
-            simulationMode: $provider->id() === 'simulation' ? 'simulated' : 'real',
-            simulationSeed: $provider->id() === 'simulation' ? (string) $seed : null,
-        ));
+        $selection = ProviderSelection::fromProvider(
+            requestedCapability: $execution->capability,
+            provider: $provider,
+            selectionSource: 'immutable_configuration_snapshot',
+        );
+
+        $attempt = $this->attempts->startAttempt(
+            execution: $execution,
+            context: ExecutionAttemptContext::fromProviderSelection(
+                selection: $selection,
+                requestedReasoningLevel: $execution
+                    ->requested_reasoning_level,
+                effectiveReasoningLevel: $execution
+                    ->requested_reasoning_level,
+                reasoningResolutionSource: 'immutable_configuration_snapshot',
+                simulationScenario: $scenario,
+                simulationSeed: (string) $seed,
+            ),
+        );
 
         try {
             try {
@@ -100,7 +111,7 @@ final readonly class ProcessPlanningExecution
                     contextFingerprint: $snapshot->approved_document_set_fingerprint,
                     reasoningLevel: $execution->requested_reasoning_level,
                     documents: array_map(
-                        static fn (array $document): PlanningSourceReference => new PlanningSourceReference(
+                        static fn(array $document): PlanningSourceReference => new PlanningSourceReference(
                             documentId: $document['document_id'],
                             documentVersionId: $document['document_version_id'],
                             version: $document['version'],
@@ -208,8 +219,13 @@ final readonly class ProcessPlanningExecution
             ->where('project_id', $execution->project_id)
             ->orderBy('revision')
             ->get(['id', 'revision', 'content_version', 'status', 'readiness', 'candidate_fingerprint'])
-            ->map(static fn (Roadmap $roadmap): array => $roadmap->only([
-                'id', 'revision', 'content_version', 'status', 'readiness', 'candidate_fingerprint',
+            ->map(static fn(Roadmap $roadmap): array => $roadmap->only([
+                'id',
+                'revision',
+                'content_version',
+                'status',
+                'readiness',
+                'candidate_fingerprint',
             ]))
             ->values()
             ->all());
@@ -229,8 +245,13 @@ final readonly class ProcessPlanningExecution
 
         return [
             ...$roadmap->only(['id', 'revision', 'content_version', 'status', 'readiness', 'candidate_fingerprint']),
-            'tasks' => $roadmap->tasks->map(static fn ($task): array => $task->only([
-                'stable_id', 'title', 'priority', 'risk', 'logical_agent', 'estimated_complexity',
+            'tasks' => $roadmap->tasks->map(static fn($task): array => $task->only([
+                'stable_id',
+                'title',
+                'priority',
+                'risk',
+                'logical_agent',
+                'estimated_complexity',
             ]))->values()->all(),
         ];
     }
@@ -256,7 +277,7 @@ final readonly class ProcessPlanningExecution
     {
         $definition = $execution->workflowInstance->workflowDefinition->definition;
         $available = collect($definition['transitions'])->contains(
-            static fn (array $candidate): bool => $candidate['name'] === $transition,
+            static fn(array $candidate): bool => $candidate['name'] === $transition,
         );
         if (! $available) {
             return;

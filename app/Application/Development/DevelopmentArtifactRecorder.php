@@ -43,6 +43,14 @@ class DevelopmentArtifactRecorder
          * Redaction must occur before fingerprint generation. This guarantees
          * that the stored fingerprint describes the persisted safe content.
          */
+        $simulated = $attempt->simulation_mode !== null;
+
+        $classification = $simulated
+            ? EvidenceClassification::SimulatedOutput
+            : EvidenceClassification::ReportedEvidence;
+
+        $actualState = 'unverified';
+
         $safeName = $this->redactor->message($name);
         $safeReference = $this->redactor->message(
             $reference,
@@ -61,7 +69,7 @@ class DevelopmentArtifactRecorder
         );
 
         $artifactMetadata = [
-            'synthetic' => true,
+            'synthetic' => $simulated,
             ...$safeMetadata,
         ];
 
@@ -73,13 +81,14 @@ class DevelopmentArtifactRecorder
         ]);
 
         $provenanceKey = sprintf(
-            'development:%s:simulated_output',
+            'development:%s:%s_output',
             $type,
+            $simulated ? 'simulated' : 'provider',
         );
 
         $evidenceMetadata = [
-            'synthetic' => true,
-            'actual_state' => 'unverified',
+            'synthetic' => $simulated,
+            'actual_state' => $actualState,
         ];
 
         $evidenceFingerprint = $this->fingerprint([
@@ -106,6 +115,9 @@ class DevelopmentArtifactRecorder
                 $provenanceKey,
                 $evidenceMetadata,
                 $evidenceFingerprint,
+                $simulated,
+                $actualState,
+                $classification
             ): Artifact {
                 $artifact = Artifact::query()->create([
                     'project_id' => $execution->project_id,
@@ -113,17 +125,18 @@ class DevelopmentArtifactRecorder
                     'execution_attempt_id' => $attempt->id,
                     'artifact_type' => $type,
                     'name' => $safeName,
-                    'execution_provider' => 'simulation',
+                    'execution_provider' => $attempt->execution_provider,
                     'external_reference' => $safeReference,
-                    'simulation_mode' => 'simulated',
-                    'simulation_seed' => $attempt
-                        ->simulation_seed,
-                    'assumptions' => [
-                        'Synthetic output only.',
-                    ],
-                    'confidence' => '0.7500',
+                    'simulation_mode' => $attempt->simulation_mode,
+                    'simulation_seed' => $attempt->simulation_seed,
+                    'assumptions' => $simulated
+                        ? ['Synthetic output only.']
+                        : [],
+                    'confidence' => $simulated
+                        ? '0.7500'
+                        : null,
                     'evidence_still_required' => true,
-                    'actual_state' => 'unverified',
+                    'actual_state' => $actualState,
                     'metadata' => $artifactMetadata,
                     'idempotency_key' => $idempotencyKey,
                     'content_fingerprint_sha256' => $artifactFingerprint,
@@ -131,15 +144,17 @@ class DevelopmentArtifactRecorder
 
                 Evidence::query()->create([
                     'artifact_id' => $artifact->id,
-                    'classification' => EvidenceClassification::SimulatedOutput,
+                    'classification' => $classification,
                     'evidence_type' => $type,
-                    'provider' => 'simulation',
+                    'provider' => $attempt->execution_provider,
                     'source_reference' => $safeReference,
                     'commit_sha' => $type === 'synthetic_commit'
                         ? $safeName
                         : null,
                     'claims' => $safeClaims,
-                    'confidence' => '0.7500',
+                    'confidence' => $simulated
+                        ? '0.7500'
+                        : null,
                     'metadata' => $evidenceMetadata,
                     'provenance_key' => $provenanceKey,
                     'content_fingerprint_sha256' => $evidenceFingerprint,

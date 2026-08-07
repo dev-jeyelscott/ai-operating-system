@@ -28,7 +28,7 @@ final class ForQaTicketEligibilityEvaluator
      */
     private const array IMPLEMENTATION_CAPABILITIES = [
         'development',
-        'development.simulation',
+        'development.execute',
     ];
 
     /**
@@ -186,7 +186,7 @@ final class ForQaTicketEligibilityEvaluator
         if (
             $context->implementationContextSnapshotId === null
             || $context->implementationContextSnapshotId
-                !== $context->roadmapContextSnapshotId
+            !== $context->roadmapContextSnapshotId
         ) {
             $reasons[] =
                 ForQaTicketIneligibilityReason::ContextSnapshotMismatch;
@@ -315,9 +315,9 @@ final class ForQaTicketEligibilityEvaluator
         foreach ($artifactsByType[$type] ?? [] as $artifact) {
             if (
                 $artifact->executionId
-                    === $context->implementationExecutionId
+                === $context->implementationExecutionId
                 && $artifact->executionAttemptId
-                    === $context->implementationAttemptId
+                === $context->implementationAttemptId
             ) {
                 return $artifact;
             }

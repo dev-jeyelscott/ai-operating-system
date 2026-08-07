@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\QualityAssurance;
 
 use App\Domain\Executions\ExecutionAttemptStatus;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\Projects\Configuration\ReasoningLevel;
 use App\Models\Execution;
@@ -58,7 +59,7 @@ final readonly class StartQualityAssuranceExecution
                     ->whereKey($roadmapTaskId)
                     ->whereHas(
                         'roadmap',
-                        static fn ($query) => $query->where(
+                        static fn($query) => $query->where(
                             'project_id',
                             $project->id,
                         ),
@@ -73,7 +74,7 @@ final readonly class StartQualityAssuranceExecution
                     ->whereKey($implementationExecutionId)
                     ->whereIn('capability', [
                         'development',
-                        'development.simulation',
+                        'development.execute',
                     ])
                     ->where('status', ExecutionStatus::Completed)
                     ->lock('for share')
@@ -133,7 +134,7 @@ final readonly class StartQualityAssuranceExecution
                         ->workflow_instance_id,
                     'project_context_snapshot_id' => $implementationExecution
                         ->project_context_snapshot_id,
-                    'capability' => 'quality_assurance.simulation',
+                    'capability' => ExecutionCapability::QualityAssuranceReview->value,
                     'logical_role' => 'qa_engineer',
                     'requested_reasoning_level' => ReasoningLevel::High,
                     'retry_limit' => $implementationExecution->retry_limit,

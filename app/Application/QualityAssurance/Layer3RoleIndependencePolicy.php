@@ -20,7 +20,7 @@ final class Layer3RoleIndependencePolicy
      */
     private const array IMPLEMENTATION_CAPABILITIES = [
         'development',
-        'development.simulation',
+        'development.execute',
     ];
 
     /**
@@ -30,7 +30,7 @@ final class Layer3RoleIndependencePolicy
      */
     private const array REVIEW_CAPABILITIES = [
         'quality_assurance',
-        'quality_assurance.simulation',
+        'quality_assurance.review',
     ];
 
     /**

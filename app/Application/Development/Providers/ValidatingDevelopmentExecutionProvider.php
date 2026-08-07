@@ -8,6 +8,7 @@ use App\Application\Development\Contracts\DevelopmentExecutionProvider;
 use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
 use App\Application\Development\DevelopmentResultValidator;
+use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Domain\Executions\Exceptions\ProviderResultRejected;
 use InvalidArgumentException;
 use JsonException;
@@ -34,6 +35,14 @@ final readonly class ValidatingDevelopmentExecutionProvider implements Developme
     public function id(): string
     {
         return $this->provider->id();
+    }
+
+    /**
+     * Return metadata from the wrapped provider.
+     */
+    public function metadata(): ExecutionProviderMetadata
+    {
+        return $this->provider->metadata();
     }
 
     /**

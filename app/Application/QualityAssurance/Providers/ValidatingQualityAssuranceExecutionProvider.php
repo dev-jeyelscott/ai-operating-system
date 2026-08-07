@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\QualityAssurance\Providers;
 
+use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Application\QualityAssurance\Contracts\QualityAssuranceExecutionProvider;
 use App\Application\QualityAssurance\Data\QaAssessmentResult;
 use App\Application\QualityAssurance\Data\QualityAssuranceExecutionRequest;
@@ -37,6 +38,14 @@ final readonly class ValidatingQualityAssuranceExecutionProvider implements Qual
     }
 
     /**
+     * Return metadata from the wrapped provider.
+     */
+    public function metadata(): ExecutionProviderMetadata
+    {
+        return $this->provider->metadata();
+    }
+
+    /**
      * Delegate capability discovery to the underlying provider.
      */
     public function supports(string $capability): bool
@@ -62,9 +71,9 @@ final readonly class ValidatingQualityAssuranceExecutionProvider implements Qual
             throw $exception;
         } catch (
             InvalidArgumentException
-            |JsonException
-            |TypeError
-            |ValueError $exception
+            | JsonException
+            | TypeError
+            | ValueError $exception
         ) {
             throw ProviderResultRejected::fromThrowable(
                 providerId: $this->provider->id(),

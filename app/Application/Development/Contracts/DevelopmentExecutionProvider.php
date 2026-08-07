@@ -6,12 +6,17 @@ namespace App\Application\Development\Contracts;
 
 use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
+use App\Application\Executions\Contracts\DescribesExecutionProvider;
 
-interface DevelopmentExecutionProvider
+/**
+ * Defines the provider-neutral Layer 2 development boundary.
+ */
+interface DevelopmentExecutionProvider extends DescribesExecutionProvider
 {
-    public function id(): string;
-
-    public function supports(string $capability): bool;
-
-    public function execute(DevelopmentExecutionRequest $request): DevelopmentExecutionResult;
+    /**
+     * Execute one validated development request.
+     */
+    public function execute(
+        DevelopmentExecutionRequest $request,
+    ): DevelopmentExecutionResult;
 }

@@ -41,7 +41,7 @@ final readonly class StartProjectHandler
 {
     private const WORKFLOW_DEFINITION_KEY = 'project_delivery';
 
-    private const PLANNING_CAPABILITY = 'planning.roadmap';
+    private const PLANNING_CAPABILITY = 'planning.generate';
 
     private const PLANNING_LOGICAL_ROLE = 'project_manager';
 
