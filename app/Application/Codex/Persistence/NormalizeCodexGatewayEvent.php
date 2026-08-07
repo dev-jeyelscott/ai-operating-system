@@ -46,6 +46,8 @@ final readonly class NormalizeCodexGatewayEvent
 
             'item/commandExecution/requestApproval',
             'item/fileChange/requestApproval' => ProviderEventType::ApprovalRequested,
+            'item/permissions/requestApproval'
+            => ProviderEventType::ApprovalRequested,
 
             'serverRequest/resolved' => ProviderEventType::ApprovalResolved,
 
@@ -80,8 +82,8 @@ final readonly class NormalizeCodexGatewayEvent
 
         return $status === 'failed'
             || $status === 'interrupted'
-                ? ProviderEventType::TurnFailed
-                : ProviderEventType::TurnCompleted;
+            ? ProviderEventType::TurnFailed
+            : ProviderEventType::TurnCompleted;
     }
 
     /**
@@ -97,7 +99,7 @@ final readonly class NormalizeCodexGatewayEvent
         if (
             is_array($item)
             && ($item['type'] ?? null)
-                === 'commandExecution'
+            === 'commandExecution'
         ) {
             return $command;
         }

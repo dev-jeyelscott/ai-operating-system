@@ -291,44 +291,32 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
     }
 
     /**
-     * Send one idempotent response to a provider-originated approval request.
+     * Send one idempotent validated response to a provider approval request.
+     *
+     * @param  array<string, mixed>  $result
      */
     public function respondToApproval(
         int|string $requestId,
-        string $decision,
+        array $result,
     ): void {
         $this->assertInitialized();
 
-        $allowed = [
-            'accept',
-            'acceptForSession',
-            'acceptWithExecpolicyAmendment',
-            'applyNetworkPolicyAmendment',
-            'decline',
-            'cancel',
-        ];
+        $this->assertApprovalResult($result);
 
-        if (! in_array($decision, $allowed, true)) {
-            throw new CodexGatewayException(
-                CodexGatewayException::PROTOCOL_MALFORMED,
-                false,
-                'Codex approval decision is unsupported.',
-            );
-        }
-
-        $key = $this->identifierKey(
-            $requestId,
-        );
+        $key = $this->identifierKey($requestId);
+        $fingerprint = $this->fingerprint($result);
 
         if (isset($this->resolvedApprovalRequests[$key])) {
             if (
-                $this->resolvedApprovalRequests[$key]
-                !== $decision
+                ! hash_equals(
+                    $this->resolvedApprovalRequests[$key],
+                    $fingerprint,
+                )
             ) {
                 throw new CodexGatewayException(
                     CodexGatewayException::DUPLICATE_MESSAGE,
                     false,
-                    'Codex approval request received conflicting decisions.',
+                    'Codex approval request received conflicting results.',
                 );
             }
 
@@ -337,12 +325,88 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         $this->write([
             'id' => $requestId,
-            'result' => [
-                'decision' => $decision,
-            ],
+            'result' => $result,
         ]);
 
-        $this->resolvedApprovalRequests[$key] = $decision;
+        $this->resolvedApprovalRequests[$key] = $fingerprint;
+    }
+
+    /**
+     * Reject provider approval result shapes outside the AIOS security contract.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private function assertApprovalResult(array $result): void
+    {
+        if (array_key_exists('decision', $result)) {
+            if (
+                count($result) !== 1
+                || ! is_string($result['decision'])
+                || ! in_array(
+                    $result['decision'],
+                    [
+                        'accept',
+                        'decline',
+                        'cancel',
+                    ],
+                    true,
+                )
+            ) {
+                throw new CodexGatewayException(
+                    CodexGatewayException::PROTOCOL_MALFORMED,
+                    false,
+                    'Codex command or file approval result is unsupported.',
+                );
+            }
+
+            return;
+        }
+
+        if (! array_key_exists('permissions', $result)) {
+            throw new CodexGatewayException(
+                CodexGatewayException::PROTOCOL_MALFORMED,
+                false,
+                'Codex approval result has an unsupported shape.',
+            );
+        }
+
+        if (! is_array($result['permissions'])) {
+            throw new CodexGatewayException(
+                CodexGatewayException::PROTOCOL_MALFORMED,
+                false,
+                'Codex permission approval result is invalid.',
+            );
+        }
+
+        $scope = $result['scope'] ?? 'turn';
+
+        if ($scope !== 'turn') {
+            throw new CodexGatewayException(
+                CodexGatewayException::PROTOCOL_MALFORMED,
+                false,
+                'Persistent Codex permission grants are not allowed.',
+            );
+        }
+
+        foreach (array_keys($result) as $key) {
+            if (
+                ! in_array(
+                    $key,
+                    [
+                        'permissions',
+                        'scope',
+                        'strictAutoReview',
+                    ],
+                    true,
+                )
+            ) {
+                throw new CodexGatewayException(
+                    CodexGatewayException::PROTOCOL_MALFORMED,
+                    false,
+                    'Codex permission approval result contains an unsupported field.',
+                );
+            }
+        }
     }
 
     /**
@@ -358,7 +422,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         $this->assertInitialized();
 
-        $key = $threadId.':'.$turnId;
+        $key = $threadId . ':' . $turnId;
 
         if (isset($this->interruptedTurns[$key])) {
             return;
@@ -594,7 +658,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         try {
             $this->input->write(
-                $encoded."\n",
+                $encoded . "\n",
             );
         } catch (Throwable $exception) {
             throw new CodexGatewayException(
@@ -897,8 +961,8 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
         int|string $identifier,
     ): string {
         return is_int($identifier)
-            ? 'i:'.$identifier
-            : 's:'.$identifier;
+            ? 'i:' . $identifier
+            : 's:' . $identifier;
     }
 
     /**
@@ -940,7 +1004,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         if (array_is_list($value)) {
             return array_map(
-                fn (mixed $item): mixed => $this
+                fn(mixed $item): mixed => $this
                     ->canonicalize($item),
                 $value,
             );

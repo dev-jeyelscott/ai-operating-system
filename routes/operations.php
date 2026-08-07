@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
  * Keep every operations endpoint inside the authenticated and tenant-scoped
  * organization/project boundary.
  */
+
 Route::middleware(['auth', 'auth.session', 'verified'])
     ->prefix('/organizations/{organization}/projects/{project}')
     ->name('organizations.projects.')
@@ -99,4 +100,19 @@ Route::middleware(['auth', 'auth.session', 'verified'])
         )
             ->can('view', 'project')
             ->name('approvals.index');
+
+        Route::get(
+            '/approvals/codex/{codexApprovalRequest}',
+            ShowCodexApprovalController::class,
+        )
+            ->can('view', 'project')
+            ->name('approvals.codex.show');
+
+        Route::post(
+            '/approvals/codex/{codexApprovalRequest}/decision',
+            DecideCodexApprovalController::class,
+        )
+            ->middleware('throttle:30,1')
+            ->can('approve', 'project')
+            ->name('approvals.codex.decide');
     });

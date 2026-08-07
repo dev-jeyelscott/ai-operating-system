@@ -81,6 +81,8 @@ return [
 
         'warning',
         'configWarning',
+
+        'item/permissions/requestApproval',
     ],
 
     /*

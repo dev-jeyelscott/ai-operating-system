@@ -11,24 +11,24 @@ use App\Application\Codex\Data\CodexThreadReference;
 use App\Application\Codex\Data\CodexTurnReference;
 
 /**
- * Provides typed operations for one live Codex App Server process.
+ * Defines one bounded, bidirectional Codex App Server process session.
  */
 interface CodexProcessSession
 {
     /**
-     * Complete the mandatory App Server initialization handshake.
+     * Complete the mandatory protocol handshake.
      */
     public function initialize(): CodexGatewayInitialization;
 
     /**
-     * Start one new Codex thread using the immutable process context.
+     * Start one provider thread using application-owned policy.
      */
     public function startThread(
         string $approvalPolicy,
     ): CodexThreadReference;
 
     /**
-     * Begin one turn in an existing provider thread.
+     * Start one provider turn.
      *
      * @param  list<array<string, mixed>>  $input
      */
@@ -38,15 +38,19 @@ interface CodexProcessSession
     ): CodexTurnReference;
 
     /**
-     * Return an authorized answer to one provider-initiated approval request.
+     * Send one validated JSON-RPC result to a provider-originated approval.
+     *
+     * The application approval bridge owns result authorization and shape.
+     *
+     * @param  array<string, mixed>  $result
      */
     public function respondToApproval(
         int|string $requestId,
-        string $decision,
+        array $result,
     ): void;
 
     /**
-     * Request interruption of one active turn.
+     * Interrupt one active turn idempotently.
      */
     public function interruptTurn(
         string $threadId,
@@ -54,20 +58,19 @@ interface CodexProcessSession
     ): void;
 
     /**
-     * Return the next ordered provider event or null when the polling window
-     * expires without an event.
+     * Poll one normalized provider event.
      */
     public function nextEvent(
         int $timeoutMilliseconds = 250,
     ): ?CodexGatewayEvent;
 
     /**
-     * Return transient process status for liveness checks.
+     * Return transient process liveness.
      */
     public function status(): CodexProcessStatus;
 
     /**
-     * Close stdin, wait a bounded grace period, then force-stop when required.
+     * Shut down the provider process idempotently.
      */
     public function shutdown(): void;
 }
