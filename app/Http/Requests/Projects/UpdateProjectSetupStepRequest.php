@@ -311,7 +311,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
      * Return the current persisted Codex policy so the generic policy form
      * cannot silently reset security-sensitive fields it does not render.
      *
-     * @return array<string, mixed>
+     * @return array<array-key, mixed>
      */
     private function persistedCodexPolicy(): array
     {

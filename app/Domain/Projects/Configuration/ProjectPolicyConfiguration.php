@@ -85,10 +85,7 @@ final readonly class ProjectPolicyConfiguration
      *
      * @return array{
      *     default_reasoning: ReasoningLevel,
-     *     provider_policy: array{
-     *         allowed_provider_ids: list<string>,
-     *         fallback_order: list<string>
-     *     },
+     *     provider_policy: array<string, mixed>,
      *     budget_limit_minor: int|null,
      *     budget_currency: string,
      *     automatic_retry_limit: int,
@@ -359,7 +356,7 @@ final readonly class ProjectPolicyConfiguration
             if (
                 $normalizedEvent === ''
                 || mb_strlen($normalizedEvent)
-                    > self::MAX_NOTIFICATION_EVENT_LENGTH
+                > self::MAX_NOTIFICATION_EVENT_LENGTH
             ) {
                 throw new InvalidArgumentException(
                     'A notification event identifier is invalid.',

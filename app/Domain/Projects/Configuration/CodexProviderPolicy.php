@@ -178,9 +178,9 @@ final readonly class CodexProviderPolicy
 
         if (
             self::reasoningRank($projectDefaultReasoning)
-                < self::reasoningRank($minimum)
+            < self::reasoningRank($minimum)
             || self::reasoningRank($projectDefaultReasoning)
-                > self::reasoningRank($maximum)
+            > self::reasoningRank($maximum)
         ) {
             throw new InvalidArgumentException(
                 'Project default reasoning must fall within the configured Codex reasoning limits.',
@@ -294,7 +294,7 @@ final readonly class CodexProviderPolicy
 
         sort($capabilities, SORT_STRING);
 
-        return array_values($capabilities);
+        return $capabilities;
     }
 
     /**

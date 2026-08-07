@@ -111,9 +111,12 @@ final readonly class GetProjectConfigurationOverview
 
     /**
      * Serialize persisted configuration into a browser-safe read model.
+     *
+     * @return array<string, mixed>|null
      */
-    private function serializeConfiguration(?ProjectConfiguration $configuration): ?array
-    {
+    private function serializeConfiguration(
+        ?ProjectConfiguration $configuration,
+    ): ?array {
         if ($configuration === null) {
             return null;
         }
@@ -151,6 +154,8 @@ final readonly class GetProjectConfigurationOverview
 
     /**
      * Serialize safe Notion metadata using the established read model.
+     *
+     * @return array<string, mixed>
      */
     private function serializeNotionIntegration(
         ?ProjectIntegration $integration,
@@ -180,6 +185,8 @@ final readonly class GetProjectConfigurationOverview
 
     /**
      * Serialize only safe Codex policy/credential/preflight metadata.
+     *
+     * @return array<string, mixed>
      */
     private function serializeCodex(
         ?ProjectConfiguration $configuration,

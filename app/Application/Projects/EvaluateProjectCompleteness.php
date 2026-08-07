@@ -23,6 +23,7 @@ use App\Models\ProjectConfiguration;
 use App\Models\ProjectIntegration;
 use App\Models\ProjectSetupProgress;
 use App\Models\ProviderCredential;
+use Illuminate\Support\Arr;
 use InvalidArgumentException;
 
 /**
@@ -236,7 +237,6 @@ final readonly class EvaluateProjectCompleteness
         } elseif (
             $credential !== null
             && $credential->updated_at !== null
-            && $integration->last_tested_at !== null
             && $credential->updated_at->greaterThan($integration->last_tested_at)
         ) {
             $issues[] = $this->issue('integrations.notion.connection', ProjectSetupStep::Integrations, 'The Notion credential changed after the latest successful connection test.', 'Open Integrations and run the Notion connection test again using the current credential.');
@@ -262,8 +262,11 @@ final readonly class EvaluateProjectCompleteness
         ProjectConfiguration $configuration,
         ?ProviderCredential $credential,
     ): array {
-        $codexPayload = $configuration->provider_policy['codex']
-            ?? CodexProviderPolicy::defaults();
+        $codexPayload = Arr::get(
+            $configuration->provider_policy,
+            'codex',
+            CodexProviderPolicy::defaults(),
+        );
 
         if (! is_array($codexPayload)) {
             return [$this->issue(

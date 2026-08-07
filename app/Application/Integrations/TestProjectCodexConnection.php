@@ -18,6 +18,7 @@ use App\Domain\Projects\Configuration\CodexProviderPolicy;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
 use App\Models\ProviderCredential;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -71,8 +72,11 @@ final readonly class TestProjectCodexConnection
             ->where('project_id', $project->id)
             ->firstOrFail();
 
-        $codexPolicy = $configuration->provider_policy['codex']
-            ?? CodexProviderPolicy::defaults();
+        $codexPolicy = Arr::get(
+            $configuration->provider_policy,
+            'codex',
+            CodexProviderPolicy::defaults(),
+        );
 
         if (! is_array($codexPolicy)) {
             throw ValidationException::withMessages([
