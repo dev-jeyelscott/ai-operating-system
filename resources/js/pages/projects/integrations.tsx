@@ -20,8 +20,6 @@ import type {
     ProjectConfigurationValidation,
 } from '@/types';
 
-type FormErrors = Record<string, string | undefined>;
-
 /**
  * Format an ISO timestamp for the current browser locale.
  */
@@ -134,7 +132,11 @@ export default function ProjectIntegrations({
 
                     {canManage && (
                         <Button asChild variant="outline">
-                            <Link href={urls.setupSteps.integrations ?? urls.setup}>
+                            <Link
+                                href={
+                                    urls.setupSteps.integrations ?? urls.setup
+                                }
+                            >
                                 <Plug aria-hidden="true" />
                                 Configure Notion
                             </Link>
@@ -167,13 +169,16 @@ export default function ProjectIntegrations({
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div>
                                 <h2 className="flex items-center gap-2 font-semibold">
-                                    <ShieldCheck aria-hidden="true" className="size-4" />
+                                    <ShieldCheck
+                                        aria-hidden="true"
+                                        className="size-4"
+                                    />
                                     Codex provider policy
                                 </h2>
                                 <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                                    This configures policy only. AIOS-243 does not
-                                    register a real Codex execution provider or
-                                    permit repository writes.
+                                    This configures policy only. AIOS-243 does
+                                    not register a real Codex execution provider
+                                    or permit repository writes.
                                 </p>
                             </div>
 
@@ -195,14 +200,17 @@ export default function ProjectIntegrations({
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div>
                                 <h2 className="flex items-center gap-2 font-semibold">
-                                    <KeyRound aria-hidden="true" className="size-4" />
+                                    <KeyRound
+                                        aria-hidden="true"
+                                        className="size-4"
+                                    />
                                     Codex credential and preflight
                                 </h2>
                                 <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
                                     A new credential is stored only after a
-                                    successful server-side read-only model check.
-                                    Leave both credential fields blank to retest
-                                    the current stored credential.
+                                    successful server-side read-only model
+                                    check. Leave both credential fields blank to
+                                    retest the current stored credential.
                                 </p>
                             </div>
 
@@ -226,10 +234,11 @@ export default function ProjectIntegrations({
                 <section className="rounded-xl border bg-muted/20 p-5">
                     <h2 className="text-sm font-semibold">Security boundary</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                        Opening this screen performs no provider request. Only an
-                        authorized form submission can run preflight. The browser
-                        never receives stored Codex credentials, ciphertext,
-                        Authorization headers, or raw provider responses.
+                        Opening this screen performs no provider request. Only
+                        an authorized form submission can run preflight. The
+                        browser never receives stored Codex credentials,
+                        ciphertext, Authorization headers, or raw provider
+                        responses.
                     </p>
                 </section>
             </div>
@@ -323,7 +332,12 @@ function CodexPolicyForm({
     const policy = codex.policy;
 
     return (
-        <Form action={action} method="put" className="grid gap-6 p-6" disableWhileProcessing>
+        <Form
+            action={action}
+            method="put"
+            className="grid gap-6 p-6"
+            disableWhileProcessing
+        >
             {({ errors, processing }) => (
                 <>
                     <InputError message={errors.policy} />
@@ -394,8 +408,16 @@ function CodexPolicyForm({
                         />
                     </div>
 
-                    <input type="hidden" name="sandbox_planning" value="read-only" />
-                    <input type="hidden" name="sandbox_quality_assurance" value="read-only" />
+                    <input
+                        type="hidden"
+                        name="sandbox_planning"
+                        value="read-only"
+                    />
+                    <input
+                        type="hidden"
+                        name="sandbox_quality_assurance"
+                        value="read-only"
+                    />
                     <input type="hidden" name="network_default" value="deny" />
 
                     <div className="grid gap-5 md:grid-cols-2">
@@ -406,7 +428,10 @@ function CodexPolicyForm({
                             defaultValue={policy.sandbox.development}
                             options={[
                                 { value: 'read-only', label: 'Read only' },
-                                { value: 'workspace-write', label: 'Workspace write' },
+                                {
+                                    value: 'workspace-write',
+                                    label: 'Workspace write',
+                                },
                             ]}
                             error={errors['codex_policy.sandbox.development']}
                         />
@@ -434,7 +459,8 @@ function CodexPolicyForm({
                     <p className="text-xs text-muted-foreground">
                         Planning and QA are fixed to read-only. Network is fixed
                         to deny-by-default. Later execution tickets may honor an
-                        explicitly approved network escalation; AIOS-243 does not.
+                        explicitly approved network escalation; AIOS-243 does
+                        not.
                     </p>
 
                     <div className="grid gap-5 md:grid-cols-3">
@@ -479,7 +505,9 @@ function CodexPolicyForm({
 
                     <div className="flex justify-end border-t pt-5">
                         <Button type="submit" disabled={disabled || processing}>
-                            {processing ? 'Saving policy...' : 'Save Codex policy'}
+                            {processing
+                                ? 'Saving policy...'
+                                : 'Save Codex policy'}
                         </Button>
                     </div>
                 </>
@@ -501,7 +529,13 @@ function CodexCredentialForm({
     disabled: boolean;
 }) {
     return (
-        <Form action={action} method="post" className="grid gap-5" disableWhileProcessing resetOnSuccess={['credential', 'credential_confirmation']}>
+        <Form
+            action={action}
+            method="post"
+            className="grid gap-5"
+            disableWhileProcessing
+            resetOnSuccess={['credential', 'credential_confirmation']}
+        >
             {({ errors, processing }) => (
                 <>
                     <InputError message={errors.connection} />
