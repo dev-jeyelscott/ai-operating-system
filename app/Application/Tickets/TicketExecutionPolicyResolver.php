@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\Tickets;
 
+use App\Application\Development\DevelopmentProviderRegistry;
 use App\Application\Tickets\Data\TicketExecutionPolicyFacts;
 use App\Domain\Approvals\ApprovalStatus;
 use App\Domain\Approvals\ApprovalType;
+use App\Domain\Executions\ExecutionCapability;
 use App\Models\Approval;
 use App\Models\Execution;
 use App\Models\MergeDecision;
@@ -14,13 +16,20 @@ use App\Models\Project;
 use App\Models\ProjectConfigurationVersion;
 use App\Models\ProjectContextSnapshot;
 use Illuminate\Support\Arr;
+use InvalidArgumentException;
+use LogicException;
 
 /**
  * Resolves selector policy from immutable context and durable decisions.
  */
 final class TicketExecutionPolicyResolver
 {
-    private const string SIMULATION_PROVIDER = 'simulation';
+    /**
+     * Inject the provider registry used to verify real runtime availability.
+     */
+    public function __construct(
+        private readonly DevelopmentProviderRegistry $providers,
+    ) {}
 
     /**
      * Resolve policy once for every candidate in one locked selection attempt.
@@ -55,7 +64,9 @@ final class TicketExecutionPolicyResolver
 
         $configurationVersion = ProjectConfigurationVersion::query()
             ->where('project_id', $project->id)
-            ->whereKey($contextSnapshot->project_configuration_version_id)
+            ->whereKey(
+                $contextSnapshot->project_configuration_version_id,
+            )
             ->where(
                 'revision',
                 $contextSnapshot->configuration_revision,
@@ -78,22 +89,12 @@ final class TicketExecutionPolicyResolver
             ),
         );
 
-        $providerSupportsExecution = in_array(
-            $capability,
-            [
-                'development',
-                'development.execute',
-            ],
-            true,
-        ) && in_array(
-            self::SIMULATION_PROVIDER,
-            $allowedProviderIds,
-            true,
-        ) && in_array(
-            self::SIMULATION_PROVIDER,
-            $fallbackOrder,
-            true,
-        );
+        $providerSupportsExecution =
+            $this->providerSupportsExecution(
+                allowedProviderIds: $allowedProviderIds,
+                fallbackOrder: $fallbackOrder,
+                capability: $capability,
+            );
 
         $budgetLimitMinor = Arr::get(
             $snapshot,
@@ -129,10 +130,12 @@ final class TicketExecutionPolicyResolver
 
         foreach ($approvals as $approval) {
             $roadmapTaskId =
-                $approval->request_payload['roadmap_task_id'] ?? null;
+                $approval->request_payload['roadmap_task_id']
+                ?? null;
 
             $stableTicketId =
-                $approval->request_payload['ticket_id'] ?? null;
+                $approval->request_payload['ticket_id']
+                ?? null;
 
             if (
                 is_int($roadmapTaskId)
@@ -156,7 +159,9 @@ final class TicketExecutionPolicyResolver
          * previous execution or QA record needs to be changed.
          */
         foreach (
-            $this->approvedChangesRequestedTaskIds($project->id) as $roadmapTaskId
+            $this->approvedChangesRequestedTaskIds(
+                $project->id,
+            ) as $roadmapTaskId
         ) {
             $approvedRoadmapTaskIds[$roadmapTaskId] = true;
         }
@@ -169,6 +174,64 @@ final class TicketExecutionPolicyResolver
             approvedRoadmapTaskIds: $approvedRoadmapTaskIds,
             approvedStableTicketIds: $approvedStableTicketIds,
         );
+    }
+
+    /**
+     * Determine whether immutable policy resolves a registered development
+     * provider supporting the requested canonical or historical capability.
+     *
+     * @param  list<string>  $allowedProviderIds
+     * @param  list<string>  $fallbackOrder
+     */
+    private function providerSupportsExecution(
+        array $allowedProviderIds,
+        array $fallbackOrder,
+        string $capability,
+    ): bool {
+        try {
+            $effectiveCapability =
+                ExecutionCapability::fromStored(
+                    $capability,
+                );
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        if (
+            $effectiveCapability
+            !== ExecutionCapability::DevelopmentExecute
+        ) {
+            return false;
+        }
+
+        $permittedFallbackOrder = array_values(
+            array_filter(
+                $fallbackOrder,
+                static fn (
+                    string $providerId,
+                ): bool => in_array(
+                    $providerId,
+                    $allowedProviderIds,
+                    true,
+                ),
+            ),
+        );
+
+        if ($permittedFallbackOrder === []) {
+            return false;
+        }
+
+        try {
+            $this->providers->resolve(
+                fallbackOrder: $permittedFallbackOrder,
+                capability: $effectiveCapability->value,
+            );
+
+            return true;
+        } catch (
+            InvalidArgumentException|LogicException) {
+                return false;
+            }
     }
 
     /**
@@ -187,10 +250,14 @@ final class TicketExecutionPolicyResolver
             ->orderBy('roadmap_task_id')
             ->pluck('roadmap_task_id')
             ->map(
-                static fn (mixed $roadmapTaskId): int => (int) $roadmapTaskId,
+                static fn (
+                    mixed $roadmapTaskId,
+                ): int => (int) $roadmapTaskId,
             )
             ->filter(
-                static fn (int $roadmapTaskId): bool => $roadmapTaskId > 0,
+                static fn (
+                    int $roadmapTaskId,
+                ): bool => $roadmapTaskId > 0,
             )
             ->all();
 

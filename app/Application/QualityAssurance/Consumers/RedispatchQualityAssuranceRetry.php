@@ -6,6 +6,7 @@ namespace App\Application\QualityAssurance\Consumers;
 
 use App\Application\Events\Contracts\DomainEventConsumer;
 use App\Application\Events\Data\StoredDomainEvent;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Jobs\ProcessQualityAssuranceExecutionJob;
 use App\Models\Execution;
@@ -66,9 +67,8 @@ final class RedispatchQualityAssuranceRetry implements DomainEventConsumer
         $execution = Execution::query()
             ->forProject($event->projectId)
             ->whereKey($executionId)
-            ->where(
-                'capability',
-                'quality_assurance.review',
+            ->forCapability(
+                ExecutionCapability::QualityAssuranceReview,
             )
             ->firstOrFail();
 

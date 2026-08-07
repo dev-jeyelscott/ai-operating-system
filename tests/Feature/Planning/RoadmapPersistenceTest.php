@@ -85,11 +85,18 @@ function roadmapPersistenceFixture(): array
 test('a complete typed roadmap round trips with context and traceability relationships', function (): void {
     $fixture = roadmapPersistenceFixture();
     $provider = new SimulationPlanningProvider;
+
+    $selection = ProviderSelection::fromProvider(
+        requestedCapability: $fixture['execution']->capability,
+        provider: $provider,
+        selectionSource: 'roadmap_persistence_test',
+    );
+
     $result = $provider->execute($fixture['request']);
     app(PlanningResultValidator::class)->validate($result, $fixture['request']);
 
-    $roadmap = app(PersistRoadmap::class)->handle($fixture['execution'], $fixture['request'], $result, $provider->id());
-    $replayed = app(PersistRoadmap::class)->handle($fixture['execution'], $fixture['request'], $result, $provider->id());
+    $roadmap = app(PersistRoadmap::class)->handle($fixture['execution'], $fixture['request'], $result, $selection);
+    $replayed = app(PersistRoadmap::class)->handle($fixture['execution'], $fixture['request'], $result, $selection);
     $roadmap->load(['contextSnapshot', 'tasks.traceabilityLinks.documentVersion']);
 
     expect($roadmap->goal)->toBe('Produce an approved, traceable delivery roadmap.')
@@ -111,8 +118,15 @@ test('a complete typed roadmap round trips with context and traceability relatio
 test('regenerated roadmaps link to and preserve every earlier revision', function (): void {
     $fixture = roadmapPersistenceFixture();
     $provider = new SimulationPlanningProvider;
+
+    $selection = ProviderSelection::fromProvider(
+        requestedCapability: $fixture['execution']->capability,
+        provider: $provider,
+        selectionSource: 'roadmap_persistence_test',
+    );
+
     $firstResult = $provider->execute($fixture['request']);
-    $first = app(PersistRoadmap::class)->handle($fixture['execution'], $fixture['request'], $firstResult, $provider->id());
+    $first = app(PersistRoadmap::class)->handle($fixture['execution'], $fixture['request'], $firstResult, $selection);
 
     $nextExecution = Execution::factory()->for($fixture['project'])->create([
         'project_context_snapshot_id' => $fixture['snapshot']->id,
@@ -127,7 +141,7 @@ test('regenerated roadmaps link to and preserve every earlier revision', functio
         seed: 2,
         feedbackFingerprint: hash('sha256', 'make it smaller'),
     );
-    $second = app(PersistRoadmap::class)->handle($nextExecution, $nextRequest, $provider->execute($nextRequest), $provider->id());
+    $second = app(PersistRoadmap::class)->handle($nextExecution, $nextRequest, $provider->execute($nextRequest), $selection);
 
     expect($second->revision)->toBe(2)
         ->and($second->parent_roadmap_id)->toBe($first->id)
@@ -147,7 +161,7 @@ test('persistence rejects execution and context ownership drift', function (): v
         documents: $fixture['request']->documents,
     );
 
-    app(PersistRoadmap::class)->handle($fixture['execution'], $request, $provider->execute($request), $provider->id());
+    app(PersistRoadmap::class)->handle($fixture['execution'], $request, $provider->execute($request), $selection);
 })->throws(LogicException::class, 'ownership are inconsistent');
 
 test('the database enforces project consistency for execution and context relationships', function (): void {

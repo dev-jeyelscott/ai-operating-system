@@ -354,8 +354,8 @@ final readonly class DecideSimulatedMergeCommandHandler
         }
 
         if (
-            $reviewExecution->capability
-            !== 'quality_assurance.review'
+            ! ExecutionCapability::QualityAssuranceReview
+                ->accepts($reviewExecution->capability)
             || $reviewExecution->status
             !== ExecutionStatus::Completed
         ) {

@@ -72,10 +72,9 @@ final readonly class StartQualityAssuranceExecution
                 $implementationExecution = Execution::query()
                     ->forProject($project->id)
                     ->whereKey($implementationExecutionId)
-                    ->whereIn('capability', [
-                        'development',
-                        'development.execute',
-                    ])
+                    ->forCapability(
+                        ExecutionCapability::DevelopmentExecute,
+                    )
                     ->where('status', ExecutionStatus::Completed)
                     ->lock('for share')
                     ->firstOrFail();

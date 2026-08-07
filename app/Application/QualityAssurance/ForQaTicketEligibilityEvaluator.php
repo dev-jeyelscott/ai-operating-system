@@ -8,6 +8,7 @@ use App\Application\QualityAssurance\Data\ForQaArtifactFact;
 use App\Application\QualityAssurance\Data\ForQaTicketEligibilityContext;
 use App\Application\QualityAssurance\Data\ForQaTicketEligibilityResult;
 use App\Domain\Executions\ExecutionAttemptStatus;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\QualityAssurance\ForQaTicketIneligibilityReason;
 use App\Domain\Tickets\TicketStatus;
@@ -21,16 +22,6 @@ use App\Domain\Tickets\TicketStatus;
  */
 final class ForQaTicketEligibilityEvaluator
 {
-    /**
-     * Capabilities that represent valid Layer 2 implementation executions.
-     *
-     * @var list<string>
-     */
-    private const array IMPLEMENTATION_CAPABILITIES = [
-        'development',
-        'development.execute',
-    ];
-
     /**
      * Artifacts produced by a complete MVP Layer 2 development execution.
      *
@@ -166,15 +157,16 @@ final class ForQaTicketEligibilityEvaluator
                 ForQaTicketIneligibilityReason::ImplementationExecutionNotCompleted;
         }
 
-        if (! in_array(
-            $context->implementationCapability,
-            self::IMPLEMENTATION_CAPABILITIES,
-            true,
-        )) {
+        if (
+            $context->implementationCapability === null
+            || ! ExecutionCapability::DevelopmentExecute
+                ->accepts(
+                    $context->implementationCapability,
+                )
+        ) {
             $reasons[] =
                 ForQaTicketIneligibilityReason::ImplementationCapabilityInvalid;
         }
-
         if (
             $context->implementationProjectId
             !== $context->ticketProjectId

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Development;
 
+use App\Domain\Executions\ExecutionCapability;
 use App\Models\Artifact;
 use App\Models\AuditEvent;
 use App\Models\Evidence;
@@ -27,7 +28,9 @@ final class GetDevelopmentExecutionInspector
         $execution = Execution::query()
             ->forProject($project->id)
             ->whereKey($executionId)
-            ->whereIn('capability', ['development', 'development.execute'])
+            ->forCapability(
+                ExecutionCapability::DevelopmentExecute,
+            )
             ->with([
                 'attempts',
                 'projectContextSnapshot',

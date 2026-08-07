@@ -31,6 +31,7 @@ use App\Application\Shared\Commands\CommandBus;
 use App\Application\Shared\Commands\CommandResultStatus;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Events\DomainEventEnvelope;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Idempotency\IdempotencyKeyStatus;
 use App\Domain\Identity\OrganizationRole;
 use App\Domain\Integrations\IntegrationCredentialSecret;
@@ -73,6 +74,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Mockery;
 use Tests\Fakes\InMemoryNotionPublicationClient;
 
 beforeEach(function (): void {
@@ -121,7 +123,9 @@ test(
             ->and($execution->workflow_instance_id)
             ->toBe($workflow->id)
             ->and($execution->capability)
-            ->toBe('planning.roadmap')
+            ->toBe(
+                ExecutionCapability::PlanningGenerate->value,
+            )
             ->and($execution->status->value)
             ->toBe('queued')
             ->and($fixture['project']->refresh()->status)

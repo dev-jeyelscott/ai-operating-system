@@ -8,6 +8,7 @@ use App\Application\Development\Data\DevelopmentExecutionResult;
 use App\Application\Development\DevelopmentProviderRegistry;
 use App\Application\Development\DevelopmentResultValidator;
 use App\Application\Development\Providers\ValidatingDevelopmentExecutionProvider;
+use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Application\Planning\Contracts\ExecutionProvider;
 use App\Application\Planning\Data\PlanningExecutionRequest;
 use App\Application\Planning\Data\PlanningExecutionResult;
@@ -22,6 +23,7 @@ use App\Application\QualityAssurance\Providers\ValidatingQualityAssuranceExecuti
 use App\Application\QualityAssurance\QaAssessmentValidator;
 use App\Application\QualityAssurance\QualityAssuranceProviderRegistry;
 use App\Domain\Executions\Exceptions\ProviderResultRejected;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ProviderResultRejectionReason;
 use App\Domain\Projects\Configuration\ProviderPolicy;
 use App\Domain\Projects\Configuration\ReasoningLevel;
@@ -112,11 +114,25 @@ test(
             }
 
             /**
-             * Support the planning capability.
+             * Return deterministic metadata for the fake simulation provider.
+             */
+            public function metadata(): ExecutionProviderMetadata
+            {
+                return new ExecutionProviderMetadata(
+                    modelIdentifier: null,
+                    protocolVersion: 'test-v1',
+                    sandboxProfile: 'test',
+                    simulation: true,
+                );
+            }
+
+            /**
+             * Support the canonical planning capability.
              */
             public function supports(string $capability): bool
             {
-                return $capability === 'planning.roadmap';
+                return $capability
+                    === ExecutionCapability::PlanningGenerate->value;
             }
 
             /**
@@ -170,11 +186,25 @@ test(
             }
 
             /**
-             * Support the development capability.
+             * Return deterministic metadata for the fake simulation provider.
+             */
+            public function metadata(): ExecutionProviderMetadata
+            {
+                return new ExecutionProviderMetadata(
+                    modelIdentifier: null,
+                    protocolVersion: 'test-v1',
+                    sandboxProfile: 'test',
+                    simulation: true,
+                );
+            }
+
+            /**
+             * Support the canonical development capability.
              */
             public function supports(string $capability): bool
             {
-                return $capability === 'development.simulation';
+                return $capability
+                    === ExecutionCapability::DevelopmentExecute->value;
             }
 
             /**
@@ -225,12 +255,25 @@ test(
             }
 
             /**
-             * Support the QA capability.
+             * Return deterministic metadata for the fake simulation provider.
+             */
+            public function metadata(): ExecutionProviderMetadata
+            {
+                return new ExecutionProviderMetadata(
+                    modelIdentifier: null,
+                    protocolVersion: 'test-v1',
+                    sandboxProfile: 'test',
+                    simulation: true,
+                );
+            }
+
+            /**
+             * Support the canonical QA capability.
              */
             public function supports(string $capability): bool
             {
                 return $capability
-                    === 'quality_assurance.simulation';
+                    === ExecutionCapability::QualityAssuranceReview->value;
             }
 
             /**
@@ -281,11 +324,25 @@ test(
             }
 
             /**
-             * Support the planning capability.
+             * Return deterministic metadata for the fake simulation provider.
+             */
+            public function metadata(): ExecutionProviderMetadata
+            {
+                return new ExecutionProviderMetadata(
+                    modelIdentifier: null,
+                    protocolVersion: 'test-v1',
+                    sandboxProfile: 'test',
+                    simulation: true,
+                );
+            }
+
+            /**
+             * Support the canonical planning capability.
              */
             public function supports(string $capability): bool
             {
-                return $capability === 'planning.roadmap';
+                return $capability
+                    === ExecutionCapability::PlanningGenerate->value;
             }
 
             /**
@@ -310,12 +367,25 @@ test(
                 }
 
                 /**
-                 * Support the development capability.
+                 * Return deterministic metadata for the fake simulation provider.
+                 */
+                public function metadata(): ExecutionProviderMetadata
+                {
+                    return new ExecutionProviderMetadata(
+                        modelIdentifier: null,
+                        protocolVersion: 'test-v1',
+                        sandboxProfile: 'test',
+                        simulation: true,
+                    );
+                }
+
+                /**
+                 * Support the canonical development capability.
                  */
                 public function supports(string $capability): bool
                 {
                     return $capability
-                        === 'development.simulation';
+                        === ExecutionCapability::DevelopmentExecute->value;
                 }
 
                 /**
@@ -340,12 +410,25 @@ test(
                 }
 
                 /**
-                 * Support the QA capability.
+                 * Return deterministic metadata for the fake simulation provider.
+                 */
+                public function metadata(): ExecutionProviderMetadata
+                {
+                    return new ExecutionProviderMetadata(
+                        modelIdentifier: null,
+                        protocolVersion: 'test-v1',
+                        sandboxProfile: 'test',
+                        simulation: true,
+                    );
+                }
+
+                /**
+                 * Support the canonical QA capability.
                  */
                 public function supports(string $capability): bool
                 {
                     return $capability
-                        === 'quality_assurance.simulation';
+                        === ExecutionCapability::QualityAssuranceReview->value;
                 }
 
                 /**

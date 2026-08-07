@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\QualityAssurance;
 
 use App\Application\QualityAssurance\Data\Layer3RoleIndependenceDecision;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\QualityAssurance\Layer3RoleIndependenceFailureReason;
 use App\Models\Execution;
 
@@ -62,21 +63,23 @@ final class Layer3RoleIndependencePolicy
             );
         }
 
-        if (! in_array(
-            $implementationExecution->capability,
-            self::IMPLEMENTATION_CAPABILITIES,
-            true,
-        )) {
+        if (
+            ! ExecutionCapability::DevelopmentExecute
+                ->accepts(
+                    $implementationExecution->capability,
+                )
+        ) {
             return Layer3RoleIndependenceDecision::rejected(
                 Layer3RoleIndependenceFailureReason::InvalidImplementationCapability,
             );
         }
 
-        if (! in_array(
-            $reviewExecution->capability,
-            self::REVIEW_CAPABILITIES,
-            true,
-        )) {
+        if (
+            ! ExecutionCapability::QualityAssuranceReview
+                ->accepts(
+                    $reviewExecution->capability,
+                )
+        ) {
             return Layer3RoleIndependenceDecision::rejected(
                 Layer3RoleIndependenceFailureReason::InvalidReviewCapability,
             );

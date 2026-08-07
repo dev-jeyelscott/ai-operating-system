@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Development;
 
 use App\Application\Development\GetDevelopmentExecutionInspector;
+use App\Domain\Executions\ExecutionCapability;
 use App\Http\Controllers\Controller;
 use App\Models\Execution;
 use App\Models\Organization;
@@ -23,7 +24,9 @@ final class DevelopmentExecutionInspectorController extends Controller
         Execution::query()
             ->forProject($project->id)
             ->whereKey($execution)
-            ->whereIn('capability', ['development', 'development.execute'])
+            ->forCapability(
+                ExecutionCapability::DevelopmentExecute,
+            )
             ->firstOrFail(['id']);
 
         $read = fn (): array => $inspector->handle($organization->id, $project->id, $execution);
