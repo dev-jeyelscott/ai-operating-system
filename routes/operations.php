@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Approvals\DecideCodexApprovalController;
 use App\Http\Controllers\Approvals\ProjectApprovalInboxController;
+use App\Http\Controllers\Approvals\ShowCodexApprovalController;
 use App\Http\Controllers\Operations\ProjectOfficeController;
 use App\Http\Controllers\Operations\ProjectOfficeProjectionController;
 use App\Http\Controllers\Operations\ProjectOperationalMetricsController;
@@ -101,6 +103,10 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('approvals.index');
 
+        /*
+         * Resolve one Codex provider request to its authoritative generic
+         * application approval within the same organization/project boundary.
+         */
         Route::get(
             '/approvals/codex/{codexApprovalRequest}',
             ShowCodexApprovalController::class,
@@ -108,6 +114,10 @@ Route::middleware(['auth', 'auth.session', 'verified'])
             ->can('view', 'project')
             ->name('approvals.codex.show');
 
+        /*
+         * Apply human decisions only through the existing project approval
+         * permission and the Codex approval bridge.
+         */
         Route::post(
             '/approvals/codex/{codexApprovalRequest}/decision',
             DecideCodexApprovalController::class,

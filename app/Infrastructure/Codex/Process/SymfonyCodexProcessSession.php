@@ -422,7 +422,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         $this->assertInitialized();
 
-        $key = $threadId . ':' . $turnId;
+        $key = $threadId.':'.$turnId;
 
         if (isset($this->interruptedTurns[$key])) {
             return;
@@ -658,7 +658,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         try {
             $this->input->write(
-                $encoded . "\n",
+                $encoded."\n",
             );
         } catch (Throwable $exception) {
             throw new CodexGatewayException(
@@ -961,8 +961,8 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
         int|string $identifier,
     ): string {
         return is_int($identifier)
-            ? 'i:' . $identifier
-            : 's:' . $identifier;
+            ? 'i:'.$identifier
+            : 's:'.$identifier;
     }
 
     /**
@@ -1004,7 +1004,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         if (array_is_list($value)) {
             return array_map(
-                fn(mixed $item): mixed => $this
+                fn (mixed $item): mixed => $this
                     ->canonicalize($item),
                 $value,
             );

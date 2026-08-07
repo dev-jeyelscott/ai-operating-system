@@ -46,8 +46,7 @@ final readonly class NormalizeCodexGatewayEvent
 
             'item/commandExecution/requestApproval',
             'item/fileChange/requestApproval' => ProviderEventType::ApprovalRequested,
-            'item/permissions/requestApproval'
-            => ProviderEventType::ApprovalRequested,
+            'item/permissions/requestApproval' => ProviderEventType::ApprovalRequested,
 
             'serverRequest/resolved' => ProviderEventType::ApprovalResolved,
 
