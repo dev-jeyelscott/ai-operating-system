@@ -21,6 +21,7 @@ use App\Models\TicketExecutionLease;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 /**
  * Selects the highest-ranked workable ticket and acquires its lease atomically.
@@ -137,7 +138,7 @@ final readonly class SelectNextTicketAndAcquireLease
                         ->active()
                         ->where('project_id', $project->id)
                         ->pluck('roadmap_task_id')
-                        ->map(static fn(mixed $id): int => (int) $id)
+                        ->map(static fn (mixed $id): int => (int) $id)
                         ->all(),
                 );
 
@@ -173,12 +174,12 @@ final readonly class SelectNextTicketAndAcquireLease
                      */
                     if (
                         TicketExecutionLease::query()
-                        ->active()
-                        ->where(
-                            'roadmap_task_id',
-                            $lockedTicket->id,
-                        )
-                        ->exists()
+                            ->active()
+                            ->where(
+                                'roadmap_task_id',
+                                $lockedTicket->id,
+                            )
+                            ->exists()
                     ) {
                         continue;
                     }
@@ -266,19 +267,19 @@ final readonly class SelectNextTicketAndAcquireLease
         }
 
         if ($execution->status !== ExecutionStatus::Queued) {
-            throw new \LogicException(
+            throw new LogicException(
                 'Execution lifecycle does not permit ticket selection.',
             );
         }
 
         if ($execution->cancel_requested_at !== null) {
-            throw new \LogicException(
+            throw new LogicException(
                 'Cancelled execution cannot select a ticket.',
             );
         }
 
         if ($execution->project_context_snapshot_id === null) {
-            throw new \LogicException(
+            throw new LogicException(
                 'Execution has no immutable project context lineage.',
             );
         }
@@ -316,7 +317,7 @@ final readonly class SelectNextTicketAndAcquireLease
             $dependencyStatuses = array_values(
                 $candidate->dependencies
                     ->map(
-                        static fn(
+                        static fn (
                             TaskDependency $dependency,
                         ): TicketStatus => $dependency->dependsOn->status,
                     )
@@ -419,7 +420,7 @@ final readonly class SelectNextTicketAndAcquireLease
                 ->where('roadmap_task_id', $ticket->id)
                 ->orderBy('depends_on_task_id')
                 ->pluck('depends_on_task_id')
-                ->map(static fn(mixed $id): int => (int) $id)
+                ->map(static fn (mixed $id): int => (int) $id)
                 ->all(),
         );
 
@@ -437,7 +438,7 @@ final readonly class SelectNextTicketAndAcquireLease
                 ->lock('for share')
                 ->pluck('status')
                 ->map(
-                    static fn(
+                    static fn (
                         mixed $status,
                     ): TicketStatus => TicketStatus::from(
                         (string) $status,

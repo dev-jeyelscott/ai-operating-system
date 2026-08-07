@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Application\Approvals\Commands\RequestApproval;
+use App\Application\Executions\Data\ProviderSelection;
 use App\Application\Planning\Data\PlanningExecutionRequest;
 use App\Application\Planning\Data\PlanningSourceReference;
 use App\Application\Planning\PersistRoadmap;
@@ -295,11 +296,17 @@ final class RoadmapE2ESeeder extends Seeder
 
         $provider = new SimulationPlanningProvider;
 
+        $selection = ProviderSelection::fromProvider(
+            requestedCapability: $execution->capability,
+            provider: $provider,
+            selectionSource: 'roadmap_e2e_seeder',
+        );
+
         $roadmap = app(PersistRoadmap::class)->handle(
             $execution,
             $request,
             $provider->execute($request),
-            $provider->id(),
+            $selection,
         );
 
         $approvalResult = app(CommandBus::class)->dispatch(

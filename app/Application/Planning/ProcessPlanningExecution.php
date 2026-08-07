@@ -111,7 +111,7 @@ final readonly class ProcessPlanningExecution
                     contextFingerprint: $snapshot->approved_document_set_fingerprint,
                     reasoningLevel: $execution->requested_reasoning_level,
                     documents: array_map(
-                        static fn(array $document): PlanningSourceReference => new PlanningSourceReference(
+                        static fn (array $document): PlanningSourceReference => new PlanningSourceReference(
                             documentId: $document['document_id'],
                             documentVersionId: $document['document_version_id'],
                             version: $document['version'],
@@ -139,7 +139,7 @@ final readonly class ProcessPlanningExecution
                 $result = $provider->execute($request);
                 $this->validator->validate($result, $request);
                 $this->diagnostics->handle($execution, $attempt, $result->diagnostics);
-                $roadmap = $this->roadmaps->handle($execution, $request, $result, $provider->id());
+                $roadmap = $this->roadmaps->handle($execution, $request, $result, $selection);
             } catch (InvalidArgumentException $exception) {
                 $this->blockInvalidResult($execution, $attempt, $exception);
 
@@ -219,7 +219,7 @@ final readonly class ProcessPlanningExecution
             ->where('project_id', $execution->project_id)
             ->orderBy('revision')
             ->get(['id', 'revision', 'content_version', 'status', 'readiness', 'candidate_fingerprint'])
-            ->map(static fn(Roadmap $roadmap): array => $roadmap->only([
+            ->map(static fn (Roadmap $roadmap): array => $roadmap->only([
                 'id',
                 'revision',
                 'content_version',
@@ -245,7 +245,7 @@ final readonly class ProcessPlanningExecution
 
         return [
             ...$roadmap->only(['id', 'revision', 'content_version', 'status', 'readiness', 'candidate_fingerprint']),
-            'tasks' => $roadmap->tasks->map(static fn($task): array => $task->only([
+            'tasks' => $roadmap->tasks->map(static fn ($task): array => $task->only([
                 'stable_id',
                 'title',
                 'priority',
@@ -277,7 +277,7 @@ final readonly class ProcessPlanningExecution
     {
         $definition = $execution->workflowInstance->workflowDefinition->definition;
         $available = collect($definition['transitions'])->contains(
-            static fn(array $candidate): bool => $candidate['name'] === $transition,
+            static fn (array $candidate): bool => $candidate['name'] === $transition,
         );
         if (! $available) {
             return;

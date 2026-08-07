@@ -74,9 +74,9 @@ final readonly class ValidatingPlanningExecutionProvider implements ExecutionPro
             throw $exception;
         } catch (
             InvalidArgumentException
-            | JsonException
-            | TypeError
-            | ValueError $exception
+            |JsonException
+            |TypeError
+            |ValueError $exception
         ) {
             throw ProviderResultRejected::fromThrowable(
                 providerId: $this->provider->id(),

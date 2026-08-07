@@ -33,8 +33,7 @@ final class ExecutionAttemptFactory extends Factory
             'provider_protocol_version' => 'simulation.v1',
             'provider_sandbox_profile' => 'simulation.noop',
             'effective_capability' => 'development.execute',
-            'provider_selection_source' =>
-            'immutable_configuration_snapshot',
+            'provider_selection_source' => 'immutable_configuration_snapshot',
             'simulation_scenario' => 'happy_path',
             'reasoning_resolution_source' => 'project_default',
             'reasoning_escalation_reason' => null,

@@ -106,8 +106,8 @@ final class DevelopmentResultValidator
             throw new \InvalidArgumentException('Development result confidence is invalid.');
         }
 
-        $expectedStages = array_map(static fn(DevelopmentStage $stage): string => $stage->value, DevelopmentStage::cases());
-        $actualStages = array_map(static fn($stage): string => $stage->stage->value, $result->stageResults);
+        $expectedStages = array_map(static fn (DevelopmentStage $stage): string => $stage->value, DevelopmentStage::cases());
+        $actualStages = array_map(static fn ($stage): string => $stage->stage->value, $result->stageResults);
 
         if ($actualStages !== $expectedStages) {
             throw new \InvalidArgumentException('Development stages are missing or out of order.');
@@ -158,8 +158,8 @@ final class DevelopmentResultValidator
         if ($result->outcome === DevelopmentExecutionOutcome::Succeeded) {
             if (
                 count($artifacts) !== 4
-                || array_any($result->validationResults, static fn($validation): bool => $validation->status !== DevelopmentValidationStatus::Passed)
-                || array_any($result->stageResults, static fn($stage): bool => $stage->status !== DevelopmentStageStatus::Passed)
+                || array_any($result->validationResults, static fn ($validation): bool => $validation->status !== DevelopmentValidationStatus::Passed)
+                || array_any($result->stageResults, static fn ($stage): bool => $stage->status !== DevelopmentStageStatus::Passed)
             ) {
                 throw new \InvalidArgumentException('Successful development result contradicts failed or missing stages.');
             }

@@ -11,7 +11,6 @@ use App\Domain\Executions\ExecutionStatus;
 use App\Jobs\ProcessPlanningExecutionJob;
 use App\Models\Execution;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Str;
 use UnexpectedValueException;
 
 final class DispatchPlanningExecution implements DomainEventConsumer

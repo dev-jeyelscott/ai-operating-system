@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\AgentProviders;
 
+use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Application\Planning\Contracts\ExecutionProvider;
 use App\Application\Planning\Data\PlanningAcceptanceCriterion;
 use App\Application\Planning\Data\PlanningDiagnostic;
@@ -15,7 +16,6 @@ use App\Application\Planning\Data\PlanningPhase;
 use App\Application\Planning\Data\PlanningRoadmapDefinition;
 use App\Application\Planning\Data\PlanningSourceReference;
 use App\Application\Planning\Data\PlanningTask;
-use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Domain\Executions\ExecutionCapability;
 use InvalidArgumentException;
 
@@ -50,7 +50,7 @@ final class SimulationPlanningProvider implements ExecutionProvider
     {
         return 'simulation';
     }
-    
+
     /**
      * Support the canonical Layer 1 planning capability.
      */
@@ -168,10 +168,10 @@ final class SimulationPlanningProvider implements ExecutionProvider
         );
 
         $task = new PlanningTask(
-            stableId: 'task-plan-' . substr(
+            stableId: 'task-plan-'.substr(
                 hash(
                     'sha256',
-                    $request->contextFingerprint . '|' . $request->seed,
+                    $request->contextFingerprint.'|'.$request->seed,
                 ),
                 0,
                 12,
@@ -214,7 +214,7 @@ final class SimulationPlanningProvider implements ExecutionProvider
                 ? 'blocked'
                 : 'publishable',
             documentInventory: array_map(
-                static fn(
+                static fn (
                     PlanningSourceReference $reference,
                 ): PlanningDocument => new PlanningDocument(
                     source: $reference,

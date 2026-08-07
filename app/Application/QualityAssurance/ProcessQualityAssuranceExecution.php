@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\QualityAssurance;
 
 use App\Application\Executions\Data\ExecutionAttemptContext;
+use App\Application\Executions\Data\ProviderSelection;
 use App\Application\Executions\ExecutionResilienceManager;
 use App\Application\QualityAssurance\Data\QaAssessmentResult;
 use App\Application\QualityAssurance\Data\QualityAssuranceExecutionRequest;
@@ -31,6 +32,9 @@ use Throwable;
  */
 final readonly class ProcessQualityAssuranceExecution
 {
+    /**
+     * Create the Layer 3 quality-assurance execution orchestrator.
+     */
     public function __construct(
         private QualityAssuranceProviderRegistry $providers,
         private QaAssessmentValidator $validator,
@@ -96,16 +100,16 @@ final readonly class ProcessQualityAssuranceExecution
 
                 $implementationAttempt =
                     ExecutionAttempt::query()
-                    ->where(
-                        'execution_id',
-                        $implementationExecution->id,
-                    )
-                    ->whereKey(
-                        $lockedAssessment
-                            ->implementation_attempt_id,
-                    )
-                    ->lock('for share')
-                    ->firstOrFail();
+                        ->where(
+                            'execution_id',
+                            $implementationExecution->id,
+                        )
+                        ->whereKey(
+                            $lockedAssessment
+                                ->implementation_attempt_id,
+                        )
+                        ->lock('for share')
+                        ->firstOrFail();
 
                 $ticket = RoadmapTask::query()
                     ->whereKey(
@@ -113,7 +117,7 @@ final readonly class ProcessQualityAssuranceExecution
                     )
                     ->whereHas(
                         'roadmap',
-                        static fn($query) => $query->where(
+                        static fn ($query) => $query->where(
                             'project_id',
                             $project->id,
                         ),
@@ -153,8 +157,32 @@ final readonly class ProcessQualityAssuranceExecution
                     ));
                 }
 
+                /*
+                 * Resolve the permitted provider from the immutable project
+                 * configuration before starting the execution attempt.
+                 */
+                $reviewExecution->loadMissing(
+                    'projectContextSnapshot.configurationVersion',
+                );
+
+                $configuration = $reviewExecution
+                    ->projectContextSnapshot
+                    ->configurationVersion
+                    ->snapshot;
+
+                $fallbackOrder = Arr::get(
+                    $configuration,
+                    'policy.provider.fallback_order',
+                    [],
+                );
+
                 $provider = $this->providers->resolve(
-                    fallbackOrder: $fallbackOrder,
+                    fallbackOrder: is_array($fallbackOrder)
+                        ? array_values(array_filter(
+                            $fallbackOrder,
+                            is_string(...),
+                        ))
+                        : [],
                     capability: $reviewExecution->capability,
                 );
 
@@ -266,11 +294,12 @@ final readonly class ProcessQualityAssuranceExecution
             $result = $provider->execute($request);
 
             $this->validator->validateAssessment($result);
+
             $this->assertKnownEvidenceReferences(
                 result: $result,
                 request: $request,
             );
-        } catch (InvalidArgumentException | LogicException $exception) {
+        } catch (InvalidArgumentException|LogicException $exception) {
             $this->failAttempt(
                 assessment: $runningAssessment,
                 attempt: $reviewAttempt,
@@ -318,22 +347,22 @@ final readonly class ProcessQualityAssuranceExecution
 
                     $lockedReviewAttempt =
                         ExecutionAttempt::query()
-                        ->where(
-                            'execution_id',
-                            $lockedReviewExecution->id,
-                        )
-                        ->whereKey($reviewAttempt->id)
-                        ->lockForUpdate()
-                        ->firstOrFail();
+                            ->where(
+                                'execution_id',
+                                $lockedReviewExecution->id,
+                            )
+                            ->whereKey($reviewAttempt->id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
 
                     $lockedImplementationExecution =
                         Execution::query()
-                        ->forProject($assessment->project_id)
-                        ->whereKey(
-                            $implementationExecution->id,
-                        )
-                        ->lock('for share')
-                        ->firstOrFail();
+                            ->forProject($assessment->project_id)
+                            ->whereKey(
+                                $implementationExecution->id,
+                            )
+                            ->lock('for share')
+                            ->firstOrFail();
 
                     $lockedTicket = RoadmapTask::query()
                         ->whereKey($ticket->id)
@@ -349,7 +378,7 @@ final readonly class ProcessQualityAssuranceExecution
 
                     if (
                         $lockedReviewExecution
-                        ->cancel_requested_at !== null
+                            ->cancel_requested_at !== null
                     ) {
                         $this->attempts->completeAttempt(
                             attempt: $lockedReviewAttempt,
@@ -459,6 +488,7 @@ final readonly class ProcessQualityAssuranceExecution
         }
 
         $evidenceIds = array_values(array_unique($evidenceIds));
+
         sort($evidenceIds, SORT_STRING);
 
         $pullRequest = $artifacts->firstWhere(
@@ -491,7 +521,8 @@ final readonly class ProcessQualityAssuranceExecution
             reviewAttemptId: $reviewAttempt->id,
             implementationExecutionId: $implementationExecution->id,
             implementationAttemptId: $implementationAttempt->id,
-            contextSnapshotId: $reviewExecution->project_context_snapshot_id,
+            contextSnapshotId: $reviewExecution
+                ->project_context_snapshot_id,
             contextFingerprint: $reviewExecution
                 ->projectContextSnapshot
                 ->approved_document_set_fingerprint,
@@ -504,7 +535,8 @@ final readonly class ProcessQualityAssuranceExecution
             ),
             ticketRisk: $ticket->risk,
             targetBranch: $targetBranch,
-            implementationLogicalRole: $implementationExecution->logical_role
+            implementationLogicalRole: $implementationExecution
+                ->logical_role
                 ?? 'unknown',
             reviewLogicalRole: $reviewExecution->logical_role
                 ?? 'unknown',
@@ -558,10 +590,6 @@ final readonly class ProcessQualityAssuranceExecution
     ): void {
         $simulated = $reviewAttempt->simulation_mode !== null;
 
-        $classification = $simulated
-            ? EvidenceClassification::SimulatedOutput
-            : EvidenceClassification::ReportedEvidence;
-
         $reference = $simulated
             ? sprintf(
                 'simulation://projects/%d/executions/%s/qa-assessment',
@@ -578,7 +606,8 @@ final readonly class ProcessQualityAssuranceExecution
             'synthetic' => true,
             'actual_state' => 'unverified',
             'qa_assessment_id' => $assessment->id,
-            'implementation_execution_id' => $assessment->implementation_execution_id,
+            'implementation_execution_id' => $assessment
+                ->implementation_execution_id,
             'result' => $result->toArray(),
         ];
 

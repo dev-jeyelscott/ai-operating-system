@@ -71,9 +71,9 @@ final readonly class ValidatingQualityAssuranceExecutionProvider implements Qual
             throw $exception;
         } catch (
             InvalidArgumentException
-            | JsonException
-            | TypeError
-            | ValueError $exception
+            |JsonException
+            |TypeError
+            |ValueError $exception
         ) {
             throw ProviderResultRejected::fromThrowable(
                 providerId: $this->provider->id(),

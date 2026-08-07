@@ -60,7 +60,7 @@ final class GetDevelopmentExecutionInspector
             ->orderBy('sequence')
             ->get();
         $serializedArtifacts = array_values($artifacts
-            ->map(fn(Artifact $artifact): array => $this->serializeArtifact($artifact))
+            ->map(fn (Artifact $artifact): array => $this->serializeArtifact($artifact))
             ->all());
         $artifactTypes = $artifacts->pluck('artifact_type')->all();
         $context = $execution->projectContextSnapshot;
@@ -104,7 +104,7 @@ final class GetDevelopmentExecutionInspector
                 'createdAt' => $context->created_at->toISOString(),
             ],
             'attempts' => $execution->attempts
-                ->map(fn(ExecutionAttempt $attempt): array => $this->serializeAttempt($attempt))
+                ->map(fn (ExecutionAttempt $attempt): array => $this->serializeAttempt($attempt))
                 ->values()
                 ->all(),
             'artifacts' => $serializedArtifacts,
@@ -122,7 +122,7 @@ final class GetDevelopmentExecutionInspector
                 'pullRequest' => $this->repositoryArtifact($serializedArtifacts, 'synthetic_pull_request'),
             ],
             'assumptions' => $artifacts->pluck('assumptions')->flatten()
-                ->filter(static fn(mixed $assumption): bool => is_string($assumption))
+                ->filter(static fn (mixed $assumption): bool => is_string($assumption))
                 ->unique()->values()->all(),
             'confidence' => $artifacts->pluck('confidence')->filter()->first(),
             'risks' => ['Simulation did not inspect or modify a real repository.'],
@@ -145,14 +145,14 @@ final class GetDevelopmentExecutionInspector
                 'nextAttemptAt' => $execution->next_attempt_at?->toISOString(),
             ],
             'error' => $this->latestError($execution->attempts),
-            'auditTimeline' => $audit->map(static fn(AuditEvent $event): array => [
+            'auditTimeline' => $audit->map(static fn (AuditEvent $event): array => [
                 'sequence' => $event->sequence,
                 'type' => $event->event_type->value,
                 'attemptId' => is_int($event->metadata['attempt_id'] ?? null) ? $event->metadata['attempt_id'] : null,
                 'leaseId' => is_string($event->metadata['lease_id'] ?? null) ? $event->metadata['lease_id'] : null,
                 'occurredAt' => $event->occurred_at->toISOString(),
             ])->values()->all(),
-            'lifecycleEvents' => $events->map(static fn(OutboxMessage $event): array => [
+            'lifecycleEvents' => $events->map(static fn (OutboxMessage $event): array => [
                 'sequence' => $event->sequence,
                 'eventId' => $event->event_id,
                 'name' => $event->event_name,
@@ -214,7 +214,7 @@ final class GetDevelopmentExecutionInspector
             'actualState' => $artifact->actual_state,
             'evidenceStillRequired' => $artifact->evidence_still_required,
             'details' => $this->safeArtifactDetails($artifact),
-            'evidence' => $artifact->evidence->map(fn(Evidence $evidence): array => $this->serializeEvidence($evidence))->values()->all(),
+            'evidence' => $artifact->evidence->map(fn (Evidence $evidence): array => $this->serializeEvidence($evidence))->values()->all(),
             'createdAt' => $artifact->created_at->toISOString(),
         ];
     }
@@ -331,7 +331,7 @@ final class GetDevelopmentExecutionInspector
      */
     private function latestError(Collection $attempts): ?array
     {
-        $attempt = $attempts->reverse()->first(static fn(ExecutionAttempt $candidate): bool => $candidate->error_code !== null);
+        $attempt = $attempts->reverse()->first(static fn (ExecutionAttempt $candidate): bool => $candidate->error_code !== null);
 
         return $attempt instanceof ExecutionAttempt ? [
             'attemptNumber' => $attempt->attempt_number,
@@ -360,7 +360,7 @@ final class GetDevelopmentExecutionInspector
         }
 
         return array_map(
-            static fn(mixed $item): array => is_array($item) ? Arr::only($item, $keys) : [],
+            static fn (mixed $item): array => is_array($item) ? Arr::only($item, $keys) : [],
             $value,
         );
     }

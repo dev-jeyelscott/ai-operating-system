@@ -98,24 +98,24 @@ final readonly class SyntheticDevelopmentArtifactGenerator
         ]));
 
         $push = substr(
-            hash('sha256', $commit . '|push'),
+            hash('sha256', $commit.'|push'),
             0,
             24,
         );
 
         $pullRequest = substr(
-            hash('sha256', $commit . '|pull-request'),
+            hash('sha256', $commit.'|pull-request'),
             0,
             24,
         );
 
-        $path = 'app/Simulated/' . strtolower(
+        $path = 'app/Simulated/'.strtolower(
             preg_replace(
                 '/[^a-zA-Z0-9]/',
                 '',
                 $request->ticketId,
             ) ?? '',
-        ) . '.php';
+        ).'.php';
 
         $data = [
             'schema_version' => 1,
@@ -123,7 +123,7 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             'capability' => ExecutionCapability::DevelopmentExecute->value,
             'outcome' => 'succeeded',
             'stage_results' => array_map(
-                static fn(string $stage): array => [
+                static fn (string $stage): array => [
                     'stage' => $stage,
                     'status' => 'passed',
                     'summary' => sprintf(
@@ -154,7 +154,7 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             ],
             'diff_summary' => 'Simulated diff only; no repository content was changed.',
             'validation_results' => array_map(
-                static fn(string $command): array => [
+                static fn (string $command): array => [
                     'command' => $command,
                     'status' => 'passed',
                     'summary' => 'Simulated validation pass; real command execution remains required.',
@@ -250,7 +250,7 @@ final readonly class SyntheticDevelopmentArtifactGenerator
             ];
 
             $data['validation_results'] = array_map(
-                static fn(string $command): array => [
+                static fn (string $command): array => [
                     'command' => $command,
                     'status' => 'failed',
                     'summary' => 'Simulated validation failure; no real command ran.',

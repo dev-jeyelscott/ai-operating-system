@@ -43,6 +43,63 @@ it('normalizes canonical and historical execution capabilities', function (
     ],
 ]);
 
+it('returns canonical and historical stored values', function (
+    ExecutionCapability $capability,
+    array $expected,
+): void {
+    expect($capability->storedValues())->toBe($expected);
+})->with([
+    [
+        ExecutionCapability::PlanningGenerate,
+        [
+            'planning.generate',
+            'planning.roadmap',
+        ],
+    ],
+    [
+        ExecutionCapability::DevelopmentExecute,
+        [
+            'development.execute',
+            'development',
+            'development.simulation',
+        ],
+    ],
+    [
+        ExecutionCapability::QualityAssuranceReview,
+        [
+            'quality_assurance.review',
+            'quality_assurance.simulation',
+        ],
+    ],
+]);
+
+it('accepts canonical and historical capability values', function (): void {
+    expect(
+        ExecutionCapability::PlanningGenerate
+            ->accepts('planning.generate'),
+    )->toBeTrue()
+        ->and(
+            ExecutionCapability::PlanningGenerate
+                ->accepts('planning.roadmap'),
+        )->toBeTrue()
+        ->and(
+            ExecutionCapability::DevelopmentExecute
+                ->accepts('development.execute'),
+        )->toBeTrue()
+        ->and(
+            ExecutionCapability::DevelopmentExecute
+                ->accepts('development.simulation'),
+        )->toBeTrue()
+        ->and(
+            ExecutionCapability::QualityAssuranceReview
+                ->accepts('quality_assurance.simulation'),
+        )->toBeTrue()
+        ->and(
+            ExecutionCapability::DevelopmentExecute
+                ->accepts('planning.generate'),
+        )->toBeFalse();
+});
+
 it('fails closed for an unknown execution capability', function (): void {
     ExecutionCapability::fromStored(
         'development.unsupported',

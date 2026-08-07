@@ -187,10 +187,10 @@ final class TicketExecutionPolicyResolver
             ->orderBy('roadmap_task_id')
             ->pluck('roadmap_task_id')
             ->map(
-                static fn(mixed $roadmapTaskId): int => (int) $roadmapTaskId,
+                static fn (mixed $roadmapTaskId): int => (int) $roadmapTaskId,
             )
             ->filter(
-                static fn(int $roadmapTaskId): bool => $roadmapTaskId > 0,
+                static fn (int $roadmapTaskId): bool => $roadmapTaskId > 0,
             )
             ->all();
 

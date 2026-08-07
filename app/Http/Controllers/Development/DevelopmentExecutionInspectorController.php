@@ -26,7 +26,7 @@ final class DevelopmentExecutionInspectorController extends Controller
             ->whereIn('capability', ['development', 'development.execute'])
             ->firstOrFail(['id']);
 
-        $read = fn(): array => $inspector->handle($organization->id, $project->id, $execution);
+        $read = fn (): array => $inspector->handle($organization->id, $project->id, $execution);
 
         return Inertia::render('projects/development/executions/show', [
             'organization' => ['id' => $organization->id, 'name' => $organization->name, 'slug' => $organization->slug],

@@ -7,6 +7,7 @@ namespace App\Application\Development;
 use App\Application\Development\Data\DevelopmentExecutionRequest;
 use App\Application\Development\Data\DevelopmentExecutionResult;
 use App\Application\Executions\Data\ExecutionAttemptContext;
+use App\Application\Executions\Data\ProviderSelection;
 use App\Application\Executions\ExecutionResilienceManager;
 use App\Application\Security\RedactSensitiveData;
 use App\Application\Tickets\TicketLeaseManager;
@@ -14,6 +15,7 @@ use App\Application\Tickets\TransitionTicketStatus;
 use App\Domain\Audit\AuditEventType;
 use App\Domain\Development\DevelopmentExecutionOutcome;
 use App\Domain\Development\Exceptions\DevelopmentProviderTimeout;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\Tickets\TicketLeaseReleaseReason;
 use App\Domain\Tickets\TicketStatus;
@@ -25,9 +27,13 @@ use App\Models\RoadmapTask;
 use App\Models\TicketExecutionLease;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 final readonly class ProcessDevelopmentExecution
 {
+    /**
+     * Create the Layer 2 development execution orchestrator.
+     */
     public function __construct(
         private DevelopmentProviderRegistry $providers,
         private DevelopmentResultValidator $validator,
@@ -39,20 +45,46 @@ final readonly class ProcessDevelopmentExecution
         private RedactSensitiveData $redactor,
     ) {}
 
-    public function handle(Execution $execution, string $scenario = 'happy_path', int $seed = 1): void
-    {
-        $started = DB::transaction(function () use ($execution, $seed): array {
+    /**
+     * Process one queued Layer 2 execution from lease acquisition through completion.
+     */
+    public function handle(
+        Execution $execution,
+        string $scenario = 'happy_path',
+        int $seed = 1,
+    ): void {
+        $started = DB::transaction(function () use (
+            $execution,
+            $scenario,
+            $seed,
+        ): array {
             $leaseIdentity = TicketExecutionLease::query()
                 ->where('execution_id', $execution->id)
                 ->active()
-                ->firstOrFail(['id', 'project_id', 'roadmap_task_id']);
-            $ticketIdentity = RoadmapTask::query()->whereKey($leaseIdentity->roadmap_task_id)->firstOrFail(['id', 'roadmap_id']);
+                ->firstOrFail([
+                    'id',
+                    'project_id',
+                    'roadmap_task_id',
+                ]);
+
+            $ticketIdentity = RoadmapTask::query()
+                ->whereKey($leaseIdentity->roadmap_task_id)
+                ->firstOrFail([
+                    'id',
+                    'roadmap_id',
+                ]);
+
             $project = Project::query()
                 ->forOrganization($execution->project->organization_id)
                 ->whereKey($execution->project_id)
                 ->lock('for share')
                 ->firstOrFail();
-            $lockedExecution = Execution::query()->forProject($project->id)->whereKey($execution->id)->lockForUpdate()->firstOrFail();
+
+            $lockedExecution = Execution::query()
+                ->forProject($project->id)
+                ->whereKey($execution->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (
                 ! ExecutionCapability::DevelopmentExecute->accepts(
@@ -66,14 +98,54 @@ final readonly class ProcessDevelopmentExecution
                 );
             }
 
-            $roadmap = Roadmap::query()->whereKey($ticketIdentity->roadmap_id)->where('project_id', $project->id)->where('project_context_snapshot_id', $lockedExecution->project_context_snapshot_id)->lock('for share')->firstOrFail();
-            $ticket = RoadmapTask::query()->whereKey($ticketIdentity->id)->where('roadmap_id', $roadmap->id)->lockForUpdate()->firstOrFail();
-            $lease = TicketExecutionLease::query()->whereKey($leaseIdentity->id)->where('project_id', $project->id)->where('execution_id', $lockedExecution->id)->where('roadmap_task_id', $ticket->id)->active()->lockForUpdate()->firstOrFail();
+            $roadmap = Roadmap::query()
+                ->whereKey($ticketIdentity->roadmap_id)
+                ->where('project_id', $project->id)
+                ->where(
+                    'project_context_snapshot_id',
+                    $lockedExecution->project_context_snapshot_id,
+                )
+                ->lock('for share')
+                ->firstOrFail();
+
+            $ticket = RoadmapTask::query()
+                ->whereKey($ticketIdentity->id)
+                ->where('roadmap_id', $roadmap->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lease = TicketExecutionLease::query()
+                ->whereKey($leaseIdentity->id)
+                ->where('project_id', $project->id)
+                ->where('execution_id', $lockedExecution->id)
+                ->where('roadmap_task_id', $ticket->id)
+                ->active()
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $lockedExecution->setRelation('project', $project);
 
-            $isRetry = $ticket->status === TicketStatus::InProgress && $lockedExecution->attempt_count > 0;
-            if ($lease->project_id !== $lockedExecution->project_id || $lease->roadmap_task_id !== $ticket->id || (! $isRetry && ! in_array($ticket->status, [TicketStatus::Ready, TicketStatus::ChangesRequested], true))) {
-                throw new \LogicException('Development execution lineage is invalid.');
+            $isRetry = $ticket->status === TicketStatus::InProgress
+                && $lockedExecution->attempt_count > 0;
+
+            if (
+                $lease->project_id !== $lockedExecution->project_id
+                || $lease->roadmap_task_id !== $ticket->id
+                || (
+                    ! $isRetry
+                    && ! in_array(
+                        $ticket->status,
+                        [
+                            TicketStatus::Ready,
+                            TicketStatus::ChangesRequested,
+                        ],
+                        true,
+                    )
+                )
+            ) {
+                throw new LogicException(
+                    'Development execution lineage is invalid.',
+                );
             }
 
             $configuration = $lockedExecution
@@ -129,75 +201,257 @@ final readonly class ProcessDevelopmentExecution
                     execution: $lockedExecution,
                 );
             }
-            $startedEventId = $this->events->record(AuditEventType::ImplementationStarted, $lockedExecution, $attempt, $ticket, $lease);
 
-            return [$lockedExecution->fresh(), $attempt, $ticket, $lease, $startedEventId];
+            $startedEventId = $this->events->record(
+                AuditEventType::ImplementationStarted,
+                $lockedExecution,
+                $attempt,
+                $ticket,
+                $lease,
+            );
+
+            return [
+                $lockedExecution->fresh(),
+                $attempt,
+                $ticket,
+                $lease,
+                $startedEventId,
+            ];
         });
 
         /** @var Execution $lockedExecution */
         /** @var ExecutionAttempt $attempt */
         /** @var RoadmapTask $ticket */
         /** @var TicketExecutionLease $lease */
-        [$lockedExecution, $attempt, $ticket, $lease, $startedEventId] = $started;
+        [
+            $lockedExecution,
+            $attempt,
+            $ticket,
+            $lease,
+            $startedEventId,
+        ] = $started;
 
         try {
-            $request = $this->request($lockedExecution, $attempt, $ticket, $lease, $scenario, $seed);
+            $request = $this->request(
+                $lockedExecution,
+                $attempt,
+                $ticket,
+                $lease,
+                $scenario,
+                $seed,
+            );
+
             $this->validator->validateRequest($request);
-            $policy = $lockedExecution->projectContextSnapshot->configurationVersion->snapshot;
-            $fallback = Arr::get($policy, 'policy.provider.fallback_order', []);
-            $provider = $this->providers->resolve(is_array($fallback) ? array_values(array_filter($fallback, is_string(...))) : [], $lockedExecution->capability);
+
+            $policy = $lockedExecution
+                ->projectContextSnapshot
+                ->configurationVersion
+                ->snapshot;
+
+            $fallback = Arr::get(
+                $policy,
+                'policy.provider.fallback_order',
+                [],
+            );
+
+            $provider = $this->providers->resolve(
+                is_array($fallback)
+                    ? array_values(array_filter(
+                        $fallback,
+                        is_string(...),
+                    ))
+                    : [],
+                $lockedExecution->capability,
+            );
+
             $result = $provider->execute($request);
+
             $this->validator->validateResult($result);
         } catch (DevelopmentProviderTimeout $exception) {
-            $this->failAndReleaseIfTerminal($lockedExecution, $attempt, $lease, 'development.provider_timeout', $exception->getMessage(), true, $startedEventId);
+            $this->failAndReleaseIfTerminal(
+                $lockedExecution,
+                $attempt,
+                $lease,
+                'development.provider_timeout',
+                $exception->getMessage(),
+                true,
+                $startedEventId,
+            );
 
             return;
         } catch (\InvalidArgumentException $exception) {
-            $this->failAndReleaseIfTerminal($lockedExecution, $attempt, $lease, 'development.invalid_result', $exception->getMessage(), false, $startedEventId);
+            $this->failAndReleaseIfTerminal(
+                $lockedExecution,
+                $attempt,
+                $lease,
+                'development.invalid_result',
+                $exception->getMessage(),
+                false,
+                $startedEventId,
+            );
 
             return;
         } catch (\Throwable $exception) {
-            $this->failAndReleaseIfTerminal($lockedExecution, $attempt, $lease, 'development.provider_failure', $exception->getMessage(), true, $startedEventId);
+            $this->failAndReleaseIfTerminal(
+                $lockedExecution,
+                $attempt,
+                $lease,
+                'development.provider_failure',
+                $exception->getMessage(),
+                true,
+                $startedEventId,
+            );
 
             return;
         }
 
-        if ($result->outcome === DevelopmentExecutionOutcome::ValidationFailed) {
-            $this->recordValidationFailure($lockedExecution, $attempt, $ticket, $lease, $result, $startedEventId);
+        if (
+            $result->outcome
+            === DevelopmentExecutionOutcome::ValidationFailed
+        ) {
+            $this->recordValidationFailure(
+                $lockedExecution,
+                $attempt,
+                $ticket,
+                $lease,
+                $result,
+                $startedEventId,
+            );
 
             return;
         }
-
-        $result = $provider->execute($request);
 
         try {
-            DB::transaction(function () use ($lockedExecution, $attempt, $ticket, $lease, $result, $startedEventId): void {
-                $project = Project::query()->forOrganization($lockedExecution->project->organization_id)->whereKey($lockedExecution->project_id)->lock('for share')->firstOrFail();
-                $execution = Execution::query()->forProject($project->id)->whereKey($lockedExecution->id)->lockForUpdate()->firstOrFail();
-                $roadmap = Roadmap::query()->whereKey($ticket->roadmap_id)->where('project_id', $project->id)->lock('for share')->firstOrFail();
-                $lockedTicket = RoadmapTask::query()->whereKey($ticket->id)->where('roadmap_id', $roadmap->id)->lockForUpdate()->firstOrFail();
-                $lockedLease = TicketExecutionLease::query()->whereKey($lease->id)->where('project_id', $project->id)->where('execution_id', $execution->id)->where('roadmap_task_id', $lockedTicket->id)->active()->lockForUpdate()->firstOrFail();
-                $lockedAttempt = ExecutionAttempt::query()->where('execution_id', $execution->id)->whereKey($attempt->id)->lockForUpdate()->firstOrFail();
+            DB::transaction(function () use (
+                $lockedExecution,
+                $attempt,
+                $ticket,
+                $lease,
+                $result,
+                $startedEventId,
+            ): void {
+                $project = Project::query()
+                    ->forOrganization(
+                        $lockedExecution->project->organization_id,
+                    )
+                    ->whereKey($lockedExecution->project_id)
+                    ->lock('for share')
+                    ->firstOrFail();
+
+                $execution = Execution::query()
+                    ->forProject($project->id)
+                    ->whereKey($lockedExecution->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $roadmap = Roadmap::query()
+                    ->whereKey($ticket->roadmap_id)
+                    ->where('project_id', $project->id)
+                    ->lock('for share')
+                    ->firstOrFail();
+
+                $lockedTicket = RoadmapTask::query()
+                    ->whereKey($ticket->id)
+                    ->where('roadmap_id', $roadmap->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $lockedLease = TicketExecutionLease::query()
+                    ->whereKey($lease->id)
+                    ->where('project_id', $project->id)
+                    ->where('execution_id', $execution->id)
+                    ->where('roadmap_task_id', $lockedTicket->id)
+                    ->active()
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $lockedAttempt = ExecutionAttempt::query()
+                    ->where('execution_id', $execution->id)
+                    ->whereKey($attempt->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
                 $execution->setRelation('project', $project);
 
                 if ($execution->cancel_requested_at !== null) {
-                    $this->attempts->completeAttempt($lockedAttempt, causationId: $startedEventId);
+                    $this->attempts->completeAttempt(
+                        $lockedAttempt,
+                        causationId: $startedEventId,
+                    );
+
                     $execution->refresh();
                     $execution->setRelation('project', $project);
-                    $this->leases->releaseLocked($project, $execution, $lockedLease, $lockedLease->owner, TicketLeaseReleaseReason::Cancellation);
+
+                    $this->leases->releaseLocked(
+                        $project,
+                        $execution,
+                        $lockedLease,
+                        $lockedLease->owner,
+                        TicketLeaseReleaseReason::Cancellation,
+                    );
 
                     return;
                 }
 
-                $this->recordArtifacts($execution, $lockedAttempt, $result);
-                $causationId = $this->events->record(AuditEventType::ValidationStarted, $execution, $lockedAttempt, $lockedTicket, $lockedLease, $startedEventId);
-                $causationId = $this->events->record(AuditEventType::ValidationCompleted, $execution, $lockedAttempt, $lockedTicket, $lockedLease, $causationId);
-                $causationId = $this->events->record(AuditEventType::SyntheticCommitCreated, $execution, $lockedAttempt, $lockedTicket, $lockedLease, $causationId);
-                $causationId = $this->events->record(AuditEventType::SyntheticPushRecorded, $execution, $lockedAttempt, $lockedTicket, $lockedLease, $causationId);
-                $causationId = $this->events->record(AuditEventType::PullRequestCreated, $execution, $lockedAttempt, $lockedTicket, $lockedLease, $causationId);
-                $this->attempts->completeAttempt($lockedAttempt, causationId: $causationId);
+                $this->recordArtifacts(
+                    $execution,
+                    $lockedAttempt,
+                    $result,
+                );
+
+                $causationId = $this->events->record(
+                    AuditEventType::ValidationStarted,
+                    $execution,
+                    $lockedAttempt,
+                    $lockedTicket,
+                    $lockedLease,
+                    $startedEventId,
+                );
+
+                $causationId = $this->events->record(
+                    AuditEventType::ValidationCompleted,
+                    $execution,
+                    $lockedAttempt,
+                    $lockedTicket,
+                    $lockedLease,
+                    $causationId,
+                );
+
+                $causationId = $this->events->record(
+                    AuditEventType::SyntheticCommitCreated,
+                    $execution,
+                    $lockedAttempt,
+                    $lockedTicket,
+                    $lockedLease,
+                    $causationId,
+                );
+
+                $causationId = $this->events->record(
+                    AuditEventType::SyntheticPushRecorded,
+                    $execution,
+                    $lockedAttempt,
+                    $lockedTicket,
+                    $lockedLease,
+                    $causationId,
+                );
+
+                $causationId = $this->events->record(
+                    AuditEventType::PullRequestCreated,
+                    $execution,
+                    $lockedAttempt,
+                    $lockedTicket,
+                    $lockedLease,
+                    $causationId,
+                );
+
+                $this->attempts->completeAttempt(
+                    $lockedAttempt,
+                    causationId: $causationId,
+                );
+
                 $execution->refresh();
                 $execution->setRelation('project', $project);
+
                 $this->tickets->handleLocked(
                     project: $project,
                     roadmap: $roadmap,
@@ -208,22 +462,64 @@ final readonly class ProcessDevelopmentExecution
                     correlationId: $execution->correlation_id,
                     execution: $execution,
                 );
-                $this->events->record(AuditEventType::ImplementationCompleted, $execution, $lockedAttempt, $lockedTicket->refresh(), $lockedLease, $causationId);
-                $this->leases->releaseLocked($project, $execution, $lockedLease, $lockedLease->owner, TicketLeaseReleaseReason::Completion);
+
+                $this->events->record(
+                    AuditEventType::ImplementationCompleted,
+                    $execution,
+                    $lockedAttempt,
+                    $lockedTicket->refresh(),
+                    $lockedLease,
+                    $causationId,
+                );
+
+                $this->leases->releaseLocked(
+                    $project,
+                    $execution,
+                    $lockedLease,
+                    $lockedLease->owner,
+                    TicketLeaseReleaseReason::Completion,
+                );
             });
         } catch (\Throwable $exception) {
-            $this->failAndReleaseIfTerminal($lockedExecution, $attempt, $lease, 'development.terminal_persistence_failure', $exception->getMessage(), true, $startedEventId);
+            $this->failAndReleaseIfTerminal(
+                $lockedExecution,
+                $attempt,
+                $lease,
+                'development.terminal_persistence_failure',
+                $exception->getMessage(),
+                true,
+                $startedEventId,
+            );
         }
     }
 
-    private function request(Execution $execution, ExecutionAttempt $attempt, RoadmapTask $ticket, TicketExecutionLease $lease, string $scenario, int $seed): DevelopmentExecutionRequest
-    {
-        $execution->loadMissing('project', 'projectContextSnapshot.configurationVersion');
+    /**
+     * Build the immutable provider request for the selected ticket execution.
+     */
+    private function request(
+        Execution $execution,
+        ExecutionAttempt $attempt,
+        RoadmapTask $ticket,
+        TicketExecutionLease $lease,
+        string $scenario,
+        int $seed,
+    ): DevelopmentExecutionRequest {
+        $execution->loadMissing(
+            'project',
+            'projectContextSnapshot.configurationVersion',
+        );
+
         $ticket->loadMissing('dependencies.dependsOn');
+
         $snapshot = $execution->projectContextSnapshot;
         $configuration = $snapshot->configurationVersion->snapshot;
         $scope = $ticket->scope;
-        $validationCommands = Arr::get($configuration, 'policy.validation.commands', ['php artisan test']);
+
+        $validationCommands = Arr::get(
+            $configuration,
+            'policy.validation.commands',
+            ['php artisan test'],
+        );
 
         return new DevelopmentExecutionRequest(
             organizationId: $execution->project->organization_id,
@@ -235,47 +531,148 @@ final readonly class ProcessDevelopmentExecution
             attemptNumber: $attempt->attempt_number,
             leaseId: $lease->id,
             contextSnapshotId: $snapshot->id,
-            contextFingerprint: $snapshot->approved_document_set_fingerprint,
+            contextFingerprint: $snapshot
+                ->approved_document_set_fingerprint,
             ticketObjective: $ticket->objective,
             includedScope: $this->strings($scope['included']),
             excludedScope: $this->strings($scope['excluded']),
-            acceptanceCriteria: $this->strings($ticket->acceptance_criteria),
-            dependencyReferences: array_values($ticket->dependencies
-                ->map(static fn($dependency): string => $dependency->dependsOn->stable_id)
-                ->sort()
-                ->values()
-                ->all()),
-            evidenceRequirements: $this->strings($ticket->evidence_requirements),
+            acceptanceCriteria: $this->strings(
+                $ticket->acceptance_criteria,
+            ),
+            dependencyReferences: array_values(
+                $ticket->dependencies
+                    ->map(
+                        static fn ($dependency): string => $dependency
+                            ->dependsOn
+                            ->stable_id,
+                    )
+                    ->sort()
+                    ->values()
+                    ->all(),
+            ),
+            evidenceRequirements: $this->strings(
+                $ticket->evidence_requirements,
+            ),
             risk: $ticket->risk,
             complexity: $ticket->estimated_complexity,
-            repositoryProviderMetadata: ['provider' => 'simulation', 'ticket_type' => $ticket->ticket_type],
+            repositoryProviderMetadata: [
+                'provider' => 'simulation',
+                'ticket_type' => $ticket->ticket_type,
+            ],
             repositoryBaseReference: "simulation://projects/{$execution->project_id}/base/develop",
             integrationTarget: 'develop',
             validationCommands: $this->strings($validationCommands),
-            requestedReasoning: $execution->requested_reasoning_level->value,
-            effectiveReasoning: $attempt->effective_reasoning_level->value,
-            reasoningResolutionSource: $attempt->reasoning_resolution_source,
-            providerPolicy: (array) Arr::get($configuration, 'policy.provider', []),
-            budgetPolicy: (array) Arr::get($configuration, 'policy.budget', []),
-            retryPolicy: ['retry_limit' => $execution->retry_limit],
+            requestedReasoning: $execution
+                ->requested_reasoning_level
+                ->value,
+            effectiveReasoning: $attempt
+                ->effective_reasoning_level
+                ->value,
+            reasoningResolutionSource: $attempt
+                ->reasoning_resolution_source,
+            providerPolicy: (array) Arr::get(
+                $configuration,
+                'policy.provider',
+                [],
+            ),
+            budgetPolicy: (array) Arr::get(
+                $configuration,
+                'policy.budget',
+                [],
+            ),
+            retryPolicy: [
+                'retry_limit' => $execution->retry_limit,
+            ],
             simulationScenario: $scenario,
             deterministicSeed: $seed,
         );
     }
 
-    private function recordArtifacts(Execution $execution, ExecutionAttempt $attempt, DevelopmentExecutionResult $result): void
-    {
+    /**
+     * Persist all simulated Layer 2 implementation artifacts.
+     */
+    private function recordArtifacts(
+        Execution $execution,
+        ExecutionAttempt $attempt,
+        DevelopmentExecutionResult $result,
+    ): void {
         $root = "simulation://projects/{$execution->project_id}/executions/{$execution->id}";
-        $this->artifacts->record($execution, $attempt, 'implementation_plan', 'Simulated implementation plan', "{$root}/artifacts/plan", ['plan' => $result->implementationPlan], ['Synthetic implementation plan generated.']);
-        $this->artifacts->record($execution, $attempt, 'changed_file_manifest', 'Simulated changed-file manifest', "{$root}/artifacts/changed-files", ['files' => array_map(static fn($file): array => $file->toArray(), $result->changedFiles)], ['Synthetic changed-file manifest generated.']);
-        $this->artifacts->record($execution, $attempt, 'validation_result', 'Simulated validation result', "{$root}/artifacts/validation", ['validations' => array_map(static fn($validation): array => $validation->toArray(), $result->validationResults)], ['Synthetic validation passed.']);
-        foreach ([$result->syntheticBranchResult, $result->syntheticCommitResult, $result->syntheticPushResult, $result->syntheticPullRequestResult] as $artifact) {
-            if ($artifact !== null) {
-                $this->artifacts->record($execution, $attempt, 'synthetic_' . $artifact->kind, $artifact->identifier, $artifact->reference, $artifact->toArray(), ["Synthetic {$artifact->kind} generated."]);
+
+        $this->artifacts->record(
+            $execution,
+            $attempt,
+            'implementation_plan',
+            'Simulated implementation plan',
+            "{$root}/artifacts/plan",
+            [
+                'plan' => $result->implementationPlan,
+            ],
+            [
+                'Synthetic implementation plan generated.',
+            ],
+        );
+
+        $this->artifacts->record(
+            $execution,
+            $attempt,
+            'changed_file_manifest',
+            'Simulated changed-file manifest',
+            "{$root}/artifacts/changed-files",
+            [
+                'files' => array_map(
+                    static fn ($file): array => $file->toArray(),
+                    $result->changedFiles,
+                ),
+            ],
+            [
+                'Synthetic changed-file manifest generated.',
+            ],
+        );
+
+        $this->artifacts->record(
+            $execution,
+            $attempt,
+            'validation_result',
+            'Simulated validation result',
+            "{$root}/artifacts/validation",
+            [
+                'validations' => array_map(
+                    static fn ($validation): array => $validation->toArray(),
+                    $result->validationResults,
+                ),
+            ],
+            [
+                'Synthetic validation passed.',
+            ],
+        );
+
+        foreach ([
+            $result->syntheticBranchResult,
+            $result->syntheticCommitResult,
+            $result->syntheticPushResult,
+            $result->syntheticPullRequestResult,
+        ] as $artifact) {
+            if ($artifact === null) {
+                continue;
             }
+
+            $this->artifacts->record(
+                $execution,
+                $attempt,
+                'synthetic_'.$artifact->kind,
+                $artifact->identifier,
+                $artifact->reference,
+                $artifact->toArray(),
+                [
+                    "Synthetic {$artifact->kind} generated.",
+                ],
+            );
         }
     }
 
+    /**
+     * Persist a validation failure and apply the shared retry policy.
+     */
     private function recordValidationFailure(
         Execution $execution,
         ExecutionAttempt $attempt,
@@ -284,27 +681,90 @@ final readonly class ProcessDevelopmentExecution
         DevelopmentExecutionResult $result,
         string $startedEventId,
     ): void {
-        DB::transaction(function () use ($execution, $attempt, $ticket, $lease, $result, $startedEventId): void {
-            $lockedExecution = Execution::query()->forProject($execution->project_id)->whereKey($execution->id)->lockForUpdate()->firstOrFail();
-            $lockedTicket = RoadmapTask::query()->whereKey($ticket->id)->lockForUpdate()->firstOrFail();
-            $lockedLease = TicketExecutionLease::query()->whereKey($lease->id)->active()->lockForUpdate()->firstOrFail();
-            $lockedAttempt = ExecutionAttempt::query()->where('execution_id', $execution->id)->whereKey($attempt->id)->lockForUpdate()->firstOrFail();
+        DB::transaction(function () use (
+            $execution,
+            $attempt,
+            $ticket,
+            $lease,
+            $result,
+            $startedEventId,
+        ): void {
+            $lockedExecution = Execution::query()
+                ->forProject($execution->project_id)
+                ->whereKey($execution->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedTicket = RoadmapTask::query()
+                ->whereKey($ticket->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedLease = TicketExecutionLease::query()
+                ->whereKey($lease->id)
+                ->active()
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedAttempt = ExecutionAttempt::query()
+                ->where('execution_id', $execution->id)
+                ->whereKey($attempt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $reference = "simulation://projects/{$execution->project_id}/executions/{$execution->id}/attempts/{$attempt->id}/validation-failure";
+
             $this->artifacts->record(
                 $lockedExecution,
                 $lockedAttempt,
                 'validation_failure',
                 'Simulated validation failure',
                 $reference,
-                ['validations' => array_map(static fn($validation): array => $validation->toArray(), $result->validationResults)],
-                ['Simulated validation failed; real evidence remains required.'],
+                [
+                    'validations' => array_map(
+                        static fn ($validation): array => $validation
+                            ->toArray(),
+                        $result->validationResults,
+                    ),
+                ],
+                [
+                    'Simulated validation failed; real evidence remains required.',
+                ],
             );
-            $causationId = $this->events->record(AuditEventType::ValidationStarted, $lockedExecution, $lockedAttempt, $lockedTicket, $lockedLease, $startedEventId);
-            $causationId = $this->events->record(AuditEventType::ValidationFailed, $lockedExecution, $lockedAttempt, $lockedTicket, $lockedLease, $causationId);
-            $this->failAndReleaseIfTerminal($lockedExecution, $lockedAttempt, $lockedLease, 'development.validation_failed', 'Simulated development validation failed.', true, $causationId);
+
+            $causationId = $this->events->record(
+                AuditEventType::ValidationStarted,
+                $lockedExecution,
+                $lockedAttempt,
+                $lockedTicket,
+                $lockedLease,
+                $startedEventId,
+            );
+
+            $causationId = $this->events->record(
+                AuditEventType::ValidationFailed,
+                $lockedExecution,
+                $lockedAttempt,
+                $lockedTicket,
+                $lockedLease,
+                $causationId,
+            );
+
+            $this->failAndReleaseIfTerminal(
+                $lockedExecution,
+                $lockedAttempt,
+                $lockedLease,
+                'development.validation_failed',
+                'Simulated development validation failed.',
+                true,
+                $causationId,
+            );
         });
     }
 
+    /**
+     * Fail an attempt and release its ticket lease after terminal failure.
+     */
     private function failAndReleaseIfTerminal(
         Execution $execution,
         ExecutionAttempt $attempt,
@@ -322,22 +782,34 @@ final readonly class ProcessDevelopmentExecution
             causationId: $causationId,
         );
 
-        if ($decision->executionStatus === ExecutionStatus::Failed) {
-            $execution->refresh();
-            $this->leases->releaseForExecution(
-                $execution->project->organization_id,
-                $execution->project_id,
-                $lease->id,
-                $execution->id,
-                $lease->owner,
-                TicketLeaseReleaseReason::TerminalFailure,
-            );
+        if ($decision->executionStatus !== ExecutionStatus::Failed) {
+            return;
         }
+
+        $execution->refresh();
+
+        $this->leases->releaseForExecution(
+            $execution->project->organization_id,
+            $execution->project_id,
+            $lease->id,
+            $execution->id,
+            $lease->owner,
+            TicketLeaseReleaseReason::TerminalFailure,
+        );
     }
 
-    /** @return list<string> */
+    /**
+     * Normalize an untrusted mixed value into a sequential string list.
+     *
+     * @return list<string>
+     */
     private function strings(mixed $value): array
     {
-        return is_array($value) && array_is_list($value) ? array_values(array_filter($value, is_string(...))) : [];
+        return is_array($value) && array_is_list($value)
+            ? array_values(array_filter(
+                $value,
+                is_string(...),
+            ))
+            : [];
     }
 }

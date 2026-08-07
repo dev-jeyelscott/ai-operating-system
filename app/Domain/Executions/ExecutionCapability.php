@@ -21,21 +21,53 @@ enum ExecutionCapability: string
      */
     public static function fromStored(string $capability): self
     {
-        return match ($capability) {
-            self::PlanningGenerate->value,
-            'planning.roadmap' => self::PlanningGenerate,
+        foreach (self::cases() as $case) {
+            if ($case->accepts($capability)) {
+                return $case;
+            }
+        }
 
-            self::DevelopmentExecute->value,
-            'development',
-            'development.simulation' => self::DevelopmentExecute,
+        throw new InvalidArgumentException(sprintf(
+            'Unsupported execution capability [%s].',
+            $capability,
+        ));
+    }
 
-            self::QualityAssuranceReview->value,
-            'quality_assurance.simulation' => self::QualityAssuranceReview,
+    /**
+     * Determine whether this capability accepts the supplied persisted value.
+     */
+    public function accepts(string $capability): bool
+    {
+        return in_array(
+            $capability,
+            $this->storedValues(),
+            true,
+        );
+    }
 
-            default => throw new InvalidArgumentException(sprintf(
-                'Unsupported execution capability [%s].',
-                $capability,
-            )),
+    /**
+     * Return every canonical and historical value supported by this capability.
+     *
+     * @return list<string>
+     */
+    public function storedValues(): array
+    {
+        return match ($this) {
+            self::PlanningGenerate => [
+                self::PlanningGenerate->value,
+                'planning.roadmap',
+            ],
+
+            self::DevelopmentExecute => [
+                self::DevelopmentExecute->value,
+                'development',
+                'development.simulation',
+            ],
+
+            self::QualityAssuranceReview => [
+                self::QualityAssuranceReview->value,
+                'quality_assurance.simulation',
+            ],
         };
     }
 }

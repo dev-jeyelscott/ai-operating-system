@@ -39,7 +39,7 @@ final readonly class PersistRoadmap
         $inputFingerprint = RoadmapCommandFingerprint::make($request->toArray());
         $outputFingerprint = RoadmapCommandFingerprint::make($generatedSnapshot);
 
-        $persist = fn(): Roadmap => DB::transaction(function () use ($execution, $request, $result, $selection, $graph, $readiness, $generatedSnapshot, $inputFingerprint, $outputFingerprint): Roadmap {
+        $persist = fn (): Roadmap => DB::transaction(function () use ($execution, $request, $result, $selection, $graph, $readiness, $generatedSnapshot, $inputFingerprint, $outputFingerprint): Roadmap {
             Project::query()->whereKey($execution->project_id)->lockForUpdate()->firstOrFail();
 
             $existing = Roadmap::query()
@@ -83,7 +83,7 @@ final readonly class PersistRoadmap
                 'constraints' => $result->constraints,
                 'definition_of_done' => $result->definitionOfDone,
                 'required_approvals' => $result->requiredApprovals,
-                'document_inventory' => array_map(static fn($document): array => $document->toArray(), $result->documentInventory),
+                'document_inventory' => array_map(static fn ($document): array => $document->toArray(), $result->documentInventory),
                 'document_summary' => $result->documentSummary,
                 'architecture_concerns' => $result->architectureConcerns,
                 'security_concerns' => $result->securityConcerns,
@@ -140,8 +140,8 @@ final readonly class PersistRoadmap
                     'objective' => $task->objective,
                     'ticket_type' => $task->ticketType,
                     'scope' => $task->scope,
-                    'acceptance_criteria' => array_map(static fn($criterion): array => $criterion->toArray(), $task->acceptanceCriteria),
-                    'source_references' => array_map(static fn($reference): array => $reference->toArray(), $task->sourceReferences),
+                    'acceptance_criteria' => array_map(static fn ($criterion): array => $criterion->toArray(), $task->acceptanceCriteria),
+                    'source_references' => array_map(static fn ($reference): array => $reference->toArray(), $task->sourceReferences),
                     'evidence_requirements' => $task->evidenceRequirements,
                     'priority' => $task->priority,
                     'risk' => $task->risk,

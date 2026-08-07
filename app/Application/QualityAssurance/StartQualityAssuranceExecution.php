@@ -59,7 +59,7 @@ final readonly class StartQualityAssuranceExecution
                     ->whereKey($roadmapTaskId)
                     ->whereHas(
                         'roadmap',
-                        static fn($query) => $query->where(
+                        static fn ($query) => $query->where(
                             'project_id',
                             $project->id,
                         ),

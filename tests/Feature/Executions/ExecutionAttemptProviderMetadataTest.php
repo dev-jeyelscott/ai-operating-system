@@ -17,8 +17,7 @@ it('persists simulation attempt metadata', function (): void {
         modelIdentifier: null,
         protocolVersion: 'simulation.v1',
         sandboxProfile: 'simulation.noop',
-        effectiveCapability:
-            ExecutionCapability::DevelopmentExecute,
+        effectiveCapability: ExecutionCapability::DevelopmentExecute,
         selectionSource: 'immutable_configuration_snapshot',
         simulation: true,
     );
@@ -27,8 +26,7 @@ it('persists simulation attempt metadata', function (): void {
         selection: $selection,
         requestedReasoningLevel: ReasoningLevel::Medium,
         effectiveReasoningLevel: ReasoningLevel::Medium,
-        reasoningResolutionSource:
-            'immutable_configuration_snapshot',
+        reasoningResolutionSource: 'immutable_configuration_snapshot',
         simulationScenario: 'happy_path',
         simulationSeed: '106',
     );
@@ -58,8 +56,7 @@ it('persists real provider metadata without fake simulation fields', function ()
         modelIdentifier: 'codex-model',
         protocolVersion: 'codex-app-server.v1',
         sandboxProfile: 'workspace-write',
-        effectiveCapability:
-            ExecutionCapability::DevelopmentExecute,
+        effectiveCapability: ExecutionCapability::DevelopmentExecute,
         selectionSource: 'immutable_configuration_snapshot',
         simulation: false,
     );
@@ -68,8 +65,7 @@ it('persists real provider metadata without fake simulation fields', function ()
         selection: $selection,
         requestedReasoningLevel: ReasoningLevel::Medium,
         effectiveReasoningLevel: ReasoningLevel::Medium,
-        reasoningResolutionSource:
-            'immutable_configuration_snapshot',
+        reasoningResolutionSource: 'immutable_configuration_snapshot',
         simulationScenario: 'happy_path',
         simulationSeed: '106',
     );
