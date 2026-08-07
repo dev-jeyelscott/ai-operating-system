@@ -48,3 +48,12 @@ Schedule::command('executions:recover')
     ->everyMinute()
     ->withoutOverlapping(2)
     ->onOneServer();
+
+/*
+ * Remove expired non-authoritative provider transcript objects while keeping
+ * immutable database, audit, and evidence provenance.
+ */
+Schedule::command('codex:prune-provider-transcripts')
+    ->dailyAt('03:30')
+    ->withoutOverlapping(10)
+    ->onOneServer();

@@ -37,6 +37,23 @@ final readonly class SensitivePersistenceObserver
         if ($model instanceof Evidence) {
             $this->assertEvidenceIsClean($model);
         }
+
+        if ($model instanceof ProviderEvent) {
+            $this->redactor->assertClean(
+                [
+                    'provider_method' => $model->provider_method,
+                    'provider_request_id' => $model->provider_request_id,
+                    'provider_thread_id' => $model->provider_thread_id,
+                    'provider_turn_id' => $model->provider_turn_id,
+                    'provider_item_id' => $model->provider_item_id,
+                    'provider_cursor' => $model->provider_cursor,
+                    'payload' => (array) $model->payload,
+                ],
+                'provider event content',
+            );
+
+            return;
+        }
     }
 
     /**

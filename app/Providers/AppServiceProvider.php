@@ -158,6 +158,10 @@ class AppServiceProvider extends ServiceProvider
             SensitivePersistenceObserver::class,
         );
 
+        ProviderEvent::observe(
+            SensitivePersistenceObserver::class,
+        );
+
         NotificationEvent::observe(
             SensitivePersistenceObserver::class,
         );

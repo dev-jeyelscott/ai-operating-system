@@ -25,6 +25,22 @@ enum AuditEventType: string
     case NotionConnectionTestFailed = 'integration.notion.connection_test.failed';
     case CodexConnectionTestSucceeded = 'integration.codex.connection_test.succeeded';
     case CodexConnectionTestFailed = 'integration.codex.connection_test.failed';
+
+    case ProviderSessionStarted = 'provider.session.started';
+    case ProviderThreadStarted = 'provider.thread.started';
+    case ProviderTurnStarted = 'provider.turn.started';
+    case ProviderItemStarted = 'provider.item.started';
+    case ProviderItemCompleted = 'provider.item.completed';
+    case ProviderApprovalRequested = 'provider.approval.requested';
+    case ProviderApprovalResolved = 'provider.approval.resolved';
+    case ProviderCommandRequested = 'provider.command.requested';
+    case ProviderCommandCompleted = 'provider.command.completed';
+    case ProviderTurnCompleted = 'provider.turn.completed';
+    case ProviderTurnFailed = 'provider.turn.failed';
+    case ProviderSessionCancelled = 'provider.session.cancelled';
+    case ProviderOutputChunkRecorded = 'provider.output_chunk.recorded';
+    case ProviderTranscriptTruncated = 'provider.transcript.truncated';
+
     case NotionTicketPublished = 'integration.notion.ticket.published';
     case NotionTicketPublicationFailed = 'integration.notion.ticket.publication_failed';
     case NotionTicketReconciled = 'integration.notion.ticket.reconciled';

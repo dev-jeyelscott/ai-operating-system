@@ -30,7 +30,9 @@ final readonly class RefreshOfficeProjection implements DomainEventConsumer
     }
 
     /**
-     * Return the project workflow events that can affect office state.
+     * Return project workflow events that can affect office state.
+     *
+     * High-volume provider output chunks are deliberately excluded.
      *
      * @return list<string>
      */
@@ -82,14 +84,28 @@ final readonly class RefreshOfficeProjection implements DomainEventConsumer
             AuditEventType::ExecutionCancelled->value,
             AuditEventType::ExecutionFailed->value,
             AuditEventType::ExecutionBlocked->value,
+
+            AuditEventType::ProviderSessionStarted->value,
+            AuditEventType::ProviderThreadStarted->value,
+            AuditEventType::ProviderTurnStarted->value,
+            AuditEventType::ProviderItemStarted->value,
+            AuditEventType::ProviderItemCompleted->value,
+            AuditEventType::ProviderApprovalRequested->value,
+            AuditEventType::ProviderApprovalResolved->value,
+            AuditEventType::ProviderCommandRequested->value,
+            AuditEventType::ProviderCommandCompleted->value,
+            AuditEventType::ProviderTurnCompleted->value,
+            AuditEventType::ProviderTurnFailed->value,
+            AuditEventType::ProviderSessionCancelled->value,
         ];
     }
 
     /**
      * Rebuild the projection for the event's explicitly scoped project.
      */
-    public function handle(StoredDomainEvent $event): void
-    {
+    public function handle(
+        StoredDomainEvent $event,
+    ): void {
         if ($event->projectId === null) {
             return;
         }
