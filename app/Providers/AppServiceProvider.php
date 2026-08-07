@@ -25,6 +25,7 @@ use App\Models\Artifact;
 use App\Models\Evidence;
 use App\Models\ExecutionAttempt;
 use App\Models\NotificationEvent;
+use App\Models\ProviderEvent;
 use App\Observers\SensitivePersistenceObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
