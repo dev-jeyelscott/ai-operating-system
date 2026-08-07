@@ -43,7 +43,7 @@ test(
             ]))
             ->assertOk()
             ->assertInertia(
-                fn(Assert $page): Assert => $page
+                fn (Assert $page): Assert => $page
                     ->component('projects/settings')
                     ->where('project.id', $project->id)
                     ->where(
@@ -82,7 +82,7 @@ test(
         $response
             ->assertOk()
             ->assertInertia(
-                fn(Assert $page): Assert => $page
+                fn (Assert $page): Assert => $page
                     ->component('projects/integrations')
                     ->where('integration.provider', 'notion')
                     ->where('integration.status', 'connected')
@@ -131,7 +131,7 @@ test(
             ]))
             ->assertOk()
             ->assertInertia(
-                fn(Assert $page): Assert => $page
+                fn (Assert $page): Assert => $page
                     ->component('projects/settings')
                     ->where('validation.complete', false)
                     ->where(
@@ -178,7 +178,7 @@ test(
             ]))
             ->assertOk()
             ->assertInertia(
-                fn(Assert $page): Assert => $page
+                fn (Assert $page): Assert => $page
                     ->where(
                         'permissions.manageIntegrations',
                         false,
@@ -282,7 +282,7 @@ function projectConfigurationScreensFixture(
         'project_id' => $project->id,
         'current_step' => ProjectSetupStep::Review,
         'completed_steps' => array_map(
-            static fn(
+            static fn (
                 ProjectSetupStep $step,
             ): string => $step->value,
             ProjectSetupStep::ordered(),

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Projects\Configuration\AutonomyLevel;
+use App\Domain\Projects\Configuration\CodexProviderPolicy;
 use App\Domain\Projects\Configuration\ProjectPolicyConfiguration;
 use App\Domain\Projects\Configuration\ReasoningLevel;
 
@@ -39,6 +40,14 @@ test(
             ],
         ]);
 
+        /*
+         * Build the expected Codex value through the same domain normalizer
+         * used by ProviderPolicy so capability ordering is canonical.
+         */
+        $expectedCodexPolicy = CodexProviderPolicy::fromArray(
+            CodexProviderPolicy::defaults(),
+        )->toArray();
+
         $attributes = $policy->toPersistenceAttributes();
 
         expect($attributes['default_reasoning'])
@@ -53,6 +62,7 @@ test(
                     'openai',
                     'simulation',
                 ],
+                'codex' => $expectedCodexPolicy,
             ])
             ->and($attributes['budget_limit_minor'])
             ->toBe(12500)
@@ -144,6 +154,9 @@ test(
 
 /**
  * Return a complete valid unit-test policy payload.
+ *
+ * Codex is intentionally omitted so this fixture also verifies that the
+ * provider-policy domain supplies the secure disabled Codex defaults.
  *
  * @param  array<string, mixed>  $overrides
  * @return array<string, mixed>

@@ -52,6 +52,14 @@ test(
         $providerPolicy = $configuration->provider_policy;
 
         /**
+         * Build the expected Codex policy through the domain normalizer so the
+         * assertion matches the canonical representation stored by the system.
+         */
+        $expectedCodexPolicy = CodexProviderPolicy::fromArray(
+            CodexProviderPolicy::defaults(),
+        )->toArray();
+
+        /**
          * @var array{
          *     roadmap_required: bool,
          *     ticket_execution_required: bool,
@@ -85,7 +93,7 @@ test(
                 'simulation',
             ])
             ->and($providerPolicy['codex'])
-            ->toBe(CodexProviderPolicy::defaults())
+            ->toEqual($expectedCodexPolicy)
             ->and($configuration->budget_limit_minor)
             ->toBe(12500)
             ->and($configuration->budget_currency)

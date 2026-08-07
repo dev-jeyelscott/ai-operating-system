@@ -337,14 +337,14 @@ final class UpdateProjectSetupStepRequest extends FormRequest
             'required_documents.*' => ['bail', 'required', 'string', 'max:100', 'regex:/\A[a-z][a-z0-9_]{0,99}\z/D', 'distinct:strict'],
             'default_reasoning' => ['bail', 'required', Rule::enum(ReasoningLevel::class)],
             'provider_policy' => ['required', 'array:allowed_provider_ids,fallback_order,codex'],
-            'provider_policy.allowed_provider_ids' => ['bail', 'required', 'array', 'min:1', 'max:' . ProviderPolicy::MAX_PROVIDERS],
-            'provider_policy.allowed_provider_ids.*' => ['bail', 'required', 'string', 'max:' . ProviderPolicy::MAX_PROVIDER_ID_LENGTH, 'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D', 'distinct:strict'],
-            'provider_policy.fallback_order' => ['bail', 'required', 'array', 'min:1', 'max:' . ProviderPolicy::MAX_PROVIDERS],
-            'provider_policy.fallback_order.*' => ['bail', 'required', 'string', 'max:' . ProviderPolicy::MAX_PROVIDER_ID_LENGTH, 'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D', 'distinct:strict'],
+            'provider_policy.allowed_provider_ids' => ['bail', 'required', 'array', 'min:1', 'max:'.ProviderPolicy::MAX_PROVIDERS],
+            'provider_policy.allowed_provider_ids.*' => ['bail', 'required', 'string', 'max:'.ProviderPolicy::MAX_PROVIDER_ID_LENGTH, 'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D', 'distinct:strict'],
+            'provider_policy.fallback_order' => ['bail', 'required', 'array', 'min:1', 'max:'.ProviderPolicy::MAX_PROVIDERS],
+            'provider_policy.fallback_order.*' => ['bail', 'required', 'string', 'max:'.ProviderPolicy::MAX_PROVIDER_ID_LENGTH, 'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D', 'distinct:strict'],
             'provider_policy.codex' => ['required', 'array'],
-            'budget_limit_minor' => ['nullable', 'integer', 'min:0', 'max:' . ProjectPolicyConfiguration::MAX_BUDGET_LIMIT_MINOR],
+            'budget_limit_minor' => ['nullable', 'integer', 'min:0', 'max:'.ProjectPolicyConfiguration::MAX_BUDGET_LIMIT_MINOR],
             'budget_currency' => ['bail', 'required', 'string', 'size:3', 'regex:/\A[A-Z]{3}\z/D'],
-            'automatic_retry_limit' => ['bail', 'required', 'integer', 'between:0,' . ProjectPolicyConfiguration::MAX_AUTOMATIC_RETRY_LIMIT],
+            'automatic_retry_limit' => ['bail', 'required', 'integer', 'between:0,'.ProjectPolicyConfiguration::MAX_AUTOMATIC_RETRY_LIMIT],
             'autonomy_level' => ['bail', 'required', Rule::enum(AutonomyLevel::class)],
             'approval_policy' => ['required', 'array:roadmap_required,ticket_execution_required,merge_required'],
             'approval_policy.roadmap_required' => ['required', 'boolean'],
@@ -353,8 +353,8 @@ final class UpdateProjectSetupStepRequest extends FormRequest
             'notification_policy' => ['required', 'array:channels,events'],
             'notification_policy.channels' => ['required', 'array', 'size:1'],
             'notification_policy.channels.0' => ['required', Rule::in(['in_app'])],
-            'notification_policy.events' => ['required', 'array', 'max:' . ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENTS],
-            'notification_policy.events.*' => ['bail', 'required', 'string', 'max:' . ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENT_LENGTH, 'distinct:strict'],
+            'notification_policy.events' => ['required', 'array', 'max:'.ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENTS],
+            'notification_policy.events.*' => ['bail', 'required', 'string', 'max:'.ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENT_LENGTH, 'distinct:strict'],
         ];
     }
 
@@ -406,9 +406,9 @@ final class UpdateProjectSetupStepRequest extends FormRequest
         }
 
         return array_values(array_filter(array_map(
-            static fn(string $providerId): string => strtolower(trim($providerId)),
+            static fn (string $providerId): string => strtolower(trim($providerId)),
             explode(',', $value),
-        ), static fn(string $providerId): bool => $providerId !== ''));
+        ), static fn (string $providerId): bool => $providerId !== ''));
     }
 
     /**
@@ -457,9 +457,9 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     private function commaSeparated(string $key): array
     {
         return array_values(array_unique(array_filter(array_map(
-            static fn(string $value): string => trim($value),
+            static fn (string $value): string => trim($value),
             explode(',', (string) $this->input($key, '')),
-        ), static fn(string $value): bool => $value !== '')));
+        ), static fn (string $value): bool => $value !== '')));
     }
 
     /**
@@ -469,11 +469,11 @@ final class UpdateProjectSetupStepRequest extends FormRequest
      */
     private function validationCommandRules(): array
     {
-        $rules = static fn(): array => [
+        $rules = static fn (): array => [
             'bail',
             'required',
             'string',
-            'max:' . ValidationCommand::MAX_LENGTH,
+            'max:'.ValidationCommand::MAX_LENGTH,
             new ValidProjectValidationCommand,
         ];
 
