@@ -78,8 +78,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        # v7
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -107,8 +106,7 @@ jobs:
               pull
 
       - name: Setup PHP
-        # v2
-        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
         with:
           php-version: '8.5'
           extensions: pdo_pgsql, redis, pcntl, posix
@@ -116,14 +114,12 @@ jobs:
           coverage: none
 
       - name: Setup pnpm
-        # v4
-        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: 11.4.0
 
       - name: Setup Node
-        # v6
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
           cache: pnpm
@@ -196,8 +192,7 @@ jobs:
 
       - name: Upload browser artifacts on failure
         if: failure()
-        # v6
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: playwright-results
           path: |

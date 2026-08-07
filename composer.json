@@ -67,6 +67,9 @@
         "repository:check": [
             "bash bin/check-repository-hygiene"
         ],
+        "actions:check": [
+            "bash bin/check-github-actions"
+        ],
         "containers:check": [
             "bash bin/check-container-images"
         ],
@@ -86,6 +89,7 @@
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
+            "@actions:check",
             "@containers:check",
             "@office-assets:check",
             "@supply-chain:check",
