@@ -141,7 +141,11 @@ final class ExecutionAttempt extends Model
     }
 
     /**
-     * Scope a query to active attempts whose deadline has elapsed.
+     * Scope non-Codex attempts whose shared execution deadline has elapsed.
+     *
+     * Codex attempts require provider-process liveness and cleanup evaluation
+     * before a timeout can be committed. AIOS-247 therefore routes Codex timeout
+     * handling through the dedicated Codex recovery manager.
      *
      * @param  Builder<ExecutionAttempt>  $query
      * @return Builder<ExecutionAttempt>
@@ -151,9 +155,21 @@ final class ExecutionAttempt extends Model
         CarbonImmutable $at,
     ): Builder {
         return $query
-            ->where('status', ExecutionAttemptStatus::Running)
+            ->where(
+                'status',
+                ExecutionAttemptStatus::Running,
+            )
+            ->where(
+                'execution_provider',
+                '!=',
+                'codex',
+            )
             ->whereNotNull('deadline_at')
-            ->where('deadline_at', '<=', $at);
+            ->where(
+                'deadline_at',
+                '<=',
+                $at,
+            );
     }
 
     /**

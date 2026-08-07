@@ -108,4 +108,42 @@ return [
 
         'redaction_version' => 'v1',
     ],
+
+    'runtime_root' => env(
+        'CODEX_RUNTIME_ROOT',
+        storage_path('app/runtime/codex'),
+    ),
+
+    'idle_timeout_seconds' => (int) env(
+        'CODEX_IDLE_TIMEOUT_SECONDS',
+        60,
+    ),
+
+    'turn_timeout_seconds' => (int) env(
+        'CODEX_TURN_TIMEOUT_SECONDS',
+        900,
+    ),
+
+    'approval_wait_timeout_seconds' => (int) env(
+        'CODEX_APPROVAL_WAIT_TIMEOUT_SECONDS',
+        900,
+    ),
+
+    'validation_timeout_seconds' => (int) env(
+        'CODEX_VALIDATION_TIMEOUT_SECONDS',
+        900,
+    ),
+
+    'cancellation_grace_seconds' => (int) env(
+        'CODEX_CANCELLATION_GRACE_SECONDS',
+        10,
+    ),
+
+    'recovery_enabled' => filter_var(
+        env(
+            'CODEX_RECOVERY_ENABLED',
+            true,
+        ),
+        FILTER_VALIDATE_BOOL,
+    ),
 ];

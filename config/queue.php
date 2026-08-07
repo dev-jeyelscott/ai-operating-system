@@ -126,4 +126,26 @@ return [
         'table' => 'failed_jobs',
     ],
 
+    'codex' => [
+        'driver' => 'redis',
+        'connection' => env(
+            'CODEX_REDIS_QUEUE_CONNECTION',
+            'default',
+        ),
+        'queue' => env(
+            'CODEX_QUEUE_NAME',
+            'codex',
+        ),
+        'retry_after' => (int) env(
+            'CODEX_QUEUE_RETRY_AFTER',
+            3720,
+        ),
+        /*
+     * Never use zero here. A finite block interval ensures worker signals can
+     * be observed during deployments and shutdown.
+     */
+        'block_for' => 5,
+        'after_commit' => false,
+    ],
+
 ];

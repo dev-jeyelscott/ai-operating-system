@@ -149,6 +149,10 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 5,
             ],
+
+            'supervisor-codex' => [
+                'maxProcesses' => 2,
+            ],
         ],
 
         'local' => [
@@ -157,6 +161,10 @@ return [
             ],
 
             'supervisor-integrations' => [
+                'maxProcesses' => 1,
+            ],
+
+            'supervisor-codex' => [
                 'maxProcesses' => 1,
             ],
         ],

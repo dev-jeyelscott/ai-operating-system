@@ -83,6 +83,7 @@ use LogicException;
     'cancellation_requested_at',
     'cleanup_status',
     'transcript_truncated_at',
+
 ])]
 final class ProviderSession extends Model
 {
