@@ -29,10 +29,7 @@ final class RateLimitServiceProvider extends ServiceProvider
     private function configureAuthenticationLimiters(): void
     {
         RateLimiter::for('login', function (Request $request): Limit {
-            $username = Str::lower(
-                (string) $request->input(Fortify::username()),
-            );
-
+            $username = Str::lower((string) $request->input(Fortify::username()));
             $key = Str::transliterate(
                 $username.'|'.self::clientAddress($request),
             );
@@ -44,10 +41,7 @@ final class RateLimitServiceProvider extends ServiceProvider
             )
                 ->by($key)
                 ->response(
-                    fn (
-                        Request $request,
-                        array $headers,
-                    ) => RateLimitExceededResponse::make(
+                    fn (Request $request, array $headers) => RateLimitExceededResponse::make(
                         request: $request,
                         headers: $headers,
                     ),
@@ -67,10 +61,7 @@ final class RateLimitServiceProvider extends ServiceProvider
             )
                 ->by($loginId.'|'.self::clientAddress($request))
                 ->response(
-                    fn (
-                        Request $request,
-                        array $headers,
-                    ) => RateLimitExceededResponse::make(
+                    fn (Request $request, array $headers) => RateLimitExceededResponse::make(
                         request: $request,
                         headers: $headers,
                     ),
@@ -88,14 +79,9 @@ final class RateLimitServiceProvider extends ServiceProvider
                     'rate-limits.authentication.passkeys_per_minute',
                 ),
             )
-                ->by(
-                    $credentialId.'|'.self::clientAddress($request),
-                )
+                ->by($credentialId.'|'.self::clientAddress($request))
                 ->response(
-                    fn (
-                        Request $request,
-                        array $headers,
-                    ) => RateLimitExceededResponse::make(
+                    fn (Request $request, array $headers) => RateLimitExceededResponse::make(
                         request: $request,
                         headers: $headers,
                     ),
@@ -105,10 +91,6 @@ final class RateLimitServiceProvider extends ServiceProvider
 
     /**
      * Configure limits for project commands that change persistent state.
-     *
-     * Every key includes the authenticated actor, organization route value,
-     * and command name. Minute and hourly limits use distinct keys so the
-     * counters do not collide.
      */
     private function configureProjectCommandLimiter(): void
     {
@@ -129,15 +111,11 @@ final class RateLimitServiceProvider extends ServiceProvider
                 $perMinute = self::positiveConfigInteger(
                     "rate-limits.project_commands.{$command}.per_minute",
                 );
-
                 $perHour = self::positiveConfigInteger(
                     "rate-limits.project_commands.{$command}.per_hour",
                 );
 
-                $response = fn (
-                    Request $request,
-                    array $headers,
-                ) => RateLimitExceededResponse::make(
+                $response = fn (Request $request, array $headers) => RateLimitExceededResponse::make(
                     request: $request,
                     headers: $headers,
                 );
@@ -146,7 +124,6 @@ final class RateLimitServiceProvider extends ServiceProvider
                     Limit::perMinute($perMinute)
                         ->by($baseKey.':minute')
                         ->response($response),
-
                     Limit::perHour($perHour)
                         ->by($baseKey.':hour')
                         ->response($response),
@@ -157,32 +134,25 @@ final class RateLimitServiceProvider extends ServiceProvider
 
     /**
      * Resolve the logical project command from the current route name.
-     *
-     * Project setup submissions update persisted project configuration, so they
-     * intentionally share the existing project "update" limiter bucket.
      */
     private static function projectCommandName(Request $request): string
     {
         return match ($request->route()?->getName()) {
             'organizations.projects.store' => 'store',
-
             'organizations.projects.update',
             'organizations.projects.setup.update',
+            'organizations.projects.integrations.codex.policy.update',
             'organizations.projects.documents.versions.approve',
             'organizations.projects.documents.versions.reject',
             'organizations.projects.documents.versions.supersede',
-            'organizations.projects.quality-assurance.decisions.store' => 'update',
+            'organizations.projects.quality-assurance.decisions.store',
             'organizations.projects.documents.versions.retry' => 'update',
-
             'organizations.projects.integrations.credentials.store' => 'credentials',
-
-            'organizations.projects.integrations.notion.test' => 'integration_test',
-
+            'organizations.projects.integrations.notion.test',
+            'organizations.projects.integrations.codex.test' => 'integration_test',
             'organizations.projects.documents.store' => 'upload',
-
             'organizations.projects.archive' => 'archive',
             'organizations.projects.restore' => 'restore',
-
             default => 'unknown',
         };
     }
@@ -194,8 +164,10 @@ final class RateLimitServiceProvider extends ServiceProvider
     {
         $organization = $request->route('organization');
 
-        if (is_object($organization)
-            && method_exists($organization, 'getRouteKey')) {
+        if (
+            is_object($organization)
+            && method_exists($organization, 'getRouteKey')
+        ) {
             return (string) $organization->getRouteKey();
         }
 
@@ -214,9 +186,6 @@ final class RateLimitServiceProvider extends ServiceProvider
 
     /**
      * Return a validated positive integer from configuration.
-     *
-     * Invalid configuration fails safe by allowing one request per window
-     * instead of silently disabling the limiter.
      */
     private static function positiveConfigInteger(string $key): int
     {

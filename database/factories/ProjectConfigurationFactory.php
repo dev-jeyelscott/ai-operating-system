@@ -54,37 +54,19 @@ final class ProjectConfigurationFactory extends Factory
     }
 
     /**
-     * Populate every schema-v1 section for serialization tests.
+     * Populate every current-schema section for serialization tests.
      */
     public function complete(): static
     {
         return $this->state(
             fn (): array => [
                 'technology_stack' => [
-                    'languages' => [
-                        'PHP',
-                        'TypeScript',
-                    ],
-                    'frameworks' => [
-                        'Laravel',
-                        'Inertia.js',
-                        'React',
-                    ],
-                    'databases' => [
-                        'PostgreSQL',
-                    ],
-                    'infrastructure' => [
-                        'Docker Compose',
-                        'Redis',
-                    ],
-                    'package_managers' => [
-                        'Composer',
-                        'pnpm',
-                    ],
-                    'runtimes' => [
-                        'PHP 8.5',
-                        'Node.js',
-                    ],
+                    'languages' => ['PHP', 'TypeScript'],
+                    'frameworks' => ['Laravel', 'Inertia.js', 'React'],
+                    'databases' => ['PostgreSQL'],
+                    'infrastructure' => ['Docker Compose', 'Redis'],
+                    'package_managers' => ['Composer', 'pnpm'],
+                    'runtimes' => ['PHP 8.5', 'Node.js'],
                 ],
                 'repository_provider' => RepositoryProvider::GitHub,
                 'repository_url' => 'https://github.com/example/project',
@@ -102,12 +84,9 @@ final class ProjectConfigurationFactory extends Factory
                 ],
                 'default_reasoning' => ReasoningLevel::High,
                 'provider_policy' => [
-                    'allowed_provider_ids' => [
-                        'simulation',
-                    ],
-                    'fallback_order' => [
-                        'simulation',
-                    ],
+                    ...ProjectConfigurationSchema::providerPolicyDefaults(),
+                    'allowed_provider_ids' => ['simulation'],
+                    'fallback_order' => ['simulation'],
                 ],
                 'budget_limit_minor' => 5000,
                 'budget_currency' => 'USD',
@@ -115,13 +94,8 @@ final class ProjectConfigurationFactory extends Factory
                 'autonomy_level' => AutonomyLevel::ApprovalRequired,
                 'approval_policy' => ProjectConfigurationSchema::approvalPolicyDefaults(),
                 'notification_policy' => [
-                    'channels' => [
-                        'in_app',
-                    ],
-                    'events' => [
-                        'approval_requested',
-                        'workflow_blocked',
-                    ],
+                    'channels' => ['in_app'],
+                    'events' => ['approval_requested', 'workflow_blocked'],
                 ],
             ],
         );

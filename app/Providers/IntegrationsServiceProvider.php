@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Application\Integrations\Contracts\CodexConnectionGateway;
 use App\Application\Integrations\Contracts\IntegrationCircuitBreaker;
 use App\Application\Integrations\Contracts\IntegrationCredentialCipher;
 use App\Application\Integrations\Contracts\NotionConnectionGateway;
 use App\Application\Integrations\Contracts\NotionPublicationClient;
 use App\Application\Integrations\Contracts\ProjectIntegrationSnapshotReader;
 use App\Infrastructure\Integrations\CacheIntegrationCircuitBreaker;
+use App\Infrastructure\Integrations\Codex\CircuitBreakingCodexConnectionGateway;
+use App\Infrastructure\Integrations\Codex\CodexCircuitScope;
+use App\Infrastructure\Integrations\Codex\HttpCodexConnectionGateway;
 use App\Infrastructure\Integrations\LaravelIntegrationCredentialCipher;
 use App\Infrastructure\Integrations\Notion\CircuitBreakingNotionConnectionGateway;
 use App\Infrastructure\Integrations\Notion\CircuitBreakingNotionPublicationClient;
@@ -42,53 +46,36 @@ final class IntegrationsServiceProvider extends ServiceProvider
             CacheIntegrationCircuitBreaker::class,
         );
 
-        $this->app->singleton(
-            NotionCircuitScope::class,
-        );
-
-        /*
-         * Keep the raw HTTP adapters resolvable separately so the application
-         * contracts can be decorated without modifying provider HTTP logic.
-         */
-        $this->app->singleton(
-            HttpNotionConnectionGateway::class,
-        );
-
-        $this->app->singleton(
-            HttpNotionPublicationClient::class,
-        );
+        $this->app->singleton(NotionCircuitScope::class);
+        $this->app->singleton(CodexCircuitScope::class);
+        $this->app->singleton(HttpNotionConnectionGateway::class);
+        $this->app->singleton(HttpNotionPublicationClient::class);
+        $this->app->singleton(HttpCodexConnectionGateway::class);
 
         $this->app->bind(
             NotionConnectionGateway::class,
-            fn (
-                Application $application,
-            ): NotionConnectionGateway => new CircuitBreakingNotionConnectionGateway(
-                inner: $application->make(
-                    HttpNotionConnectionGateway::class,
-                ),
-                circuitBreaker: $application->make(
-                    IntegrationCircuitBreaker::class,
-                ),
-                scope: $application->make(
-                    NotionCircuitScope::class,
-                ),
+            fn (Application $application): NotionConnectionGateway => new CircuitBreakingNotionConnectionGateway(
+                inner: $application->make(HttpNotionConnectionGateway::class),
+                circuitBreaker: $application->make(IntegrationCircuitBreaker::class),
+                scope: $application->make(NotionCircuitScope::class),
             ),
         );
 
         $this->app->bind(
             NotionPublicationClient::class,
-            fn (
-                Application $application,
-            ): NotionPublicationClient => new CircuitBreakingNotionPublicationClient(
-                inner: $application->make(
-                    HttpNotionPublicationClient::class,
-                ),
-                circuitBreaker: $application->make(
-                    IntegrationCircuitBreaker::class,
-                ),
-                scope: $application->make(
-                    NotionCircuitScope::class,
-                ),
+            fn (Application $application): NotionPublicationClient => new CircuitBreakingNotionPublicationClient(
+                inner: $application->make(HttpNotionPublicationClient::class),
+                circuitBreaker: $application->make(IntegrationCircuitBreaker::class),
+                scope: $application->make(NotionCircuitScope::class),
+            ),
+        );
+
+        $this->app->bind(
+            CodexConnectionGateway::class,
+            fn (Application $application): CodexConnectionGateway => new CircuitBreakingCodexConnectionGateway(
+                inner: $application->make(HttpCodexConnectionGateway::class),
+                circuitBreaker: $application->make(IntegrationCircuitBreaker::class),
+                scope: $application->make(CodexCircuitScope::class),
             ),
         );
 
@@ -113,21 +100,13 @@ final class IntegrationsServiceProvider extends ServiceProvider
 
         RateLimiter::for(
             'notion-publication',
-            static function (
-                object $job,
-            ) use ($jobsPerMinute): Limit {
-                $organizationId = property_exists(
-                    $job,
-                    'organizationId',
-                )
+            static function (object $job) use ($jobsPerMinute): Limit {
+                $organizationId = property_exists($job, 'organizationId')
                     ? (string) $job->organizationId
                     : 'unknown';
 
                 return Limit::perMinute($jobsPerMinute)
-                    ->by(
-                        'notion-publication:organization:'
-                        .$organizationId,
-                    );
+                    ->by('notion-publication:organization:'.$organizationId);
             },
         );
     }

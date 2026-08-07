@@ -30,10 +30,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         /*
-        * Replace Laravel's default proxy middleware with the application
-        * implementation. Configuration is resolved during HTTP request handling,
-        * after Laravel has loaded the configuration repository.
-        */
+         * Replace Laravel's default proxy middleware with the application
+         * implementation. Configuration is resolved during HTTP request handling,
+         * after Laravel has loaded the configuration repository.
+         */
         $middleware->replace(
             FrameworkTrustProxies::class,
             ApplicationTrustProxies::class,
@@ -59,6 +59,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // Prevent the same exception instance from being reported repeatedly.
         $exceptions->dontReportDuplicates();
 
+        /*
+         * Never flash secret-bearing form fields after validation failures.
+         * This preserves Laravel's password defaults and extends the same
+         * protection to project-scoped provider credentials.
+         */
+        $exceptions->dontFlash([
+            'current_password',
+            'password',
+            'password_confirmation',
+            'credential',
+            'credential_confirmation',
+        ]);
+
         // Attach traceability and deployment information to exception logs.
         $exceptions->context(fn (): array => [
             'request_id' => request()->attributes->get('request_id'),
@@ -72,10 +85,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 Request $request,
             ): mixed {
                 /*
-                * Preserve responses intentionally produced by middleware or
-                * application code. Laravel's named throttle middleware wraps
-                * custom rate-limit responses in HttpResponseException.
-                */
+                 * Preserve responses intentionally produced by middleware or
+                 * application code. Laravel's named throttle middleware wraps
+                 * custom rate-limit responses in HttpResponseException.
+                 */
                 if ($exception instanceof HttpResponseException) {
                     return $exception->getResponse();
                 }
@@ -88,13 +101,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
 
                 /*
-                * Laravel prepares authorization and model-binding exceptions
-                * before registered render callbacks execute.
-                *
-                * A policy response produced by denyAsNotFound() therefore
-                * reaches this callback as HttpExceptionInterface with status
-                * 404 rather than as AuthorizationException.
-                */
+                 * Laravel prepares authorization and model-binding exceptions
+                 * before registered render callbacks execute.
+                 *
+                 * A policy response produced by denyAsNotFound() therefore
+                 * reaches this callback as HttpExceptionInterface with status
+                 * 404 rather than as AuthorizationException.
+                 */
                 $httpStatus = $exception instanceof HttpExceptionInterface
                     ? $exception->getStatusCode()
                     : null;
@@ -118,9 +131,9 @@ return Application::configure(basePath: dirname(__DIR__))
                     ),
 
                     /*
-                    * This covers ordinary authorization denials and prepared
-                    * AccessDeniedHttpException instances.
-                    */
+                     * This covers ordinary authorization denials and prepared
+                     * AccessDeniedHttpException instances.
+                     */
                     $httpStatus === Response::HTTP_FORBIDDEN => ApiErrorResponse::make(
                         request: $request,
                         code: 'authorization_denied',
@@ -129,13 +142,13 @@ return Application::configure(basePath: dirname(__DIR__))
                     ),
 
                     /*
-                    * Return the same response for:
-                    *
-                    * - missing route models;
-                    * - parent-child scoped-binding failures;
-                    * - policy responses using denyAsNotFound();
-                    * - explicit not-found HTTP exceptions.
-                    */
+                     * Return the same response for:
+                     *
+                     * - missing route models;
+                     * - parent-child scoped-binding failures;
+                     * - policy responses using denyAsNotFound();
+                     * - explicit not-found HTTP exceptions.
+                     */
                     $exception instanceof ModelNotFoundException,
                     $exception instanceof NotFoundHttpException,
                     $httpStatus === Response::HTTP_NOT_FOUND => ApiErrorResponse::make(
@@ -162,9 +175,9 @@ return Application::configure(basePath: dirname(__DIR__))
                     ),
 
                     /*
-                    * Preserve legitimate HTTP status codes rather than turning
-                    * every prepared HTTP exception into a misleading 500.
-                    */
+                     * Preserve legitimate HTTP status codes rather than turning
+                     * every prepared HTTP exception into a misleading 500.
+                     */
                     $exception instanceof HttpExceptionInterface => ApiErrorResponse::make(
                         request: $request,
                         code: 'http_error',

@@ -24,6 +24,31 @@ export type TechnologyStack = {
 };
 
 /**
+ * Security-sensitive Codex policy returned without any credential material.
+ */
+export type CodexProviderPolicy = {
+    enabled: boolean;
+    model_identifier: string;
+    allowed_capabilities: string[];
+    reasoning: {
+        minimum: 'low' | 'medium' | 'high';
+        maximum: 'low' | 'medium' | 'high';
+    };
+    sandbox: {
+        planning: 'read-only';
+        development: 'read-only' | 'workspace-write';
+        quality_assurance: 'read-only';
+    };
+    network: {
+        default: 'deny';
+        allow_escalation_with_approval: boolean;
+    };
+    budget_limit_minor: number | null;
+    timeout_seconds: number;
+    retry_limit: number;
+};
+
+/**
  * Non-secret project setup configuration returned by Laravel.
  */
 export type ProjectSetupConfiguration = {
@@ -48,6 +73,7 @@ export type ProjectSetupConfiguration = {
         provider: {
             allowed_provider_ids: string[];
             fallback_order: string[];
+            codex: CodexProviderPolicy;
         };
         budgetLimitMinor: number | null;
         budgetCurrency: string;

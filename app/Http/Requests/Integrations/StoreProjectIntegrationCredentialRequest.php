@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Integrations;
 
+use App\Domain\Integrations\IntegrationProvider;
 use App\Models\Project;
 use App\Rules\Integrations\ValidIntegrationCredentialSecret;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
- * Authorizes and validates an integration credential write.
+ * Authorizes and validates a generic integration credential write.
  */
 final class StoreProjectIntegrationCredentialRequest extends FormRequest
 {
@@ -21,10 +23,7 @@ final class StoreProjectIntegrationCredentialRequest extends FormRequest
         $project = $this->route('project');
 
         return $project instanceof Project
-            && $this->user()?->can(
-                'manageIntegrations',
-                $project,
-            ) === true;
+            && $this->user()?->can('manageIntegrations', $project) === true;
     }
 
     /**
@@ -35,15 +34,38 @@ final class StoreProjectIntegrationCredentialRequest extends FormRequest
     public function rules(): array
     {
         return [
-            /*
-             * Do not use prepareForValidation() or trim() here. Silent mutation
-             * could turn an invalid copied token into a different stored token.
-             */
             'credential' => [
                 'required',
                 'string',
                 new ValidIntegrationCredentialSecret,
             ],
+        ];
+    }
+
+    /**
+     * Fail closed if a provider requiring preflight reaches this route.
+     *
+     * @return list<callable>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $provider = (string) $this->route('provider');
+
+                if (
+                    ! in_array(
+                        $provider,
+                        IntegrationProvider::directCredentialWriteValues(),
+                        true,
+                    )
+                ) {
+                    $validator->errors()->add(
+                        'credential',
+                        'This provider requires its dedicated server-side preflight before a credential can be stored.',
+                    );
+                }
+            },
         ];
     }
 
@@ -54,8 +76,6 @@ final class StoreProjectIntegrationCredentialRequest extends FormRequest
      */
     public function attributes(): array
     {
-        return [
-            'credential' => 'integration credential',
-        ];
+        return ['credential' => 'integration credential'];
     }
 }

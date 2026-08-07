@@ -7,13 +7,14 @@ namespace App\Domain\Integrations;
 /**
  * Defines external integrations whose credentials may be stored by the system.
  *
- * Only Notion is enabled for the approved MVP scope. Additional providers must
- * be added deliberately together with authorization, validation, and adapter
- * support.
+ * Integration support is deliberately separate from execution-provider
+ * registration. Adding Codex here authorizes configuration and preflight only;
+ * it does not enable real repository execution.
  */
 enum IntegrationProvider: string
 {
     case Notion = 'notion';
+    case Codex = 'codex';
 
     /**
      * Return provider values for route and request constraints.
@@ -29,12 +30,26 @@ enum IntegrationProvider: string
     }
 
     /**
+     * Return providers that may use the generic direct-write credential route.
+     *
+     * Codex is deliberately excluded because its credential may only be stored
+     * after a successful server-side preflight through the dedicated endpoint.
+     *
+     * @return list<string>
+     */
+    public static function directCredentialWriteValues(): array
+    {
+        return [self::Notion->value];
+    }
+
+    /**
      * Return the provider's user-facing name.
      */
     public function label(): string
     {
         return match ($this) {
             self::Notion => 'Notion',
+            self::Codex => 'Codex',
         };
     }
 }

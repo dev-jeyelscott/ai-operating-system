@@ -1,5 +1,8 @@
 import type { OrganizationSummary } from './organization';
-import type { ProjectSetupConfiguration } from './project-setup';
+import type {
+    CodexProviderPolicy,
+    ProjectSetupConfiguration,
+} from './project-setup';
 
 /**
  * Persisted project configuration with its schema version.
@@ -53,6 +56,25 @@ export type ProjectIntegrationOverview = {
 };
 
 /**
+ * Safe Codex preflight metadata. No secret or ciphertext field exists here.
+ */
+export type ProjectCodexOverview = {
+    provider: 'codex';
+    scope: 'project';
+    policy: CodexProviderPolicy;
+    fallbackEnabled: boolean;
+    credential: ProjectCredentialMetadata;
+    connection: {
+        status: 'connected' | 'failed' | null;
+        failureCode: string | null;
+        providerRequestId: string | null;
+        verifiedCredentialVersion: number | null;
+        lastTestedAt: string | null;
+        lastConnectedAt: string | null;
+    };
+};
+
+/**
  * Server-authoritative permissions for configuration screens.
  */
 export type ProjectConfigurationPermissions = {
@@ -67,6 +89,8 @@ export type ProjectConfigurationUrls = {
     project: string;
     settings: string;
     integrations: string;
+    codexTest: string;
+    codexPolicy: string;
     setup: string;
     setupSteps: Record<string, string>;
 };
@@ -84,6 +108,7 @@ export type ProjectConfigurationScreenProps = {
     };
     configuration: ProjectSettingsConfiguration | null;
     integration: ProjectIntegrationOverview;
+    codex: ProjectCodexOverview;
     validation: ProjectConfigurationValidation;
     permissions: ProjectConfigurationPermissions;
     urls: ProjectConfigurationUrls;

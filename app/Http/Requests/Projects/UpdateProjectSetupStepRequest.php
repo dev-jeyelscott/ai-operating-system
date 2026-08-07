@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Projects;
 
 use App\Domain\Projects\Configuration\AutonomyLevel;
+use App\Domain\Projects\Configuration\CodexProviderPolicy;
 use App\Domain\Projects\Configuration\ProjectPolicyConfiguration;
 use App\Domain\Projects\Configuration\ProviderPolicy;
 use App\Domain\Projects\Configuration\ReasoningLevel;
@@ -12,23 +13,21 @@ use App\Domain\Projects\Configuration\RepositoryProvider;
 use App\Domain\Projects\Configuration\ValidationCommand;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Project;
+use App\Models\ProjectConfiguration;
 use App\Rules\Projects\ValidGitBranchName;
 use App\Rules\Projects\ValidGitHubRepositoryUrl;
 use App\Rules\Projects\ValidProjectValidationCommand;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
+use InvalidArgumentException;
 
 /**
  * Authorizes and validates one project setup wizard step.
  */
 final class UpdateProjectSetupStepRequest extends FormRequest
 {
-    /**
-     * Project-configuration fields owned by the validation-command step.
-     *
-     * @var list<string>
-     */
+    /** @var list<string> */
     private const VALIDATION_COMMAND_FIELDS = [
         'build_command',
         'test_command',
@@ -49,9 +48,9 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Return the validation rules for the active project setup step.
+     * Return validation rules for the active setup step.
      *
-     * @return array<string, list<mixed>>
+     * @return array<string, list<mixed>|mixed>
      */
     public function rules(): array
     {
@@ -68,7 +67,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Return human-readable validation attribute names.
+     * Return stable field labels.
      *
      * @return array<string, string>
      */
@@ -77,13 +76,11 @@ final class UpdateProjectSetupStepRequest extends FormRequest
         return [
             'required_documents' => 'required documents',
             'required_documents.*' => 'required document identifier',
-
             'build_command' => 'build command',
             'test_command' => 'test command',
             'lint_command' => 'lint command',
             'static_analysis_command' => 'static-analysis command',
             'security_command' => 'security command',
-
             'default_reasoning' => 'default reasoning',
             'provider_policy.allowed_provider_ids' => 'allowed providers',
             'provider_policy.allowed_provider_ids.*' => 'provider identifier',
@@ -102,7 +99,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Return cross-field validators for policy configuration.
+     * Return cross-field validators for provider policy configuration.
      *
      * @return list<callable>
      */
@@ -114,69 +111,39 @@ final class UpdateProjectSetupStepRequest extends FormRequest
 
         return [
             function (Validator $validator): void {
-                /*
-                * Nested structural errors are more actionable than a secondary
-                * cross-field error, so only compare validated-shaped input.
-                */
                 if ($validator->errors()->isNotEmpty()) {
                     return;
                 }
 
-                $allowedProviderIds = $this->input(
-                    'provider_policy.allowed_provider_ids',
-                );
+                $policy = $this->input('provider_policy');
 
-                $fallbackOrder = $this->input(
-                    'provider_policy.fallback_order',
-                );
-
-                if (
-                    ! is_array($allowedProviderIds)
-                    || ! is_array($fallbackOrder)
-                ) {
+                if (! is_array($policy)) {
                     return;
                 }
 
-                /** @var list<string> $allowedProviderIds */
-                /** @var list<string> $fallbackOrder */
-                $disallowedFallbackProviders = array_values(
-                    array_diff(
-                        $fallbackOrder,
-                        $allowedProviderIds,
-                    ),
-                );
-
-                if ($disallowedFallbackProviders === []) {
-                    return;
+                try {
+                    $providerPolicy = ProviderPolicy::fromArray($policy);
+                    $defaultReasoning = ReasoningLevel::from(
+                        (string) $this->input('default_reasoning'),
+                    );
+                    $budget = $this->input('budget_limit_minor');
+                    $providerPolicy->codex->assertWithinProjectPolicy(
+                        projectDefaultReasoning: $defaultReasoning,
+                        projectBudgetLimitMinor: $budget === null || $budget === ''
+                            ? null
+                            : (int) $budget,
+                        projectAutomaticRetryLimit: (int) $this->input(
+                            'automatic_retry_limit',
+                        ),
+                    );
+                } catch (InvalidArgumentException $exception) {
+                    $validator->errors()->add(
+                        'provider_policy.allowed_provider_ids',
+                        $exception->getMessage(),
+                    );
                 }
-
-                $validator->errors()->add(
-                    'provider_policy.fallback_order',
-                    sprintf(
-                        'Fallback providers must be allowed first. Disallowed: %s.',
-                        implode(', ', $disallowedFallbackProviders),
-                    ),
-                );
             },
         ];
-    }
-
-    /**
-     * Trim project validation commands before rule evaluation and persistence.
-     */
-    private function prepareValidationCommands(): void
-    {
-        $normalized = [];
-
-        foreach (self::VALIDATION_COMMAND_FIELDS as $field) {
-            $value = $this->input($field);
-
-            $normalized[$field] = is_string($value)
-                ? trim($value)
-                : $value;
-        }
-
-        $this->merge($normalized);
     }
 
     /**
@@ -192,12 +159,8 @@ final class UpdateProjectSetupStepRequest extends FormRequest
                     'languages' => $this->commaSeparated('languages'),
                     'frameworks' => $this->commaSeparated('frameworks'),
                     'databases' => $this->commaSeparated('databases'),
-                    'infrastructure' => $this->commaSeparated(
-                        'infrastructure',
-                    ),
-                    'package_managers' => $this->commaSeparated(
-                        'package_managers',
-                    ),
+                    'infrastructure' => $this->commaSeparated('infrastructure'),
+                    'package_managers' => $this->commaSeparated('package_managers'),
                     'runtimes' => $this->commaSeparated('runtimes'),
                 ],
             ]);
@@ -206,75 +169,58 @@ final class UpdateProjectSetupStepRequest extends FormRequest
         }
 
         if ($step === ProjectSetupStep::Repository) {
-            /*
-            * Normalize presentation-level whitespace and provider casing only.
-            * URL semantics and branch syntax remain validation concerns.
-            */
             $this->merge([
-                'repository_provider' => strtolower(
-                    trim((string) $this->input('repository_provider', '')),
-                ),
-                'repository_url' => trim(
-                    (string) $this->input('repository_url', ''),
-                ),
-                'default_branch' => trim(
-                    (string) $this->input('default_branch', ''),
-                ),
-                'integration_branch' => trim(
-                    (string) $this->input('integration_branch', ''),
-                ),
+                'repository_provider' => strtolower(trim((string) $this->input('repository_provider', ''))),
+                'repository_url' => trim((string) $this->input('repository_url', '')),
+                'default_branch' => trim((string) $this->input('default_branch', '')),
+                'integration_branch' => trim((string) $this->input('integration_branch', '')),
             ]);
 
             return;
         }
 
         if ($step === ProjectSetupStep::Commands) {
-            $this->prepareValidationCommands();
+            $normalized = [];
+
+            foreach (self::VALIDATION_COMMAND_FIELDS as $field) {
+                $value = $this->input($field);
+                $normalized[$field] = is_string($value) ? trim($value) : $value;
+            }
+
+            $this->merge($normalized);
 
             return;
         }
 
-        if ($step === ProjectSetupStep::Policies) {
-            $this->merge([
-                'required_documents' => $this->commaSeparated(
-                    'required_documents',
-                ),
-                'default_reasoning' => $this->lowercaseTrimmedInput(
-                    'default_reasoning',
-                ),
-                'provider_policy' => [
-                    'allowed_provider_ids' => $this->providerIds(
-                        'allowed_provider_ids',
-                    ),
-                    'fallback_order' => $this->providerIds(
-                        'fallback_order',
-                    ),
-                ],
-                'budget_currency' => $this->uppercaseTrimmedInput(
-                    'budget_currency',
-                ),
-                'autonomy_level' => $this->lowercaseTrimmedInput(
-                    'autonomy_level',
-                ),
-                'approval_policy' => [
-                    'roadmap_required' => $this->normalizedBooleanInput(
-                        'roadmap_required',
-                    ),
-                    'ticket_execution_required' => $this->normalizedBooleanInput(
-                        'ticket_execution_required',
-                    ),
-                    'merge_required' => $this->normalizedBooleanInput(
-                        'merge_required',
-                    ),
-                ],
-                'notification_policy' => [
-                    'channels' => ['in_app'],
-                    'events' => $this->commaSeparated(
-                        'notification_events',
-                    ),
-                ],
-            ]);
+        if ($step !== ProjectSetupStep::Policies) {
+            return;
         }
+
+        /*
+         * The generic Policies screen owns allowlist/fallback values only. The
+         * security-sensitive Codex sub-policy is preserved from persistence and
+         * can only be edited through the dedicated Codex integration form.
+         */
+        $this->merge([
+            'required_documents' => $this->commaSeparated('required_documents'),
+            'default_reasoning' => $this->lowercaseTrimmedInput('default_reasoning'),
+            'provider_policy' => [
+                'allowed_provider_ids' => $this->providerIds('allowed_provider_ids'),
+                'fallback_order' => $this->providerIds('fallback_order'),
+                'codex' => $this->persistedCodexPolicy(),
+            ],
+            'budget_currency' => $this->uppercaseTrimmedInput('budget_currency'),
+            'autonomy_level' => $this->lowercaseTrimmedInput('autonomy_level'),
+            'approval_policy' => [
+                'roadmap_required' => $this->normalizedBooleanInput('roadmap_required'),
+                'ticket_execution_required' => $this->normalizedBooleanInput('ticket_execution_required'),
+                'merge_required' => $this->normalizedBooleanInput('merge_required'),
+            ],
+            'notification_policy' => [
+                'channels' => ['in_app'],
+                'events' => $this->commaSeparated('notification_events'),
+            ],
+        ]);
     }
 
     /**
@@ -285,113 +231,39 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     private function detailsRules(): array
     {
         return [
-            'technology_stack' => [
-                'required',
-                'array:languages,frameworks,databases,infrastructure,package_managers,runtimes',
-            ],
-            'technology_stack.languages' => [
-                'required',
-                'array',
-                'min:1',
-                'max:20',
-            ],
-            'technology_stack.languages.*' => [
-                'required',
-                'string',
-                'max:100',
-                'distinct',
-            ],
+            'technology_stack' => ['required', 'array:languages,frameworks,databases,infrastructure,package_managers,runtimes'],
+            'technology_stack.languages' => ['required', 'array', 'min:1', 'max:20'],
+            'technology_stack.languages.*' => ['required', 'string', 'max:100', 'distinct'],
             'technology_stack.frameworks' => ['required', 'array', 'max:30'],
-            'technology_stack.frameworks.*' => [
-                'string',
-                'max:100',
-                'distinct',
-            ],
+            'technology_stack.frameworks.*' => ['string', 'max:100', 'distinct'],
             'technology_stack.databases' => ['required', 'array', 'max:20'],
-            'technology_stack.databases.*' => [
-                'string',
-                'max:100',
-                'distinct',
-            ],
-            'technology_stack.infrastructure' => [
-                'required',
-                'array',
-                'max:30',
-            ],
-            'technology_stack.infrastructure.*' => [
-                'string',
-                'max:100',
-                'distinct',
-            ],
-            'technology_stack.package_managers' => [
-                'required',
-                'array',
-                'max:10',
-            ],
-            'technology_stack.package_managers.*' => [
-                'string',
-                'max:100',
-                'distinct',
-            ],
-            'technology_stack.runtimes' => [
-                'required',
-                'array',
-                'max:20',
-            ],
-            'technology_stack.runtimes.*' => [
-                'string',
-                'max:100',
-                'distinct',
-            ],
+            'technology_stack.databases.*' => ['string', 'max:100', 'distinct'],
+            'technology_stack.infrastructure' => ['required', 'array', 'max:30'],
+            'technology_stack.infrastructure.*' => ['string', 'max:100', 'distinct'],
+            'technology_stack.package_managers' => ['required', 'array', 'max:10'],
+            'technology_stack.package_managers.*' => ['string', 'max:100', 'distinct'],
+            'technology_stack.runtimes' => ['required', 'array', 'max:20'],
+            'technology_stack.runtimes.*' => ['string', 'max:100', 'distinct'],
         ];
     }
 
     /**
      * Return deterministic repository metadata validation.
      *
-     * Validation checks syntax only. It does not perform DNS lookup, HTTP requests,
-     * GitHub API requests, repository cloning, fetching, or remote writes.
-     *
-     * AIOS-024 remains responsible for enforcing the protected integration-branch
-     * policy, including rejecting main as an automated target.
-     *
      * @return array<string, mixed>
      */
     private function repositoryRules(): array
     {
         return [
-            'repository_provider' => [
-                'bail',
-                'required',
-                Rule::enum(RepositoryProvider::class),
-            ],
-            'repository_url' => [
-                'bail',
-                'required',
-                'string',
-                'max:2048',
-                new ValidGitHubRepositoryUrl,
-            ],
-            'default_branch' => [
-                'bail',
-                'required',
-                'string',
-                'max:255',
-                new ValidGitBranchName,
-            ],
-            'integration_branch' => [
-                'bail',
-                'required',
-                'string',
-                'max:255',
-                new ValidGitBranchName,
-                Rule::notIn(['main']),
-            ],
+            'repository_provider' => ['bail', 'required', Rule::enum(RepositoryProvider::class)],
+            'repository_url' => ['bail', 'required', 'string', 'max:2048', new ValidGitHubRepositoryUrl],
+            'default_branch' => ['bail', 'required', 'string', 'max:255', new ValidGitBranchName],
+            'integration_branch' => ['bail', 'required', 'string', 'max:255', new ValidGitBranchName, Rule::notIn(['main'])],
         ];
     }
 
     /**
-     * Return custom project setup validation messages.
+     * Return custom validation messages.
      *
      * @return array<string, string>
      */
@@ -403,139 +275,64 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Return validation rules for explicit project policy configuration.
+     * Return project policy validation.
      *
      * @return array<string, list<mixed>>
      */
     private function policyRules(): array
     {
         return [
-            'required_documents' => [
-                'bail',
-                'required',
-                'array',
-                'min:1',
-                'max:20',
-            ],
-            'required_documents.*' => [
-                'bail',
-                'required',
-                'string',
-                'max:100',
-                'regex:/\A[a-z][a-z0-9_]{0,99}\z/D',
-                'distinct:strict',
-            ],
-            'default_reasoning' => [
-                'bail',
-                'required',
-                Rule::enum(ReasoningLevel::class),
-            ],
-            'provider_policy' => [
-                'required',
-                'array:allowed_provider_ids,fallback_order',
-            ],
-            'provider_policy.allowed_provider_ids' => [
-                'bail',
-                'required',
-                'array',
-                'min:1',
-                'max:'.ProviderPolicy::MAX_PROVIDERS,
-            ],
-            'provider_policy.allowed_provider_ids.*' => [
-                'bail',
-                'required',
-                'string',
-                'max:'.ProviderPolicy::MAX_PROVIDER_ID_LENGTH,
-                'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D',
-                'distinct:strict',
-            ],
-            'provider_policy.fallback_order' => [
-                'bail',
-                'required',
-                'array',
-                'min:1',
-                'max:'.ProviderPolicy::MAX_PROVIDERS,
-            ],
-            'provider_policy.fallback_order.*' => [
-                'bail',
-                'required',
-                'string',
-                'max:'.ProviderPolicy::MAX_PROVIDER_ID_LENGTH,
-                'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D',
-                'distinct:strict',
-            ],
-            'budget_limit_minor' => [
-                'nullable',
-                'integer',
-                'min:0',
-                'max:'.ProjectPolicyConfiguration::MAX_BUDGET_LIMIT_MINOR,
-            ],
-            'budget_currency' => [
-                'bail',
-                'required',
-                'string',
-                'size:3',
-                'regex:/\A[A-Z]{3}\z/D',
-            ],
-            'automatic_retry_limit' => [
-                'bail',
-                'required',
-                'integer',
-                'between:0,'.
-                    ProjectPolicyConfiguration::MAX_AUTOMATIC_RETRY_LIMIT,
-            ],
-            'autonomy_level' => [
-                'bail',
-                'required',
-                Rule::enum(AutonomyLevel::class),
-            ],
-            'approval_policy' => [
-                'required',
-                'array:roadmap_required,ticket_execution_required,merge_required',
-            ],
-            'approval_policy.roadmap_required' => [
-                'required',
-                'boolean',
-            ],
-            'approval_policy.ticket_execution_required' => [
-                'required',
-                'boolean',
-            ],
-            'approval_policy.merge_required' => [
-                'required',
-                'boolean',
-            ],
-            'notification_policy' => [
-                'required',
-                'array:channels,events',
-            ],
-            'notification_policy.channels' => [
-                'required',
-                'array',
-                'size:1',
-            ],
-            'notification_policy.channels.0' => [
-                'required',
-                Rule::in(['in_app']),
-            ],
-            'notification_policy.events' => [
-                'required',
-                'array',
-                'max:'.ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENTS,
-            ],
-            'notification_policy.events.*' => [
-                'bail',
-                'required',
-                'string',
-                'max:'.
-                    ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENT_LENGTH,
-                'distinct:strict',
-            ],
+            'required_documents' => ['bail', 'required', 'array', 'min:1', 'max:20'],
+            'required_documents.*' => ['bail', 'required', 'string', 'max:100', 'regex:/\A[a-z][a-z0-9_]{0,99}\z/D', 'distinct:strict'],
+            'default_reasoning' => ['bail', 'required', Rule::enum(ReasoningLevel::class)],
+            'provider_policy' => ['required', 'array:allowed_provider_ids,fallback_order,codex'],
+            'provider_policy.allowed_provider_ids' => ['bail', 'required', 'array', 'min:1', 'max:'.ProviderPolicy::MAX_PROVIDERS],
+            'provider_policy.allowed_provider_ids.*' => ['bail', 'required', 'string', 'max:'.ProviderPolicy::MAX_PROVIDER_ID_LENGTH, 'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D', 'distinct:strict'],
+            'provider_policy.fallback_order' => ['bail', 'required', 'array', 'min:1', 'max:'.ProviderPolicy::MAX_PROVIDERS],
+            'provider_policy.fallback_order.*' => ['bail', 'required', 'string', 'max:'.ProviderPolicy::MAX_PROVIDER_ID_LENGTH, 'regex:/\A[a-z][a-z0-9._-]{0,99}\z/D', 'distinct:strict'],
+            'provider_policy.codex' => ['required', 'array'],
+            'budget_limit_minor' => ['nullable', 'integer', 'min:0', 'max:'.ProjectPolicyConfiguration::MAX_BUDGET_LIMIT_MINOR],
+            'budget_currency' => ['bail', 'required', 'string', 'size:3', 'regex:/\A[A-Z]{3}\z/D'],
+            'automatic_retry_limit' => ['bail', 'required', 'integer', 'between:0,'.ProjectPolicyConfiguration::MAX_AUTOMATIC_RETRY_LIMIT],
+            'autonomy_level' => ['bail', 'required', Rule::enum(AutonomyLevel::class)],
+            'approval_policy' => ['required', 'array:roadmap_required,ticket_execution_required,merge_required'],
+            'approval_policy.roadmap_required' => ['required', 'boolean'],
+            'approval_policy.ticket_execution_required' => ['required', 'boolean'],
+            'approval_policy.merge_required' => ['required', 'boolean'],
+            'notification_policy' => ['required', 'array:channels,events'],
+            'notification_policy.channels' => ['required', 'array', 'size:1'],
+            'notification_policy.channels.0' => ['required', Rule::in(['in_app'])],
+            'notification_policy.events' => ['required', 'array', 'max:'.ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENTS],
+            'notification_policy.events.*' => ['bail', 'required', 'string', 'max:'.ProjectPolicyConfiguration::MAX_NOTIFICATION_EVENT_LENGTH, 'distinct:strict'],
         ];
     }
 
     /**
-     * Resolve the route's validated backed-enum step.
+     * Return the current persisted Codex policy so the generic policy form
+     * cannot silently reset security-sensitive fields it does not render.
+     *
+     * @return array<string, mixed>
+     */
+    private function persistedCodexPolicy(): array
+    {
+        $project = $this->route('project');
+
+        if (! $project instanceof Project) {
+            return CodexProviderPolicy::defaults();
+        }
+
+        $configuration = ProjectConfiguration::query()
+            ->where('project_id', $project->id)
+            ->first();
+        $policy = $configuration?->provider_policy['codex'] ?? null;
+
+        return is_array($policy)
+            ? $policy
+            : CodexProviderPolicy::defaults();
+    }
+
+    /**
+     * Resolve the route's backed-enum setup step.
      */
     private function step(): ProjectSetupStep
     {
@@ -547,12 +344,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     }
 
     /**
-     * Normalize comma-separated provider identifiers without hiding duplicates.
-     *
-     * Duplicates are intentionally retained so the distinct validation rule can
-     * reject ambiguous provider configuration.
-     *
-     * @return list<string>|mixed
+     * Normalize comma-separated provider identifiers while retaining duplicates.
      */
     private function providerIds(string $key): mixed
     {
@@ -562,17 +354,10 @@ final class UpdateProjectSetupStepRequest extends FormRequest
             return $value;
         }
 
-        $providerIds = array_map(
-            static fn (string $providerId): string => strtolower(
-                trim($providerId),
-            ),
+        return array_values(array_filter(array_map(
+            static fn (string $providerId): string => strtolower(trim($providerId)),
             explode(',', $value),
-        );
-
-        return array_values(array_filter(
-            $providerIds,
-            static fn (string $providerId): bool => $providerId !== '',
-        ));
+        ), static fn (string $providerId): bool => $providerId !== ''));
     }
 
     /**
@@ -587,18 +372,8 @@ final class UpdateProjectSetupStepRequest extends FormRequest
         }
 
         return match ($value) {
-            1,
-            '1',
-            'true',
-            'on',
-            'yes' => true,
-
-            0,
-            '0',
-            'false',
-            'off',
-            'no' => false,
-
+            1, '1', 'true', 'on', 'yes' => true,
+            0, '0', 'false', 'off', 'no' => false,
             default => $value,
         };
     }
@@ -610,9 +385,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     {
         $value = $this->input($key);
 
-        return is_string($value)
-            ? strtolower(trim($value))
-            : $value;
+        return is_string($value) ? strtolower(trim($value)) : $value;
     }
 
     /**
@@ -622,9 +395,7 @@ final class UpdateProjectSetupStepRequest extends FormRequest
     {
         $value = $this->input($key);
 
-        return is_string($value)
-            ? strtoupper(trim($value))
-            : $value;
+        return is_string($value) ? strtoupper(trim($value)) : $value;
     }
 
     /**
@@ -634,29 +405,14 @@ final class UpdateProjectSetupStepRequest extends FormRequest
      */
     private function commaSeparated(string $key): array
     {
-        $values = explode(
-            ',',
-            (string) $this->input($key, ''),
-        );
-
-        $normalized = array_map(
+        return array_values(array_unique(array_filter(array_map(
             static fn (string $value): string => trim($value),
-            $values,
-        );
-
-        $filtered = array_filter(
-            $normalized,
-            static fn (string $value): bool => $value !== '',
-        );
-
-        return array_values(array_unique($filtered));
+            explode(',', (string) $this->input($key, '')),
+        ), static fn (string $value): bool => $value !== '')));
     }
 
     /**
      * Validate the complete set of project validation commands.
-     *
-     * Every command is required because project preflight must be able to report
-     * the exact build, test, lint, static-analysis, and security procedures.
      *
      * @return array<string, list<mixed>>
      */

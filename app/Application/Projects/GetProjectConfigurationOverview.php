@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Projects;
 
 use App\Domain\Integrations\IntegrationProvider;
+use App\Domain\Projects\Configuration\CodexProviderPolicy;
 use App\Models\Project;
 use App\Models\ProjectConfiguration;
 use App\Models\ProjectIntegration;
@@ -12,13 +13,11 @@ use App\Models\ProviderCredential;
 
 /**
  * Builds the non-secret read model used by project configuration screens.
- *
- * This query performs no writes and makes no external provider calls.
  */
 final readonly class GetProjectConfigurationOverview
 {
     /**
-     * Inject the existing deterministic completeness evaluator.
+     * Inject the deterministic completeness evaluator.
      */
     public function __construct(
         private EvaluateProjectCompleteness $evaluateProjectCompleteness,
@@ -27,69 +26,33 @@ final readonly class GetProjectConfigurationOverview
     /**
      * Return safe configuration, integration, and validation metadata.
      *
-     * @return array{
-     *     configuration: array<string, mixed>|null,
-     *     integration: array<string, mixed>,
-     *     validation: array{
-     *         complete: bool,
-     *         missingConfiguration: list<array{
-     *             key: string,
-     *             step: string,
-     *             message: string,
-     *             remediation: string
-     *         }>
-     *     }
-     * }
+     * @return array<string, mixed>
      */
-    public function handle(
-        int $organizationId,
-        int $projectId,
-    ): array {
-        /*
-         * Resolve the project through the organization boundary before reading
-         * project-owned configuration and integration records.
-         */
+    public function handle(int $organizationId, int $projectId): array
+    {
         $project = Project::query()
             ->forOrganization($organizationId)
             ->whereKey($projectId)
             ->firstOrFail();
-
         $configuration = ProjectConfiguration::query()
             ->where('project_id', $project->id)
             ->first();
 
-        $integration = ProjectIntegration::query()
+        $notionIntegration = ProjectIntegration::query()
             ->forOrganization($organizationId)
             ->forProject($project->id)
-            ->where(
-                'provider',
-                IntegrationProvider::Notion->value,
-            )
+            ->where('provider', IntegrationProvider::Notion->value)
             ->first();
-
-        /*
-         * Select only the columns required by toSafeMetadata().
-         *
-         * secret_ciphertext is intentionally excluded at query time, providing
-         * defense in depth in addition to the model's hidden attribute.
-         */
-        $credential = ProviderCredential::query()
-            ->select([
-                'id',
-                'organization_id',
-                'project_id',
-                'provider',
-                'version',
-                'created_at',
-                'rotated_at',
-            ])
-            ->forOrganization($organizationId)
-            ->forProject($project->id)
-            ->where(
-                'provider',
-                IntegrationProvider::Notion->value,
-            )
-            ->first();
+        $notionCredential = $this->credentialMetadata(
+            $organizationId,
+            $project->id,
+            IntegrationProvider::Notion,
+        );
+        $codexCredential = $this->credentialMetadata(
+            $organizationId,
+            $project->id,
+            IntegrationProvider::Codex,
+        );
 
         $completeness = $this->evaluateProjectCompleteness->handle(
             organizationId: $organizationId,
@@ -98,9 +61,13 @@ final readonly class GetProjectConfigurationOverview
 
         return [
             'configuration' => $this->serializeConfiguration($configuration),
-            'integration' => $this->serializeIntegration(
-                integration: $integration,
-                credential: $credential,
+            'integration' => $this->serializeNotionIntegration(
+                $notionIntegration,
+                $notionCredential,
+            ),
+            'codex' => $this->serializeCodex(
+                $configuration,
+                $codexCredential,
             ),
             'validation' => [
                 'complete' => $completeness->isComplete(),
@@ -113,13 +80,40 @@ final readonly class GetProjectConfigurationOverview
     }
 
     /**
-     * Serialize persisted configuration into a browser-safe read model.
-     *
-     * @return array<string, mixed>|null
+     * Select credential metadata without selecting ciphertext.
      */
-    private function serializeConfiguration(
-        ?ProjectConfiguration $configuration,
-    ): ?array {
+    private function credentialMetadata(
+        int $organizationId,
+        int $projectId,
+        IntegrationProvider $provider,
+    ): ?ProviderCredential {
+        return ProviderCredential::query()
+            ->select([
+                'id',
+                'organization_id',
+                'project_id',
+                'provider',
+                'version',
+                'last_connection_status',
+                'last_connection_failure_code',
+                'last_provider_request_id',
+                'verified_credential_version',
+                'last_tested_at',
+                'last_connected_at',
+                'created_at',
+                'rotated_at',
+            ])
+            ->forOrganization($organizationId)
+            ->forProject($projectId)
+            ->where('provider', $provider->value)
+            ->first();
+    }
+
+    /**
+     * Serialize persisted configuration into a browser-safe read model.
+     */
+    private function serializeConfiguration(?ProjectConfiguration $configuration): ?array
+    {
         if ($configuration === null) {
             return null;
         }
@@ -143,14 +137,11 @@ final readonly class GetProjectConfigurationOverview
             ],
             'requiredDocuments' => $configuration->required_documents,
             'policy' => [
-                'defaultReasoning' => $configuration
-                    ->default_reasoning
-                    ->value,
+                'defaultReasoning' => $configuration->default_reasoning->value,
                 'provider' => $configuration->provider_policy,
                 'budgetLimitMinor' => $configuration->budget_limit_minor,
                 'budgetCurrency' => $configuration->budget_currency,
-                'automaticRetryLimit' => $configuration
-                    ->automatic_retry_limit,
+                'automaticRetryLimit' => $configuration->automatic_retry_limit,
                 'autonomyLevel' => $configuration->autonomy_level->value,
                 'approval' => $configuration->approval_policy,
                 'notification' => $configuration->notification_policy,
@@ -159,27 +150,9 @@ final readonly class GetProjectConfigurationOverview
     }
 
     /**
-     * Serialize safe Notion connection and credential metadata.
-     *
-     * @return array{
-     *     provider: string,
-     *     status: string|null,
-     *     workspaceId: string|null,
-     *     workspaceName: string|null,
-     *     databaseId: string|null,
-     *     databaseName: string|null,
-     *     lastFailureCode: string|null,
-     *     lastTestedAt: string|null,
-     *     lastConnectedAt: string|null,
-     *     credential: array{
-     *         configured: bool,
-     *         version: int|null,
-     *         createdAt: string|null,
-     *         rotatedAt: string|null
-     *     }
-     * }
+     * Serialize safe Notion metadata using the established read model.
      */
-    private function serializeIntegration(
+    private function serializeNotionIntegration(
         ?ProjectIntegration $integration,
         ?ProviderCredential $credential,
     ): array {
@@ -188,30 +161,14 @@ final readonly class GetProjectConfigurationOverview
 
         return [
             'provider' => IntegrationProvider::Notion->value,
-            'status' => $this->nullableString(
-                $connectionMetadata['status'] ?? null,
-            ),
-            'workspaceId' => $this->nullableString(
-                $connectionMetadata['workspace_id'] ?? null,
-            ),
-            'workspaceName' => $this->nullableString(
-                $connectionMetadata['workspace_name'] ?? null,
-            ),
-            'databaseId' => $this->nullableString(
-                $connectionMetadata['database_id'] ?? null,
-            ),
-            'databaseName' => $this->nullableString(
-                $connectionMetadata['database_name'] ?? null,
-            ),
-            'lastFailureCode' => $this->nullableString(
-                $connectionMetadata['last_failure_code'] ?? null,
-            ),
-            'lastTestedAt' => $this->nullableString(
-                $connectionMetadata['last_tested_at'] ?? null,
-            ),
-            'lastConnectedAt' => $this->nullableString(
-                $connectionMetadata['last_connected_at'] ?? null,
-            ),
+            'status' => $this->nullableString($connectionMetadata['status'] ?? null),
+            'workspaceId' => $this->nullableString($connectionMetadata['workspace_id'] ?? null),
+            'workspaceName' => $this->nullableString($connectionMetadata['workspace_name'] ?? null),
+            'databaseId' => $this->nullableString($connectionMetadata['database_id'] ?? null),
+            'databaseName' => $this->nullableString($connectionMetadata['database_name'] ?? null),
+            'lastFailureCode' => $this->nullableString($connectionMetadata['last_failure_code'] ?? null),
+            'lastTestedAt' => $this->nullableString($connectionMetadata['last_tested_at'] ?? null),
+            'lastConnectedAt' => $this->nullableString($connectionMetadata['last_connected_at'] ?? null),
             'credential' => [
                 'configured' => $credentialMetadata !== null,
                 'version' => $credentialMetadata['version'] ?? null,
@@ -222,12 +179,52 @@ final readonly class GetProjectConfigurationOverview
     }
 
     /**
-     * Return a string value or null for a mixed safe-metadata entry.
+     * Serialize only safe Codex policy/credential/preflight metadata.
+     */
+    private function serializeCodex(
+        ?ProjectConfiguration $configuration,
+        ?ProviderCredential $credential,
+    ): array {
+        $policy = $configuration?->provider_policy['codex'] ?? null;
+
+        if (! is_array($policy)) {
+            $policy = CodexProviderPolicy::defaults();
+        }
+
+        $credentialMetadata = $credential?->toSafeMetadata();
+
+        return [
+            'provider' => IntegrationProvider::Codex->value,
+            'scope' => 'project',
+            'policy' => $policy,
+            'fallbackEnabled' => $configuration !== null
+                && in_array(
+                    IntegrationProvider::Codex->value,
+                    $configuration->provider_policy['fallback_order'] ?? [],
+                    true,
+                ),
+            'credential' => [
+                'configured' => $credentialMetadata !== null,
+                'version' => $credentialMetadata['version'] ?? null,
+                'createdAt' => $credentialMetadata['created_at'] ?? null,
+                'rotatedAt' => $credentialMetadata['rotated_at'] ?? null,
+            ],
+            'connection' => [
+                'status' => $credentialMetadata['connection_status'] ?? null,
+                'failureCode' => $credentialMetadata['connection_failure_code'] ?? null,
+                'providerRequestId' => $credentialMetadata['provider_request_id'] ?? null,
+                'verifiedCredentialVersion' => $credentialMetadata['verified_credential_version'] ?? null,
+                'lastTestedAt' => $credentialMetadata['last_tested_at'] ?? null,
+                'lastConnectedAt' => $credentialMetadata['last_connected_at'] ?? null,
+            ],
+        ];
+    }
+
+    /**
+     * Return a string value or null for mixed safe metadata.
      */
     private function nullableString(mixed $value): ?string
     {
-        return is_string($value) && $value !== ''
-            ? $value
-            : null;
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }

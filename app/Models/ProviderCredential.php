@@ -25,7 +25,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $version
  * @property int|null $created_by_user_id
  * @property int|null $last_rotated_by_user_id
+ * @property string|null $last_connection_status
+ * @property string|null $last_connection_failure_code
+ * @property string|null $last_provider_request_id
+ * @property int|null $last_tested_by_user_id
+ * @property int|null $verified_credential_version
  * @property CarbonImmutable|null $rotated_at
+ * @property CarbonImmutable|null $last_tested_at
+ * @property CarbonImmutable|null $last_connected_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
@@ -38,18 +45,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'created_by_user_id',
     'last_rotated_by_user_id',
     'rotated_at',
+    'last_connection_status',
+    'last_connection_failure_code',
+    'last_provider_request_id',
+    'last_tested_by_user_id',
+    'verified_credential_version',
+    'last_tested_at',
+    'last_connected_at',
 ])]
 final class ProviderCredential extends Model
 {
-    /**
-     * Prevent ciphertext from appearing in arrays, JSON, Inertia props, logs,
-     * exception context, or accidental API responses.
-     *
-     * @var list<string>
-     */
-    protected $hidden = [
-        'secret_ciphertext',
-    ];
+    /** @var list<string> */
+    protected $hidden = ['secret_ciphertext'];
 
     /**
      * Return the organization that owns the credential.
@@ -78,10 +85,7 @@ final class ProviderCredential extends Model
      */
     public function createdBy(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'created_by_user_id',
-        );
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     /**
@@ -91,10 +95,17 @@ final class ProviderCredential extends Model
      */
     public function lastRotatedBy(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'last_rotated_by_user_id',
-        );
+        return $this->belongsTo(User::class, 'last_rotated_by_user_id');
+    }
+
+    /**
+     * Return the user that most recently ran a persisted connection preflight.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function lastTestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'last_tested_by_user_id');
     }
 
     /**
@@ -103,10 +114,8 @@ final class ProviderCredential extends Model
      * @param  Builder<ProviderCredential>  $query
      * @return Builder<ProviderCredential>
      */
-    public function scopeForOrganization(
-        Builder $query,
-        int $organizationId,
-    ): Builder {
+    public function scopeForOrganization(Builder $query, int $organizationId): Builder
+    {
         return $query->where(
             $query->getModel()->qualifyColumn('organization_id'),
             $organizationId,
@@ -119,10 +128,8 @@ final class ProviderCredential extends Model
      * @param  Builder<ProviderCredential>  $query
      * @return Builder<ProviderCredential>
      */
-    public function scopeForProject(
-        Builder $query,
-        int $projectId,
-    ): Builder {
+    public function scopeForProject(Builder $query, int $projectId): Builder
+    {
         return $query->where(
             $query->getModel()->qualifyColumn('project_id'),
             $projectId,
@@ -134,22 +141,23 @@ final class ProviderCredential extends Model
      *
      * The credential and ciphertext are deliberately absent.
      *
-     * @return array{
-     *     provider: string,
-     *     configured: true,
-     *     version: int,
-     *     created_at: string|null,
-     *     rotated_at: string|null
-     * }
+     * @return array<string, mixed>
      */
     public function toSafeMetadata(): array
     {
         return [
             'provider' => $this->provider->value,
             'configured' => true,
+            'owner_scope' => 'project',
             'version' => $this->version,
             'created_at' => $this->created_at?->toIso8601String(),
             'rotated_at' => $this->rotated_at?->toIso8601String(),
+            'last_connection_status' => $this->last_connection_status,
+            'last_connection_failure_code' => $this->last_connection_failure_code,
+            'last_provider_request_id' => $this->last_provider_request_id,
+            'verified_credential_version' => $this->verified_credential_version,
+            'last_tested_at' => $this->last_tested_at?->toIso8601String(),
+            'last_connected_at' => $this->last_connected_at?->toIso8601String(),
         ];
     }
 
@@ -163,7 +171,10 @@ final class ProviderCredential extends Model
         return [
             'provider' => IntegrationProvider::class,
             'version' => 'integer',
+            'verified_credential_version' => 'integer',
             'rotated_at' => 'immutable_datetime',
+            'last_tested_at' => 'immutable_datetime',
+            'last_connected_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
             'updated_at' => 'immutable_datetime',
         ];

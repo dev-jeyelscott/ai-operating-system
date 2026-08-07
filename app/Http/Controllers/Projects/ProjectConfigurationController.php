@@ -15,7 +15,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Delivers the read-only project settings and integrations screens.
+ * Delivers read-only project settings and integration screens.
  */
 final class ProjectConfigurationController extends Controller
 {
@@ -29,16 +29,16 @@ final class ProjectConfigurationController extends Controller
         GetProjectConfigurationOverview $getOverview,
     ): Response {
         return $this->render(
-            request: $request,
-            organization: $organization,
-            project: $project,
-            component: 'projects/settings',
-            getOverview: $getOverview,
+            $request,
+            $organization,
+            $project,
+            'projects/settings',
+            $getOverview,
         );
     }
 
     /**
-     * Render safe project integration and credential metadata.
+     * Render safe integration, credential, and provider-policy metadata.
      */
     public function integrations(
         Request $request,
@@ -47,11 +47,11 @@ final class ProjectConfigurationController extends Controller
         GetProjectConfigurationOverview $getOverview,
     ): Response {
         return $this->render(
-            request: $request,
-            organization: $organization,
-            project: $project,
-            component: 'projects/integrations',
-            getOverview: $getOverview,
+            $request,
+            $organization,
+            $project,
+            'projects/integrations',
+            $getOverview,
         );
     }
 
@@ -83,71 +83,56 @@ final class ProjectConfigurationController extends Controller
                 'slug' => $project->slug,
                 'archivedAt' => $project->archived_at?->toIso8601String(),
             ],
-            ...$getOverview->handle(
-                organizationId: $organization->id,
-                projectId: $project->id,
-            ),
+            ...$getOverview->handle($organization->id, $project->id),
             'permissions' => [
                 'update' => $user->can('update', $project),
-                'manageIntegrations' => $user->can(
-                    'manageIntegrations',
-                    $project,
-                ),
+                'manageIntegrations' => $user->can('manageIntegrations', $project),
             ],
             'urls' => [
                 'project' => route('organizations.projects.show', [
                     'organization' => $organization,
                     'project' => $project,
                 ]),
-                'settings' => route(
-                    'organizations.projects.settings.show',
-                    [
-                        'organization' => $organization,
-                        'project' => $project,
-                    ],
-                ),
-                'integrations' => route(
-                    'organizations.projects.integrations.index',
-                    [
-                        'organization' => $organization,
-                        'project' => $project,
-                    ],
-                ),
-                'setup' => route(
-                    'organizations.projects.setup.start',
-                    [
-                        'organization' => $organization,
-                        'project' => $project,
-                    ],
-                ),
-                'setupSteps' => $this->setupStepUrls(
-                    organization: $organization,
-                    project: $project,
-                ),
+                'settings' => route('organizations.projects.settings.show', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                'integrations' => route('organizations.projects.integrations.index', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                'codexTest' => route('organizations.projects.integrations.codex.test', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                'codexPolicy' => route('organizations.projects.integrations.codex.policy.update', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                'setup' => route('organizations.projects.setup.start', [
+                    'organization' => $organization,
+                    'project' => $project,
+                ]),
+                'setupSteps' => $this->setupStepUrls($organization, $project),
             ],
         ]);
     }
 
     /**
-     * Return an explicit URL for each server-defined setup step.
+     * Return an explicit URL for every server-defined setup step.
      *
      * @return array<string, string>
      */
-    private function setupStepUrls(
-        Organization $organization,
-        Project $project,
-    ): array {
+    private function setupStepUrls(Organization $organization, Project $project): array
+    {
         $urls = [];
 
         foreach (ProjectSetupStep::ordered() as $step) {
-            $urls[$step->value] = route(
-                'organizations.projects.setup.show',
-                [
-                    'organization' => $organization,
-                    'project' => $project,
-                    'step' => $step,
-                ],
-            );
+            $urls[$step->value] = route('organizations.projects.setup.show', [
+                'organization' => $organization,
+                'project' => $project,
+                'step' => $step,
+            ]);
         }
 
         return $urls;

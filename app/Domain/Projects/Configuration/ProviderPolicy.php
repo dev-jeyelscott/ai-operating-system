@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domain\Projects\Configuration;
 
+use App\Domain\Integrations\IntegrationProvider;
 use InvalidArgumentException;
 
 /**
- * Represents the canonical provider allowlist and ordered fallback strategy.
+ * Represents the canonical provider allowlist, fallback order, and Codex policy.
  *
  * Allowed provider IDs are treated as a set and are therefore sorted before
  * persistence. Fallback order is intentionally preserved because its ordering
@@ -29,6 +30,7 @@ final readonly class ProviderPolicy
     private function __construct(
         public array $allowedProviderIds,
         public array $fallbackOrder,
+        public CodexProviderPolicy $codex,
     ) {}
 
     /**
@@ -60,16 +62,9 @@ final readonly class ProviderPolicy
             );
         }
 
-        /*
-         * The allowlist is set-like, so canonical ordering prevents harmless
-         * input-order changes from creating a new configuration revision.
-         */
         sort($allowedProviderIds, SORT_STRING);
 
-        $allowedProviderLookup = array_fill_keys(
-            $allowedProviderIds,
-            true,
-        );
+        $allowedProviderLookup = array_fill_keys($allowedProviderIds, true);
 
         foreach ($fallbackOrder as $providerId) {
             if (! isset($allowedProviderLookup[$providerId])) {
@@ -80,25 +75,46 @@ final readonly class ProviderPolicy
             }
         }
 
+        $codexPayload = $policy['codex'] ?? CodexProviderPolicy::defaults();
+
+        if (! is_array($codexPayload)) {
+            throw new InvalidArgumentException(
+                'Codex provider policy must be an object.',
+            );
+        }
+
+        /** @var array<string, mixed> $codexPayload */
+        $codex = CodexProviderPolicy::fromArray($codexPayload);
+        $codexAllowed = isset(
+            $allowedProviderLookup[IntegrationProvider::Codex->value],
+        );
+
+        if ($codex->enabled !== $codexAllowed) {
+            throw new InvalidArgumentException(
+                $codex->enabled
+                    ? 'Enabled Codex policy requires codex in the provider allowlist.'
+                    : 'Codex cannot be allowed while its provider policy is disabled.',
+            );
+        }
+
         return new self(
             allowedProviderIds: $allowedProviderIds,
             fallbackOrder: $fallbackOrder,
+            codex: $codex,
         );
     }
 
     /**
      * Return the JSON-compatible persistence representation.
      *
-     * @return array{
-     *     allowed_provider_ids: list<string>,
-     *     fallback_order: list<string>
-     * }
+     * @return array<string, mixed>
      */
     public function toArray(): array
     {
         return [
             'allowed_provider_ids' => $this->allowedProviderIds,
             'fallback_order' => $this->fallbackOrder,
+            'codex' => $this->codex->toArray(),
         ];
     }
 
@@ -139,12 +155,7 @@ final readonly class ProviderPolicy
 
             $normalizedProviderId = strtolower(trim($providerId));
 
-            if (
-                preg_match(
-                    self::PROVIDER_ID_PATTERN,
-                    $normalizedProviderId,
-                ) !== 1
-            ) {
+            if (preg_match(self::PROVIDER_ID_PATTERN, $normalizedProviderId) !== 1) {
                 throw new InvalidArgumentException(sprintf(
                     'Provider ID [%s] has an invalid format.',
                     $normalizedProviderId,

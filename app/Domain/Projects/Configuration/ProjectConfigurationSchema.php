@@ -18,28 +18,20 @@ final class ProjectConfigurationSchema
 
     public const VERSION_2 = 2;
 
-    public const CURRENT_VERSION = self::VERSION_2;
+    public const VERSION_3 = 3;
+
+    public const CURRENT_VERSION = self::VERSION_3;
 
     public const INITIAL_REVISION = 1;
 
-    /**
-     * Assumption for AIOS-021:
-     * automatic retries are bounded to prevent runaway execution.
-     *
-     * Change this constant and the matching migration constraint together if
-     * the approved product policy selects another upper limit.
-     */
     public const MAX_AUTOMATIC_RETRY_LIMIT = 10;
 
-    /**
-     * JSON strings are used by Eloquent as model-level default attributes.
-     */
     public const TECHNOLOGY_STACK_DEFAULT_JSON = <<<'JSON'
 {"languages":[],"frameworks":[],"databases":[],"infrastructure":[],"package_managers":[],"runtimes":[]}
 JSON;
 
     public const PROVIDER_POLICY_DEFAULT_JSON = <<<'JSON'
-{"allowed_provider_ids":[],"fallback_order":[]}
+{"allowed_provider_ids":[],"fallback_order":[],"codex":{"enabled":false,"model_identifier":"gpt-5.3-codex","allowed_capabilities":["planning.generate","development.execute","quality_assurance.review"],"reasoning":{"minimum":"medium","maximum":"high"},"sandbox":{"planning":"read-only","development":"workspace-write","quality_assurance":"read-only"},"network":{"default":"deny","allow_escalation_with_approval":true},"budget_limit_minor":null,"timeout_seconds":900,"retry_limit":2}}
 JSON;
 
     public const APPROVAL_POLICY_DEFAULT_JSON = <<<'JSON'
@@ -57,10 +49,7 @@ JSON;
     {
         return in_array(
             $version,
-            [
-                self::VERSION_1,
-                self::VERSION_2,
-            ],
+            [self::VERSION_1, self::VERSION_2, self::VERSION_3],
             true,
         );
     }
@@ -71,14 +60,12 @@ JSON;
     public static function assertSupported(int $version): void
     {
         if (! self::supports($version)) {
-            throw UnsupportedProjectConfigurationSchemaVersion::forVersion(
-                $version,
-            );
+            throw UnsupportedProjectConfigurationSchemaVersion::forVersion($version);
         }
     }
 
     /**
-     * Return the empty technology-stack object for schema version 1.
+     * Return the empty technology-stack object.
      *
      * @return array<string, array<int, string>>
      */
@@ -95,15 +82,16 @@ JSON;
     }
 
     /**
-     * Return the provider-routing defaults for schema version 1.
+     * Return fail-closed provider-routing defaults for the current schema.
      *
-     * @return array<string, array<int, string>>
+     * @return array<string, mixed>
      */
     public static function providerPolicyDefaults(): array
     {
         return [
             'allowed_provider_ids' => [],
             'fallback_order' => [],
+            'codex' => CodexProviderPolicy::defaults(),
         ];
     }
 

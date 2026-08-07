@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Application\Integrations;
 
+use App\Application\Audit\Data\AuditEventData;
 use App\Application\Audit\RecordAuditEvent;
 use App\Application\Integrations\Contracts\IntegrationCredentialCipher;
+use App\Application\Notifications\RecordSecurityConfigurationNotification;
 use App\Application\Shared\Contracts\TransactionManager;
 use App\Domain\Audit\AuditActorType;
 use App\Domain\Audit\AuditEventType;
@@ -23,11 +25,12 @@ use InvalidArgumentException;
 final readonly class SaveProjectIntegrationCredential
 {
     /**
-     * Inject encryption, auditing, and the transaction boundary.
+     * Inject encryption, auditing, notification, and transaction boundaries.
      */
     public function __construct(
         private IntegrationCredentialCipher $cipher,
         private RecordAuditEvent $audit,
+        private RecordSecurityConfigurationNotification $notifications,
         private TransactionManager $transactions,
     ) {}
 
@@ -47,25 +50,10 @@ final readonly class SaveProjectIntegrationCredential
         string $plaintextCredential,
         ?string $correlationId = null,
     ): ProviderCredential {
-        $this->assertPositiveIdentifier(
-            $actorUserId,
-            'actor user',
-        );
+        $this->assertPositiveIdentifier($actorUserId, 'actor user');
+        $this->assertPositiveIdentifier($organizationId, 'organization');
+        $this->assertPositiveIdentifier($projectId, 'project');
 
-        $this->assertPositiveIdentifier(
-            $organizationId,
-            'organization',
-        );
-
-        $this->assertPositiveIdentifier(
-            $projectId,
-            'project',
-        );
-
-        /*
-         * Validate again inside the application layer. HTTP validation is not
-         * sufficient because future jobs and commands may invoke this action.
-         */
         $submittedCredential = IntegrationCredentialSecret::from(
             $plaintextCredential,
         );
@@ -79,13 +67,6 @@ final readonly class SaveProjectIntegrationCredential
                 $submittedCredential,
                 $correlationId,
             ): ProviderCredential {
-                /*
-                 * Lock the project row rather than only the credential row.
-                 *
-                 * A lock on a missing credential row cannot serialize two
-                 * concurrent first-time inserts. The parent project always
-                 * exists and therefore provides a stable aggregate lock.
-                 */
                 $project = Project::query()
                     ->forOrganization($organizationId)
                     ->whereKey($projectId)
@@ -109,10 +90,6 @@ final readonly class SaveProjectIntegrationCredential
                         $storedCredential->secret_ciphertext,
                     );
 
-                    /*
-                     * Avoid unnecessary ciphertext churn and audit noise when
-                     * the submitted credential is materially unchanged.
-                     */
                     if ($existingCredential->equals($submittedCredential)) {
                         return $storedCredential;
                     }
@@ -124,9 +101,15 @@ final readonly class SaveProjectIntegrationCredential
                         'version' => $storedCredential->version + 1,
                         'last_rotated_by_user_id' => $actorUserId,
                         'rotated_at' => now(),
+                        'last_connection_status' => null,
+                        'last_connection_failure_code' => null,
+                        'last_provider_request_id' => null,
+                        'last_tested_by_user_id' => null,
+                        'verified_credential_version' => null,
+                        'last_tested_at' => null,
                     ])->save();
 
-                    $this->audit->record(
+                    $event = $this->audit->record(
                         organizationId: $organizationId,
                         projectId: $project->id,
                         actorType: AuditActorType::User,
@@ -141,11 +124,18 @@ final readonly class SaveProjectIntegrationCredential
                         ],
                     );
 
+                    $this->recordCodexCredentialNotification(
+                        event: $event,
+                        actorUserId: $actorUserId,
+                        project: $project,
+                        provider: $provider,
+                        action: 'rotated',
+                    );
+
                     return $storedCredential->refresh();
                 }
 
                 $storedCredential = new ProviderCredential;
-
                 $storedCredential->forceFill([
                     'organization_id' => $organizationId,
                     'project_id' => $project->id,
@@ -159,7 +149,7 @@ final readonly class SaveProjectIntegrationCredential
                     'rotated_at' => null,
                 ])->save();
 
-                $this->audit->record(
+                $event = $this->audit->record(
                     organizationId: $organizationId,
                     projectId: $project->id,
                     actorType: AuditActorType::User,
@@ -174,18 +164,60 @@ final readonly class SaveProjectIntegrationCredential
                     ],
                 );
 
+                $this->recordCodexCredentialNotification(
+                    event: $event,
+                    actorUserId: $actorUserId,
+                    project: $project,
+                    provider: $provider,
+                    action: 'stored',
+                );
+
                 return $storedCredential->refresh();
             },
         );
     }
 
     /**
+     * Emit a sanitized in-app notification only for Codex secret changes.
+     */
+    private function recordCodexCredentialNotification(
+        AuditEventData $event,
+        int $actorUserId,
+        Project $project,
+        IntegrationProvider $provider,
+        string $action,
+    ): void {
+        if ($provider !== IntegrationProvider::Codex) {
+            return;
+        }
+
+        $this->notifications->record(
+            source: $event,
+            recipientUserId: $actorUserId,
+            title: 'Codex credential updated',
+            message: sprintf(
+                'The project-scoped Codex credential was %s. Run preflight before enabling Codex execution policy.',
+                $action,
+            ),
+            actionUrl: route(
+                'organizations.projects.integrations.index',
+                [
+                    'organization' => $project->organization,
+                    'project' => $project,
+                ],
+            ),
+            data: [
+                'provider' => IntegrationProvider::Codex->value,
+                'action' => $action,
+            ],
+        );
+    }
+
+    /**
      * Reject invalid internal command identifiers.
      */
-    private function assertPositiveIdentifier(
-        int $identifier,
-        string $name,
-    ): void {
+    private function assertPositiveIdentifier(int $identifier, string $name): void
+    {
         if ($identifier < 1) {
             throw new InvalidArgumentException(
                 "The {$name} identifier must be positive.",
