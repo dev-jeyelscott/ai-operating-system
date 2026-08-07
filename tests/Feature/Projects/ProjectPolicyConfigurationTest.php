@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Projects\Configuration\AutonomyLevel;
+use App\Domain\Projects\Configuration\CodexProviderPolicy;
 use App\Domain\Projects\Configuration\ProjectPolicyConfiguration;
 use App\Domain\Projects\Configuration\ReasoningLevel;
 use App\Domain\Projects\ProjectSetupStep;
@@ -46,10 +47,7 @@ test(
          * PostgreSQL jsonb preserves JSON meaning but does not guarantee the
          * insertion order of object keys. Assert each object member separately.
          *
-         * @var array{
-         *     allowed_provider_ids: list<string>,
-         *     fallback_order: list<string>
-         * } $providerPolicy
+         * @var array<string, mixed> $providerPolicy
          */
         $providerPolicy = $configuration->provider_policy;
 
@@ -75,7 +73,7 @@ test(
             ->and($configuration->default_reasoning)
             ->toBe(ReasoningLevel::High)
             ->and($providerPolicy)
-            ->toHaveCount(2)
+            ->toHaveCount(3)
             ->and($providerPolicy['allowed_provider_ids'])
             ->toBe([
                 'openai',
@@ -86,6 +84,8 @@ test(
                 'openai',
                 'simulation',
             ])
+            ->and($providerPolicy['codex'])
+            ->toBe(CodexProviderPolicy::defaults())
             ->and($configuration->budget_limit_minor)
             ->toBe(12500)
             ->and($configuration->budget_currency)

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Integrations\IntegrationProvider;
 use App\Domain\Integrations\NotionConnectionStatus;
+use App\Domain\Projects\Configuration\ProjectConfigurationSchema;
 use App\Domain\Projects\ProjectSetupStep;
 use App\Models\Document;
 use App\Models\DocumentVersion;
@@ -42,10 +43,13 @@ test(
             ]))
             ->assertOk()
             ->assertInertia(
-                fn (Assert $page): Assert => $page
+                fn(Assert $page): Assert => $page
                     ->component('projects/settings')
                     ->where('project.id', $project->id)
-                    ->where('configuration.schemaVersion', 2)
+                    ->where(
+                        'configuration.schemaVersion',
+                        ProjectConfigurationSchema::CURRENT_VERSION,
+                    )
                     ->where(
                         'configuration.repository.integrationBranch',
                         'develop',
@@ -78,7 +82,7 @@ test(
         $response
             ->assertOk()
             ->assertInertia(
-                fn (Assert $page): Assert => $page
+                fn(Assert $page): Assert => $page
                     ->component('projects/integrations')
                     ->where('integration.provider', 'notion')
                     ->where('integration.status', 'connected')
@@ -127,7 +131,7 @@ test(
             ]))
             ->assertOk()
             ->assertInertia(
-                fn (Assert $page): Assert => $page
+                fn(Assert $page): Assert => $page
                     ->component('projects/settings')
                     ->where('validation.complete', false)
                     ->where(
@@ -174,7 +178,7 @@ test(
             ]))
             ->assertOk()
             ->assertInertia(
-                fn (Assert $page): Assert => $page
+                fn(Assert $page): Assert => $page
                     ->where(
                         'permissions.manageIntegrations',
                         false,
@@ -278,7 +282,7 @@ function projectConfigurationScreensFixture(
         'project_id' => $project->id,
         'current_step' => ProjectSetupStep::Review,
         'completed_steps' => array_map(
-            static fn (
+            static fn(
                 ProjectSetupStep $step,
             ): string => $step->value,
             ProjectSetupStep::ordered(),
