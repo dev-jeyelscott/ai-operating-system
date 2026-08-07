@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Application\Development\ProcessDevelopmentExecution;
 use App\Application\Events\Data\StoredDomainEvent;
+use App\Application\Executions\Data\ExecutionProviderMetadata;
 use App\Application\QualityAssurance\Consumers\DispatchQualityAssuranceExecution;
 use App\Application\QualityAssurance\Contracts\QualityAssuranceExecutionProvider;
 use App\Application\QualityAssurance\Data\QaAssessmentResult;
@@ -150,7 +151,7 @@ test(
             ->and($reviewExecution->status)
             ->toBe(ExecutionStatus::Completed)
             ->and($reviewExecution->capability)
-            ->toBe('quality_assurance.simulation')
+            ->toBe('quality_assurance.review')
             ->and($reviewExecution->logical_role)
             ->toBe('qa_engineer')
             ->and($assessment->status)
@@ -267,6 +268,9 @@ test(
         {
             public ?int $transactionLevel = null;
 
+            /**
+             * Store the underlying simulation provider.
+             */
             public function __construct(
                 private SimulationQualityAssuranceProvider $delegate,
             ) {}
@@ -277,6 +281,14 @@ test(
             public function id(): string
             {
                 return 'simulation';
+            }
+
+            /**
+             * Return metadata from the underlying simulation provider.
+             */
+            public function metadata(): ExecutionProviderMetadata
+            {
+                return $this->delegate->metadata();
             }
 
             /**
@@ -327,6 +339,19 @@ test(
             public function id(): string
             {
                 return 'simulation';
+            }
+
+            /**
+             * Return deterministic simulation metadata for the failing provider.
+             */
+            public function metadata(): ExecutionProviderMetadata
+            {
+                return new ExecutionProviderMetadata(
+                    modelIdentifier: null,
+                    protocolVersion: 'simulation.v1',
+                    sandboxProfile: 'simulation.noop',
+                    simulation: true,
+                );
             }
 
             /**

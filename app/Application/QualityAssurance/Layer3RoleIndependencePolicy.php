@@ -15,26 +15,6 @@ use App\Models\Execution;
 final class Layer3RoleIndependencePolicy
 {
     /**
-     * Capabilities that represent Layer 2 implementation work.
-     *
-     * @var list<string>
-     */
-    private const array IMPLEMENTATION_CAPABILITIES = [
-        'development',
-        'development.execute',
-    ];
-
-    /**
-     * Capabilities that represent Layer 3 review work.
-     *
-     * @var list<string>
-     */
-    private const array REVIEW_CAPABILITIES = [
-        'quality_assurance',
-        'quality_assurance.review',
-    ];
-
-    /**
      * Determine whether the proposed Layer 3 execution is independent.
      */
     public function evaluate(

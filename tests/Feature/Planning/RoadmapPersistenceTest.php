@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Application\Executions\Data\ProviderSelection;
 use App\Application\Planning\Data\PlanningExecutionRequest;
 use App\Application\Planning\Data\PlanningSourceReference;
 use App\Application\Planning\PersistRoadmap;
@@ -153,16 +154,32 @@ test('regenerated roadmaps link to and preserve every earlier revision', functio
 test('persistence rejects execution and context ownership drift', function (): void {
     $fixture = roadmapPersistenceFixture();
     $provider = new SimulationPlanningProvider;
+
+    $selection = ProviderSelection::fromProvider(
+        requestedCapability: $fixture['execution']->capability,
+        provider: $provider,
+        selectionSource: 'roadmap_persistence_test',
+    );
+
     $request = new PlanningExecutionRequest(
         projectId: Project::factory()->create()->id,
         contextSnapshotId: $fixture['snapshot']->id,
-        contextFingerprint: $fixture['snapshot']->approved_document_set_fingerprint,
+        contextFingerprint: $fixture['snapshot']
+            ->approved_document_set_fingerprint,
         reasoningLevel: ReasoningLevel::Medium,
         documents: $fixture['request']->documents,
     );
 
-    app(PersistRoadmap::class)->handle($fixture['execution'], $request, $provider->execute($request), $selection);
-})->throws(LogicException::class, 'ownership are inconsistent');
+    app(PersistRoadmap::class)->handle(
+        $fixture['execution'],
+        $request,
+        $provider->execute($request),
+        $selection,
+    );
+})->throws(
+    LogicException::class,
+    'ownership are inconsistent',
+);
 
 test('the database enforces project consistency for execution and context relationships', function (): void {
     $constraints = DB::table('pg_constraint')

@@ -74,7 +74,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Mockery;
 use Tests\Fakes\InMemoryNotionPublicationClient;
 
 beforeEach(function (): void {

@@ -17,6 +17,7 @@ use App\Domain\Audit\AuditEventType;
 use App\Domain\Audit\AuditSubjectType;
 use App\Domain\Events\DomainEventActor;
 use App\Domain\Events\DomainEventEnvelope;
+use App\Domain\Executions\ExecutionCapability;
 use App\Domain\Executions\ExecutionStatus;
 use App\Domain\QualityAssurance\MergeDecisionAction;
 use App\Domain\Tickets\TicketStatus;
