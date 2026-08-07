@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Codex\Process;
 
 use App\Application\Codex\Exceptions\CodexGatewayException;
+use InvalidArgumentException;
 use JsonException;
 
 /**
@@ -15,12 +16,41 @@ final class CodexJsonRpcDecoder
     private string $buffer = '';
 
     /**
+     * Maximum bytes permitted for one protocol message.
+     *
+     * @var positive-int
+     */
+    private readonly int $maximumMessageBytes;
+
+    /**
+     * Maximum nesting depth permitted while decoding JSON.
+     *
+     * @var positive-int
+     */
+    private readonly int $maximumJsonDepth;
+
+    /**
      * Create one decoder with explicit message and nesting limits.
      */
     public function __construct(
-        private readonly int $maximumMessageBytes,
-        private readonly int $maximumJsonDepth,
-    ) {}
+        int $maximumMessageBytes,
+        int $maximumJsonDepth,
+    ) {
+        if ($maximumMessageBytes < 1) {
+            throw new InvalidArgumentException(
+                'Codex maximum message size must be positive.',
+            );
+        }
+
+        if ($maximumJsonDepth < 1) {
+            throw new InvalidArgumentException(
+                'Codex maximum JSON depth must be positive.',
+            );
+        }
+
+        $this->maximumMessageBytes = $maximumMessageBytes;
+        $this->maximumJsonDepth = $maximumJsonDepth;
+    }
 
     /**
      * Consume one stdout fragment and return every complete JSON message.
@@ -32,17 +62,17 @@ final class CodexJsonRpcDecoder
     ): array {
         $this->buffer .= $chunk;
 
-        if (strlen($this->buffer) > $this->maximumMessageBytes) {
-            throw new CodexGatewayException(
-                CodexGatewayException::OUTPUT_LIMIT_EXCEEDED,
-                false,
-                'Codex App Server produced an oversized protocol frame.',
-            );
-        }
-
         $messages = [];
 
         while (($position = strpos($this->buffer, "\n")) !== false) {
+            if ($position > $this->maximumMessageBytes) {
+                throw new CodexGatewayException(
+                    CodexGatewayException::OUTPUT_LIMIT_EXCEEDED,
+                    false,
+                    'Codex App Server produced an oversized protocol message.',
+                );
+            }
+
             $line = substr(
                 $this->buffer,
                 0,
@@ -69,6 +99,19 @@ final class CodexJsonRpcDecoder
             }
 
             $messages[] = $this->decode($line);
+        }
+
+        /*
+         * Only the remaining incomplete frame is bounded here. A stdout chunk
+         * may legitimately contain multiple complete messages whose combined
+         * byte size exceeds the per-message limit.
+         */
+        if (strlen($this->buffer) > $this->maximumMessageBytes) {
+            throw new CodexGatewayException(
+                CodexGatewayException::OUTPUT_LIMIT_EXCEEDED,
+                false,
+                'Codex App Server produced an oversized protocol frame.',
+            );
         }
 
         return $messages;

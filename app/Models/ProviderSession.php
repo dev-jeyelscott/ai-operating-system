@@ -8,6 +8,7 @@ use App\Domain\Codex\ProviderSessionStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\DateFormat;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -47,6 +48,11 @@ use LogicException;
  * @property CarbonImmutable|null $cancellation_requested_at
  * @property string|null $cleanup_status
  * @property CarbonImmutable|null $transcript_truncated_at
+ * @property-read Organization $organization
+ * @property-read Project $project
+ * @property-read Execution $execution
+ * @property-read ExecutionAttempt $executionAttempt
+ * @property-read Collection<int, ProviderEvent> $events
  */
 #[DateFormat('Y-m-d H:i:s.u')]
 #[Fillable([
@@ -121,6 +127,8 @@ final class ProviderSession extends Model
 
     /**
      * Return the owning organization.
+     *
+     * @return BelongsTo<Organization, $this>
      */
     public function organization(): BelongsTo
     {
@@ -131,6 +139,8 @@ final class ProviderSession extends Model
 
     /**
      * Return the owning project.
+     *
+     * @return BelongsTo<Project, $this>
      */
     public function project(): BelongsTo
     {
@@ -141,6 +151,8 @@ final class ProviderSession extends Model
 
     /**
      * Return the logical execution.
+     *
+     * @return BelongsTo<Execution, $this>
      */
     public function execution(): BelongsTo
     {
@@ -151,6 +163,8 @@ final class ProviderSession extends Model
 
     /**
      * Return the immutable provider attempt.
+     *
+     * @return BelongsTo<ExecutionAttempt, $this>
      */
     public function executionAttempt(): BelongsTo
     {
@@ -161,6 +175,8 @@ final class ProviderSession extends Model
 
     /**
      * Return normalized events in deterministic provider sequence.
+     *
+     * @return HasMany<ProviderEvent, $this>
      */
     public function events(): HasMany
     {

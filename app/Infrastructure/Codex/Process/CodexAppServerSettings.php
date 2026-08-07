@@ -148,17 +148,15 @@ final readonly class CodexAppServerSettings
         $current = getenv();
         $environment = [];
 
-        if (is_array($current)) {
-            foreach (array_keys($current) as $name) {
-                $environment[$name] = false;
-            }
+        foreach (array_keys($current) as $name) {
+            $environment[$name] = false;
+        }
 
-            foreach ($this->allowedEnvironment as $name) {
-                $value = $current[$name] ?? null;
+        foreach ($this->allowedEnvironment as $name) {
+            $value = $current[$name] ?? null;
 
-                if (is_string($value) && $value !== '') {
-                    $environment[$name] = $value;
-                }
+            if (is_string($value) && $value !== '') {
+                $environment[$name] = $value;
             }
         }
 

@@ -134,7 +134,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
         if (
             realpath($codexHome) === false
             || realpath($codexHome)
-                !== realpath($this->context->codexHomePath)
+            !== realpath($this->context->codexHomePath)
         ) {
             throw new CodexGatewayException(
                 CodexGatewayException::VERSION_MISMATCH,
@@ -189,9 +189,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
                 'model' => $this->context->modelIdentifier,
                 'cwd' => $this->context->workspacePath,
                 'approvalPolicy' => $approvalPolicy,
-                'sandbox' => match (
-                    $this->context->sandboxProfile
-                ) {
+                'sandbox' => match ($this->context->sandboxProfile) {
                     'read-only' => 'readOnly',
                     'workspace-write' => 'workspaceWrite',
                     default => throw new CodexGatewayException(
@@ -224,7 +222,11 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
     /**
      * Start one turn using only caller-supplied structured input.
      *
-     * @param  list<array<string, mixed>>  $input
+     * The concrete process boundary accepts a broader array shape than the
+     * application contract so malformed runtime input can still be rejected
+     * before it reaches the provider process.
+     *
+     * @param  array<int, mixed>  $input
      */
     public function startTurn(
         string $threadId,
@@ -568,7 +570,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
             $encoded = json_encode(
                 $message,
                 JSON_THROW_ON_ERROR
-                | JSON_UNESCAPED_SLASHES,
+                    | JSON_UNESCAPED_SLASHES,
             );
         } catch (JsonException $exception) {
             throw new CodexGatewayException(
@@ -729,10 +731,10 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         $payload = isset($message['params'])
             && is_array($message['params'])
-                ? $this->redactor->values(
-                    $message['params'],
-                )
-                : [];
+            ? $this->redactor->values(
+                $message['params'],
+            )
+            : [];
 
         $this->sequence++;
 
@@ -756,8 +758,8 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
 
         $cursor = isset($payload['cursor'])
             && is_string($payload['cursor'])
-                ? $payload['cursor']
-                : null;
+            ? $payload['cursor']
+            : null;
 
         $fingerprint = $this->fingerprint([
             'method' => $method,
@@ -805,8 +807,8 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
             $code = is_array($error)
                 && isset($error['code'])
                 && is_int($error['code'])
-                    ? $error['code']
-                    : 0;
+                ? $error['code']
+                : 0;
 
             if ($code === -32001) {
                 throw new CodexGatewayException(
@@ -913,7 +915,7 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
                 json_encode(
                     $this->canonicalize($value),
                     JSON_THROW_ON_ERROR
-                    | JSON_UNESCAPED_SLASHES,
+                        | JSON_UNESCAPED_SLASHES,
                 ),
             );
         } catch (JsonException $exception) {

@@ -37,6 +37,9 @@ use LogicException;
  * @property array<string, mixed> $payload
  * @property CarbonImmutable $occurred_at
  * @property CarbonImmutable $created_at
+ * @property-read ProviderSession $providerSession
+ * @property-read Execution $execution
+ * @property-read ExecutionAttempt $executionAttempt
  */
 #[DateFormat('Y-m-d H:i:s.u')]
 #[Fillable([
@@ -84,6 +87,8 @@ final class ProviderEvent extends Model
 
     /**
      * Return the provider session that emitted the event.
+     *
+     * @return BelongsTo<ProviderSession, $this>
      */
     public function providerSession(): BelongsTo
     {
@@ -94,6 +99,8 @@ final class ProviderEvent extends Model
 
     /**
      * Return the logical execution.
+     *
+     * @return BelongsTo<Execution, $this>
      */
     public function execution(): BelongsTo
     {
@@ -104,6 +111,8 @@ final class ProviderEvent extends Model
 
     /**
      * Return the execution attempt.
+     *
+     * @return BelongsTo<ExecutionAttempt, $this>
      */
     public function executionAttempt(): BelongsTo
     {

@@ -8,6 +8,7 @@ use App\Models\Artifact;
 use App\Models\Evidence;
 use App\Models\ExecutionAttempt;
 use App\Models\NotificationEvent;
+use App\Models\ProviderEvent;
 use App\Support\Security\SensitiveValueRedactor;
 use Illuminate\Database\Eloquent\Model;
 
@@ -36,6 +37,8 @@ final readonly class SensitivePersistenceObserver
 
         if ($model instanceof Evidence) {
             $this->assertEvidenceIsClean($model);
+
+            return;
         }
 
         if ($model instanceof ProviderEvent) {
