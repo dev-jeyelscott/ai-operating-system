@@ -40,14 +40,29 @@ final class DecideCodexApprovalController extends Controller
             (string) $request->validated('action'),
         );
 
-        $bridge->decide(
+        $validatedReason = $request->validated('reason');
+
+        $reason = is_string($validatedReason)
+            ? $validatedReason
+            : null;
+
+        $result = $bridge->decide(
             organizationId: $organization->id,
             projectId: $project->id,
             codexApprovalRequestId: $codexApprovalRequest,
             actorUserId: $user->id,
             action: $action,
-            reason: $request->validated('reason'),
+            reason: $reason,
         );
+
+        if (! $result->isSuccessful()) {
+            return redirect()
+                ->back(Response::HTTP_SEE_OTHER)
+                ->withErrors([
+                    'approval' => $result->message
+                        ?? 'The Codex approval decision could not be applied.',
+                ]);
+        }
 
         return redirect()
             ->back(Response::HTTP_SEE_OTHER)
