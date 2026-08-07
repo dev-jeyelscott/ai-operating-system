@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+
+# Keep matching and output ordering deterministic across local and CI systems.
+export LC_ALL=C
+
+readonly FULL_SHA_PATTERN='[0-9a-fA-F]{40}'
+
+failure_count=0
+external_reference_count=0
+
+# Remove YAML comments, surrounding whitespace, and wrapping quotes.
+normalize_reference() {
+    printf '%s' "$1" \
+        | sed -E \
+            -e 's/[[:space:]]+#.*$//' \
+            -e 's/^[[:space:]]+//' \
+            -e 's/[[:space:]]+$//' \
+            -e "s/^['\"]//" \
+            -e "s/['\"]$//"
+}
+
+# Return success only when the reference belongs to an external action or workflow.
+reference_is_external() {
+    local reference="$1"
+
+    [[ "$reference" != ./* && "$reference" != docker://* ]]
+}
+
+# Return success only for owner/repository references pinned to a full commit SHA.
+reference_is_valid() {
+    local reference="$1"
+
+    [[ "$reference" =~ ^[^/@[:space:]]+/[^@[:space:]]+@${FULL_SHA_PATTERN}$ ]]
+}
+
+# Validate one discovered uses reference and report its repository location.
+validate_reference() {
+    local origin="$1"
+    local reference
+
+    reference="$(normalize_reference "$2")"
+
+    [[ -n "$reference" ]] || return 0
+
+    # Local actions and docker:// actions are governed by separate policies.
+    if ! reference_is_external "$reference"; then
+        return 0
+    fi
+
+    external_reference_count=$((external_reference_count + 1))
+
+    if ! reference_is_valid "$reference"; then
+        printf \
+            'ERROR: %s uses a mutable or invalid external action reference: %s\n' \
+            "$origin" \
+            "$reference" \
+            >&2
+
+        failure_count=$((failure_count + 1))
+    fi
+}
+
+# Scan every tracked GitHub Actions workflow for uses declarations.
+check_workflow_references() {
+    local path
+    local match
+    local line_number
+    local declaration
+    local value
+
+    while IFS= read -r -d '' path; do
+        case "$path" in
+            *.yml|*.yaml)
+                ;;
+            *)
+                continue
+                ;;
+        esac
+
+        while IFS= read -r match; do
+            [[ -n "$match" ]] || continue
+
+            line_number="${match%%:*}"
+            declaration="${match#*:}"
+
+            value="$(
+                printf '%s' "$declaration" \
+                    | sed -E \
+                        's/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*//'
+            )"
+
+            validate_reference \
+                "${path}:${line_number}" \
+                "$value"
+        done < <(
+            grep -nE \
+                '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*' \
+                "$path" \
+                || true
+        )
+    done < <(
+        git ls-files -z -- '.github/workflows'
+    )
+}
+
+# Verify that the policy accepts immutable references and rejects mutable ones.
+run_self_test() {
+    local full_sha
+    local reference
+
+    full_sha="$(printf 'a%.0s' {1..40})"
+
+    reference_is_valid \
+        "actions/checkout@${full_sha}" \
+        || {
+            printf '%s\n' \
+                'ERROR: valid GitHub Action SHA fixture was rejected.' \
+                >&2
+
+            exit 2
+        }
+
+    for reference in \
+        'actions/checkout@v7' \
+        'actions/checkout@main' \
+        'actions/checkout@deadbeef' \
+        'owner/repository/.github/workflows/quality.yml@v1' \
+        'actions/checkout@${{ github.sha }}'; do
+
+        if reference_is_valid "$reference"; then
+            printf \
+                'ERROR: mutable GitHub Action fixture was accepted: %s\n' \
+                "$reference" \
+                >&2
+
+            exit 2
+        fi
+    done
+
+    if reference_is_external './.github/actions/local'; then
+        printf '%s\n' \
+            'ERROR: local action fixture was classified as external.' \
+            >&2
+
+        exit 2
+    fi
+
+    if reference_is_external 'docker://alpine:3.23'; then
+        printf '%s\n' \
+            'ERROR: container action fixture was classified as an external repository action.' \
+            >&2
+
+        exit 2
+    fi
+}
+
+# Support focused positive and negative policy verification from the command line.
+if [[ "${1:-}" == '--check-reference' ]]; then
+    if [[ "$#" -ne 2 ]]; then
+        printf '%s\n' \
+            'Usage: bin/check-github-actions --check-reference ACTION_REFERENCE' \
+            >&2
+
+        exit 2
+    fi
+
+    if ! reference_is_external "$2"; then
+        printf \
+            'GitHub Action reference is excluded from external SHA policy: %s\n' \
+            "$2"
+
+        exit 0
+    fi
+
+    if reference_is_valid "$2"; then
+        printf \
+            'GitHub Action reference is immutable: %s\n' \
+            "$2"
+
+        exit 0
+    fi
+
+    printf \
+        'GitHub Action reference is rejected: %s\n' \
+        "$2" \
+        >&2
+
+    exit 1
+fi
+
+if [[ "$#" -ne 0 ]]; then
+    printf '%s\n' \
+        'Usage: bin/check-github-actions [--check-reference ACTION_REFERENCE]' \
+        >&2
+
+    exit 2
+fi
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    printf '%s\n' \
+        'ERROR: GitHub Actions policy must run inside a Git repository.' \
+        >&2
+
+    exit 2
+}
+
+run_self_test
+check_workflow_references
+
+if (( external_reference_count == 0 )); then
+    printf '%s\n' \
+        'ERROR: no external GitHub Action references were discovered.' \
+        >&2
+
+    exit 2
+fi
+
+if (( failure_count > 0 )); then
+    printf \
+        'GitHub Actions SHA policy failed with %d error(s).\n' \
+        "$failure_count" \
+        >&2
+
+    exit 1
+fi
+
+printf \
+    'GitHub Actions SHA policy passed for %d external reference occurrence(s).\n' \
+    "$external_reference_count"

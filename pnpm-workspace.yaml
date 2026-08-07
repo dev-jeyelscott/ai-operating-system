@@ -9,6 +9,7 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - 'brace-expansion@1.1.18 || 5.0.9'
   - 'undici@7.29.0'
+  - 'js-yaml@4.3.1'
 
 # Reject Git, tarball, and other exotic transitive dependency sources.
 blockExoticSubdeps: true
@@ -26,4 +27,5 @@ overrides:
   'brace-expansion@<1.1.18': 1.1.18
   'brace-expansion@>=5.0.0 <5.0.9': 5.0.9
   'undici@>=7.0.0 <7.29.0': 7.29.0
+  'js-yaml@>=4.0.0 <4.3.1': 4.3.1
   sharp: 0.35.3
