@@ -15,13 +15,13 @@ use InvalidArgumentException;
 use LogicException;
 
 /**
- * Evaluates suspicious Codex attempts without reclaiming leases or scheduling
- * retries before process ownership and cleanup are conclusively resolved.
+ * Evaluates suspicious Codex attempts using durable execution and provider
+ * liveness facts without prematurely releasing leases or scheduling retries.
  */
 final readonly class CodexLivenessManager
 {
     /**
-     * Inject local runtime inspection and durable provider-session services.
+     * Inject runtime inspection and durable provider-session services.
      */
     public function __construct(
         private CodexRuntimeControl $runtime,
@@ -29,9 +29,8 @@ final readonly class CodexLivenessManager
     ) {}
 
     /**
-     * Evaluate one running Codex attempt and flag it for safe recovery when a
-     * cancellation, timeout, stale heartbeat, or provider-state divergence is
-     * detected.
+     * Evaluate one running Codex attempt for cancellation, timeout, stale
+     * heartbeat, provider divergence, or process ownership loss.
      */
     public function evaluate(
         int $executionAttemptId,
@@ -39,26 +38,28 @@ final readonly class CodexLivenessManager
     ): void {
         if ($executionAttemptId < 1) {
             throw new InvalidArgumentException(
-                'Codex liveness evaluation requires a positive attempt identifier.',
+                'Codex liveness evaluation requires a positive execution attempt identifier.',
             );
         }
 
         $evaluatedAt = $at ?? CarbonImmutable::now();
 
-        /** @var ExecutionAttempt|null $attempt */
         $attempt = ExecutionAttempt::query()
             ->with('execution')
             ->find($executionAttemptId);
 
-        if (
-            $attempt === null
-            || $attempt->execution_provider !== 'codex'
-            || $attempt->status !== ExecutionAttemptStatus::Running
-        ) {
+        if ($attempt === null) {
             return;
         }
 
-        /** @var ProviderSession|null $session */
+        if ($attempt->execution_provider !== 'codex') {
+            return;
+        }
+
+        if ($attempt->status !== ExecutionAttemptStatus::Running) {
+            return;
+        }
+
         $session = ProviderSession::query()
             ->where(
                 'execution_attempt_id',
@@ -73,8 +74,8 @@ final readonly class CodexLivenessManager
         }
 
         /*
-         * Once recovery has already been persisted, this evaluator remains
-         * idempotent. A later cleanup/reconciliation service owns continuation.
+         * Once recovery has already been recorded, evaluation is idempotent.
+         * Cleanup and reconciliation own the next transition.
          */
         if ($session->recovery_required_at !== null) {
             return;
@@ -91,9 +92,8 @@ final readonly class CodexLivenessManager
         }
 
         /*
-         * A terminal provider session paired with a still-running application
-         * attempt is already a divergence. Preserve it for reconciliation
-         * instead of touching an OS process that should already be terminal.
+         * If the provider session is already terminal while the execution
+         * attempt remains running, preserve the divergence for reconciliation.
          */
         if ($session->status->isTerminal()) {
             $this->sessions->markRecoveryRequired(
@@ -110,9 +110,8 @@ final readonly class CodexLivenessManager
         );
 
         /*
-         * A stale/expired/cancelled execution with the exact original process
-         * still alive is treated as an owner-loss scenario. Termination remains
-         * PID-identity guarded by CodexRuntimeControl.
+         * Only terminate when runtime inspection conclusively proves that the
+         * recorded process identity is still the original running process.
          */
         if ($runtimeState === CodexRuntimeState::Running) {
             $runtimeState = $this->runtime->terminate(
@@ -123,8 +122,8 @@ final readonly class CodexLivenessManager
 
         $this->sessions->markRecoveryRequired(
             session: $session,
-            reason: $this->recoveryReasonForRuntimeState(
-                reason: $reason,
+            reason: $this->runtimeRecoveryReason(
+                originalReason: $reason,
                 runtimeState: $runtimeState,
             ),
             at: $evaluatedAt,
@@ -132,7 +131,7 @@ final readonly class CodexLivenessManager
     }
 
     /**
-     * Classify why a running Codex attempt requires recovery evaluation.
+     * Determine whether durable execution facts require recovery evaluation.
      */
     private function recoveryReason(
         ExecutionAttempt $attempt,
@@ -165,18 +164,20 @@ final readonly class CodexLivenessManager
             return 'codex.execution_timeout';
         }
 
-        $heartbeat = $session->heartbeat_at
+        $heartbeatAt = $session->heartbeat_at
             ?? $attempt->heartbeat_at;
 
-        if ($heartbeat === null) {
+        if ($heartbeatAt === null) {
             return 'codex.heartbeat_missing';
         }
 
+        $staleBefore = $evaluatedAt->subSeconds(
+            $this->staleHeartbeatSeconds(),
+        );
+
         if (
-            $heartbeat->lessThanOrEqualTo(
-                $evaluatedAt->subSeconds(
-                    $this->staleHeartbeatSeconds(),
-                ),
+            $heartbeatAt->lessThanOrEqualTo(
+                $staleBefore,
             )
         ) {
             return 'codex.heartbeat_stale';
@@ -186,17 +187,14 @@ final readonly class CodexLivenessManager
     }
 
     /**
-     * Preserve the triggering reason when the original process is gone.
-     *
-     * Ambiguous or failed runtime termination receives a more specific recovery
-     * reason so operations never mistake uncertainty for a clean process exit.
+     * Convert runtime inspection results into explicit recovery provenance.
      */
-    private function recoveryReasonForRuntimeState(
-        string $reason,
+    private function runtimeRecoveryReason(
+        string $originalReason,
         CodexRuntimeState $runtimeState,
     ): string {
         return match ($runtimeState) {
-            CodexRuntimeState::Exited => $reason,
+            CodexRuntimeState::Exited => $originalReason,
             CodexRuntimeState::IdentityMismatch => 'codex.runtime_identity_mismatch',
             CodexRuntimeState::Unreachable => 'codex.runtime_unreachable',
             CodexRuntimeState::Running => 'codex.process_termination_failed',
@@ -204,40 +202,40 @@ final readonly class CodexLivenessManager
     }
 
     /**
-     * Return the configured stale-heartbeat threshold.
+     * Return the configured stale heartbeat threshold.
      */
     private function staleHeartbeatSeconds(): int
     {
-        $value = config(
+        $seconds = config(
             'codex-app-server.persistence.stale_heartbeat_seconds',
             45,
         );
 
-        if (! is_int($value) || $value < 1) {
+        if (! is_int($seconds) || $seconds < 1) {
             throw new InvalidArgumentException(
-                'Codex stale heartbeat configuration must be a positive integer.',
+                'Codex stale heartbeat threshold must be a positive integer.',
             );
         }
 
-        return $value;
+        return $seconds;
     }
 
     /**
-     * Return the bounded grace period used before forced process termination.
+     * Return the bounded grace period before forced Codex termination.
      */
     private function cancellationGraceSeconds(): int
     {
-        $value = config(
+        $seconds = config(
             'codex-app-server.cancellation_grace_seconds',
             10,
         );
 
-        if (! is_int($value) || $value < 1) {
+        if (! is_int($seconds) || $seconds < 1) {
             throw new InvalidArgumentException(
-                'Codex cancellation grace configuration must be a positive integer.',
+                'Codex cancellation grace period must be a positive integer.',
             );
         }
 
-        return $value;
+        return $seconds;
     }
 }
