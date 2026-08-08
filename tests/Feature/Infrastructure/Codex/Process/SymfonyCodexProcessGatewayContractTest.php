@@ -11,8 +11,6 @@ use App\Infrastructure\Codex\Process\CodexAppServerSettings;
 use App\Infrastructure\Codex\Process\CodexJsonRpcDecoder;
 use App\Infrastructure\Codex\Process\SymfonyCodexProcessSession;
 use Carbon\CarbonImmutable;
-use InvalidArgumentException;
-use RuntimeException;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
 use Tests\Support\Codex\FakeCodexServer;
@@ -144,7 +142,7 @@ function aios248PlanningTurn(
 
         return [
             'events' => array_map(
-                static fn (
+                static fn(
                     CodexGatewayEvent $event,
                 ): array => [
                     'sequence' => $event->sequence,
@@ -328,9 +326,7 @@ test(
                 'turn/completed',
             );
 
-            $terminal = $terminalEvents[
-                array_key_last($terminalEvents)
-            ];
+            $terminal = $terminalEvents[array_key_last($terminalEvents)];
 
             expect(
                 $terminal->payload['turn']['status']
@@ -342,7 +338,7 @@ test(
                     FakeCodexServer::recordedMessages(
                         $fixture['record_path'],
                     ),
-                    static fn (
+                    static fn(
                         array $message,
                     ): bool => ($message['id'] ?? null) === 7248
                         && ! isset($message['method']),
@@ -455,9 +451,7 @@ test(
                 'turn/completed',
             );
 
-            $terminal = $terminalEvents[
-                array_key_last($terminalEvents)
-            ];
+            $terminal = $terminalEvents[array_key_last($terminalEvents)];
 
             expect(
                 $terminal->payload['turn']['status']
@@ -469,7 +463,7 @@ test(
                     FakeCodexServer::recordedMessages(
                         $fixture['record_path'],
                     ),
-                    static fn (
+                    static fn(
                         array $message,
                     ): bool => ($message['method'] ?? null)
                         === 'turn/interrupt',
@@ -1130,7 +1124,7 @@ test(
         );
 
         expect(
-            static fn (): CodexAppServerSettings => CodexAppServerSettings::fromConfiguration(),
+            static fn(): CodexAppServerSettings => CodexAppServerSettings::fromConfiguration(),
         )->toThrow(
             InvalidArgumentException::class,
             'deterministic Codex test harness cannot be selected in production',
