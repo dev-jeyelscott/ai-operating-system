@@ -309,6 +309,10 @@ function assertTurnStartRequest(
                         'text' => 'Plan AIOS-248.',
                     ],
                 ],
+                'effort' => 'medium',
+                'outputSchema' => [
+                    'type' => 'object',
+                ],
             ],
         ],
         'turn/start',
