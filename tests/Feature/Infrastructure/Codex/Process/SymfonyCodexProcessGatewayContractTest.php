@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Application\Codex\Contracts\CodexProcessGateway;
 use App\Application\Codex\Contracts\CodexProcessSession;
 use App\Application\Codex\Data\CodexGatewayEvent;
+use App\Application\Codex\Data\CodexTurnRequest;
 use App\Application\Codex\Exceptions\CodexGatewayException;
 use App\Application\Security\RedactSensitiveData;
 use App\Infrastructure\Codex\Process\CodexAppServerSettings;
@@ -143,7 +144,7 @@ function aios248PlanningTurn(
         expect($thread->id)
             ->toBe('thread-248');
 
-        $session->startTurn(
+        $turn = $session->startTurn(
             aios248TurnRequest($thread->id),
         );
 
@@ -297,7 +298,7 @@ test(
                 'on-request',
             );
 
-            $session->startTurn(
+            $turn = $session->startTurn(
                 aios248TurnRequest($thread->id),
             );
 
@@ -424,7 +425,7 @@ test(
                 'on-request',
             );
 
-            $session->startTurn(
+            $turn = $session->startTurn(
                 aios248TurnRequest($thread->id),
             );
 
@@ -925,13 +926,7 @@ test(
         );
 
         $session->startTurn(
-            $thread->id,
-            [
-                [
-                    'type' => 'text',
-                    'text' => 'Plan AIOS-248.',
-                ],
-            ],
+            aios248TurnRequest($thread->id),
         );
 
         $session->shutdown();
