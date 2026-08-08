@@ -142,7 +142,7 @@ function aios248PlanningTurn(
 
         return [
             'events' => array_map(
-                static fn(
+                static fn (
                     CodexGatewayEvent $event,
                 ): array => [
                     'sequence' => $event->sequence,
@@ -338,7 +338,7 @@ test(
                     FakeCodexServer::recordedMessages(
                         $fixture['record_path'],
                     ),
-                    static fn(
+                    static fn (
                         array $message,
                     ): bool => ($message['id'] ?? null) === 7248
                         && ! isset($message['method']),
@@ -463,7 +463,7 @@ test(
                     FakeCodexServer::recordedMessages(
                         $fixture['record_path'],
                     ),
-                    static fn(
+                    static fn (
                         array $message,
                     ): bool => ($message['method'] ?? null)
                         === 'turn/interrupt',
@@ -531,12 +531,12 @@ test(
 );
 
 test(
-    'request timeout is retryable',
+    'startup request timeout is retryable',
     function (): void {
         $fixture = aios248OpenSession(
             'request_timeout',
             [
-                'request_timeout_seconds' => 1,
+                'startup_timeout_seconds' => 1,
             ],
         );
 
@@ -1124,7 +1124,7 @@ test(
         );
 
         expect(
-            static fn(): CodexAppServerSettings => CodexAppServerSettings::fromConfiguration(),
+            static fn (): CodexAppServerSettings => CodexAppServerSettings::fromConfiguration(),
         )->toThrow(
             InvalidArgumentException::class,
             'deterministic Codex test harness cannot be selected in production',
