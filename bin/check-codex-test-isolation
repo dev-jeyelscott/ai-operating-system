@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+FAKE_EXECUTABLE="tests/Fixtures/Codex/bin/fake-codex"
+SCENARIO_CATALOG="tests/Fixtures/Codex/scenarios.json"
+PEST_CONFIGURATION="tests/Pest.php"
+QUALITY_WORKFLOW=".github/workflows/tests.yml"
+
+required_scenarios=(
+    success
+    streaming
+    approval_accept
+    approval_denial
+    approval_blocked
+    malformed_payload
+    request_timeout
+    cancellation
+    crash
+    duplicate_response
+    duplicate_event
+    out_of_order_event
+    oversized_output
+    stale_heartbeat
+    recovery
+    forced_termination
+    stderr_pressure
+    unknown_message
+    server_overloaded
+    rpc_error
+    redaction
+)
+
+if [[ ! -x "${FAKE_EXECUTABLE}" ]]; then
+    echo "The deterministic Codex fake executable is missing or not executable." >&2
+    exit 1
+fi
+
+if [[ ! -f "${SCENARIO_CATALOG}" ]]; then
+    echo "The deterministic Codex scenario catalog is missing." >&2
+    exit 1
+fi
+
+php -r '
+$data = json_decode(
+    file_get_contents($argv[1]),
+    true,
+    32,
+    JSON_THROW_ON_ERROR,
+);
+
+if (($data["fixture_version"] ?? null) !== 1) {
+    fwrite(STDERR, "Unsupported fake Codex fixture version.\n");
+    exit(1);
+}
+
+if (($data["protocol_version"] ?? null) !== "stable") {
+    fwrite(STDERR, "Unsupported fake Codex protocol fixture version.\n");
+    exit(1);
+}
+' "${SCENARIO_CATALOG}"
+
+for scenario in "${required_scenarios[@]}"; do
+    SCENARIO="${scenario}" php -r '
+    $data = json_decode(
+        file_get_contents($argv[1]),
+        true,
+        32,
+        JSON_THROW_ON_ERROR,
+    );
+
+    $scenario = getenv("SCENARIO");
+
+    if (! isset($data["scenarios"][$scenario])) {
+        fwrite(
+            STDERR,
+            "Missing required Codex scenario: {$scenario}\n",
+        );
+        exit(1);
+    }
+    ' "${SCENARIO_CATALOG}"
+done
+
+if ! grep -Fq \
+    'FakeCodexServer::configureDefaults()' \
+    "${PEST_CONFIGURATION}"
+then
+    echo "Laravel tests are not globally isolated from the live Codex binary." >&2
+    exit 1
+fi
+
+if grep -Eq \
+    'CODEX_LIVE_SMOKE_ENABLED:[[:space:]]*["'"'"']?true|OPENAI_API_KEY|CODEX_API_KEY|codex[[:space:]]+app-server' \
+    "${QUALITY_WORKFLOW}"
+then
+    echo "Normal quality CI must not enable live Codex execution or provider credentials." >&2
+    exit 1
+fi
+
+echo "Codex test isolation checks passed."

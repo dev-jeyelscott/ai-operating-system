@@ -91,6 +91,7 @@
             "Composer\\Config::disableProcessTimeout",
             "@repository:check",
             "@actions:check",
+            "@codex:test-isolation",
             "@containers:check",
             "@office-assets:check",
             "@supply-chain:check",
@@ -127,6 +128,9 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::pre-package-uninstall"
+        ],
+        "codex:test-isolation": [
+            "bash bin/check-codex-test-isolation"
         ]
     },
     "extra": {

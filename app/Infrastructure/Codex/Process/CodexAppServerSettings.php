@@ -63,6 +63,10 @@ final readonly class CodexAppServerSettings
             );
         }
 
+        self::assertProductionSafeExecutable(
+            $executable,
+        );
+
         $schemaFingerprint = self::requiredString(
             $configuration['schema_fingerprint'] ?? null,
             'schema fingerprint',
@@ -163,6 +167,60 @@ final readonly class CodexAppServerSettings
         $environment['CODEX_HOME'] = $codexHome;
 
         return $environment;
+    }
+
+    /**
+     * Prevent the repository-owned deterministic test harness from becoming a
+     * production provider executable.
+     */
+    private static function assertProductionSafeExecutable(
+        string $executable,
+    ): void {
+        if (config('app.env') !== 'production') {
+            return;
+        }
+
+        $resolvedExecutable = realpath($executable);
+
+        $resolvedTestRoot = realpath(
+            base_path(
+                'tests/Fixtures/Codex',
+            ),
+        );
+
+        $executablePath = str_replace(
+            '\\',
+            '/',
+            $resolvedExecutable !== false
+                ? $resolvedExecutable
+                : $executable,
+        );
+
+        $testRoot = $resolvedTestRoot !== false
+            ? rtrim(
+                str_replace(
+                    '\\',
+                    '/',
+                    $resolvedTestRoot,
+                ),
+                '/',
+            ).'/'
+            : null;
+
+        if (
+            basename($executablePath) === 'fake-codex'
+            || (
+                $testRoot !== null
+                && str_starts_with(
+                    $executablePath,
+                    $testRoot,
+                )
+            )
+        ) {
+            throw new InvalidArgumentException(
+                'The deterministic Codex test harness cannot be selected in production.',
+            );
+        }
     }
 
     /**

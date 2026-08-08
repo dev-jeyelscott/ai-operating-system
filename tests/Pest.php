@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\Codex\FakeCodexServer;
 use Tests\TestCase;
 
 /*
@@ -10,11 +11,16 @@ use Tests\TestCase;
 |--------------------------------------------------------------------------
 |
 | Normal feature tests use database transactions for fast isolation.
+| Every framework-backed test also receives the deterministic Codex process
+| boundary so normal test execution can never select the real Codex binary.
 |
 */
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
+    ->beforeEach(function (): void {
+        FakeCodexServer::configureDefaults();
+    })
     ->in('Feature');
 
 /*
@@ -26,10 +32,17 @@ pest()->extend(TestCase::class)
 | PostgreSQL connections. DatabaseMigrations provides a clean schema without
 | wrapping the test data inside the parent process transaction.
 |
+| The same fake Codex boundary is installed for the parent Laravel process.
+| Child-process tests must continue passing the test environment explicitly
+| when they bootstrap an independent PHP process.
+|
 */
 
 pest()->extend(TestCase::class)
     ->use(DatabaseMigrations::class)
+    ->beforeEach(function (): void {
+        FakeCodexServer::configureDefaults();
+    })
     ->in('Concurrency');
 
 /*

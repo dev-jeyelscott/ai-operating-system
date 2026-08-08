@@ -1,0 +1,958 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+const FAKE_CODEX_VERSION = 'codex-cli 0.0.0-aios-fake';
+
+/**
+ * Exit with a safe fixture error without echoing request content.
+ */
+function failFixture(string $message, int $exitCode = 70): never
+{
+    fwrite(STDERR, "fake-codex: {$message}\n");
+
+    exit($exitCode);
+}
+
+/**
+ * Return the value following one command-line option.
+ *
+ * @param list<string> $arguments
+ */
+function optionValue(array $arguments, string $option): ?string
+{
+    $position = array_search($option, $arguments, true);
+
+    if ($position === false) {
+        return null;
+    }
+
+    $value = $arguments[$position + 1] ?? null;
+
+    return is_string($value) && $value !== ''
+        ? $value
+        : null;
+}
+
+/**
+ * Load and validate the versioned scenario catalog.
+ *
+ * @return array<string, mixed>
+ */
+function loadScenarioCatalog(string $path): array
+{
+    if (! is_file($path)) {
+        failFixture('scenario catalog does not exist');
+    }
+
+    try {
+        $catalog = json_decode(
+            file_get_contents($path) ?: '',
+            true,
+            32,
+            JSON_THROW_ON_ERROR,
+        );
+    } catch (JsonException) {
+        failFixture('scenario catalog contains invalid JSON');
+    }
+
+    if (
+        ! is_array($catalog)
+        || ($catalog['fixture_version'] ?? null) !== 1
+        || ($catalog['protocol_version'] ?? null) !== 'stable'
+        || ! is_array($catalog['scenarios'] ?? null)
+    ) {
+        failFixture('scenario catalog has an unsupported contract');
+    }
+
+    return $catalog;
+}
+
+/**
+ * Persist one client protocol message for test assertions.
+ */
+function recordIncomingMessage(?string $recordPath, string $line): void
+{
+    if ($recordPath === null) {
+        return;
+    }
+
+    $directory = dirname($recordPath);
+
+    if (! is_dir($directory) && ! mkdir($directory, 0777, true) && ! is_dir($directory)) {
+        failFixture('could not create protocol-record directory');
+    }
+
+    file_put_contents(
+        $recordPath,
+        rtrim($line, "\r\n")."\n",
+        FILE_APPEND | LOCK_EX,
+    );
+}
+
+/**
+ * Read one newline-delimited JSON message from Laravel.
+ *
+ * @return array<string, mixed>|null
+ */
+function readMessage(?string $recordPath): ?array
+{
+    $line = fgets(STDIN);
+
+    if ($line === false) {
+        return null;
+    }
+
+    $line = rtrim($line, "\r\n");
+
+    if ($line === '') {
+        return [];
+    }
+
+    recordIncomingMessage($recordPath, $line);
+
+    try {
+        $message = json_decode(
+            $line,
+            true,
+            32,
+            JSON_THROW_ON_ERROR,
+        );
+    } catch (JsonException) {
+        failFixture('client emitted malformed JSON');
+    }
+
+    if (! is_array($message) || array_is_list($message)) {
+        failFixture('client message must be a JSON object');
+    }
+
+    return $message;
+}
+
+/**
+ * Recursively sort object keys while retaining list order.
+ */
+function canonicalize(mixed $value): mixed
+{
+    if (! is_array($value)) {
+        return $value;
+    }
+
+    if (array_is_list($value)) {
+        return array_map(
+            static fn (mixed $item): mixed => canonicalize($item),
+            $value,
+        );
+    }
+
+    ksort($value);
+
+    foreach ($value as $key => $item) {
+        $value[$key] = canonicalize($item);
+    }
+
+    return $value;
+}
+
+/**
+ * Assert that Laravel emitted the exact expected protocol message.
+ *
+ * @param array<string, mixed> $actual
+ * @param array<string, mixed> $expected
+ */
+function assertMessage(
+    array $actual,
+    array $expected,
+    string $label,
+): void {
+    if (canonicalize($actual) !== canonicalize($expected)) {
+        failFixture("unexpected {$label} request");
+    }
+}
+
+/**
+ * Write one deterministic JSONL protocol message.
+ *
+ * @param array<string, mixed> $message
+ */
+function writeMessage(
+    array $message,
+    int $partialWriteBytes = 0,
+): void {
+    try {
+        $encoded = json_encode(
+            $message,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
+        )."\n";
+    } catch (JsonException) {
+        failFixture('fixture response could not be encoded');
+    }
+
+    if ($partialWriteBytes < 1) {
+        fwrite(STDOUT, $encoded);
+        fflush(STDOUT);
+
+        return;
+    }
+
+    $offset = 0;
+    $length = strlen($encoded);
+
+    while ($offset < $length) {
+        $chunk = substr(
+            $encoded,
+            $offset,
+            $partialWriteBytes,
+        );
+
+        fwrite(STDOUT, $chunk);
+        fflush(STDOUT);
+
+        $offset += strlen($chunk);
+
+        usleep(1_000);
+    }
+}
+
+/**
+ * Return deterministic fixture identifiers for one scenario seed.
+ *
+ * @return array{
+ *     thread_id: string,
+ *     turn_id: string,
+ *     item_id: string,
+ *     approval_request_id: int
+ * }
+ */
+function fixtureIds(int $seed): array
+{
+    return [
+        'thread_id' => "thread-{$seed}",
+        'turn_id' => "turn-{$seed}",
+        'item_id' => "item-{$seed}",
+        'approval_request_id' => 7000 + $seed,
+    ];
+}
+
+/**
+ * Assert the mandatory initialize request.
+ *
+ * @param array<string, mixed> $message
+ */
+function assertInitializeRequest(array $message): void
+{
+    assertMessage(
+        $message,
+        [
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => [
+                'clientInfo' => [
+                    'name' => 'ai-operating-system',
+                    'title' => 'AI Operating System',
+                    'version' => '1',
+                ],
+                'capabilities' => [
+                    'experimentalApi' => false,
+                ],
+            ],
+        ],
+        'initialize',
+    );
+}
+
+/**
+ * Assert the application-owned thread policy request.
+ *
+ * @param array<string, mixed> $message
+ */
+function assertThreadStartRequest(
+    array $message,
+    string $workspace,
+): void {
+    assertMessage(
+        $message,
+        [
+            'id' => 2,
+            'method' => 'thread/start',
+            'params' => [
+                'model' => 'gpt-5.3-codex',
+                'cwd' => $workspace,
+                'approvalPolicy' => 'on-request',
+                'sandbox' => 'workspaceWrite',
+            ],
+        ],
+        'thread/start',
+    );
+}
+
+/**
+ * Assert the deterministic planning-shaped turn input.
+ *
+ * @param array<string, mixed> $message
+ */
+function assertTurnStartRequest(
+    array $message,
+    string $threadId,
+): void {
+    assertMessage(
+        $message,
+        [
+            'id' => 3,
+            'method' => 'turn/start',
+            'params' => [
+                'threadId' => $threadId,
+                'input' => [
+                    [
+                        'type' => 'text',
+                        'text' => 'Plan AIOS-248.',
+                    ],
+                ],
+            ],
+        ],
+        'turn/start',
+    );
+}
+
+/**
+ * Emit the normal deterministic planning event sequence.
+ *
+ * @param array<string, mixed> $scenario
+ * @param array{
+ *     thread_id: string,
+ *     turn_id: string,
+ *     item_id: string,
+ *     approval_request_id: int
+ * } $ids
+ */
+function emitSuccessfulTurn(
+    array $scenario,
+    array $ids,
+    string $fixedClock,
+): void {
+    $partial = (int) ($scenario['partial_write_bytes'] ?? 0);
+
+    writeMessage([
+        'method' => 'turn/started',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turn' => [
+                'id' => $ids['turn_id'],
+                'status' => 'inProgress',
+            ],
+            'fixtureTime' => $fixedClock,
+        ],
+    ], $partial);
+
+    writeMessage([
+        'method' => 'item/started',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turnId' => $ids['turn_id'],
+            'item' => [
+                'id' => $ids['item_id'],
+                'type' => 'agentMessage',
+            ],
+        ],
+    ], $partial);
+
+    writeMessage([
+        'method' => 'item/agentMessage/delta',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turnId' => $ids['turn_id'],
+            'itemId' => $ids['item_id'],
+            'delta' => 'Deterministic AIOS-248 planning output.',
+        ],
+    ], $partial);
+
+    writeMessage([
+        'method' => 'item/completed',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turnId' => $ids['turn_id'],
+            'item' => [
+                'id' => $ids['item_id'],
+                'type' => 'agentMessage',
+            ],
+        ],
+    ], $partial);
+
+    writeMessage([
+        'method' => 'thread/tokenUsage/updated',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'inputTokens' => 10,
+            'outputTokens' => 20,
+        ],
+    ], $partial);
+
+    writeMessage([
+        'method' => 'turn/completed',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turn' => [
+                'id' => $ids['turn_id'],
+                'status' => 'completed',
+            ],
+        ],
+    ], $partial);
+}
+
+/**
+ * Emit one provider-originated approval request.
+ *
+ * @param array{
+ *     thread_id: string,
+ *     turn_id: string,
+ *     item_id: string,
+ *     approval_request_id: int
+ * } $ids
+ */
+function emitApprovalRequest(
+    array $ids,
+    string $workspace,
+): void {
+    writeMessage([
+        'id' => $ids['approval_request_id'],
+        'method' => 'item/commandExecution/requestApproval',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turnId' => $ids['turn_id'],
+            'itemId' => $ids['item_id'],
+            'command' => 'php artisan test',
+            'cwd' => $workspace,
+        ],
+    ]);
+}
+
+/**
+ * Complete one approval scenario after validating Laravel's decision.
+ *
+ * @param array<string, mixed> $message
+ * @param array{
+ *     thread_id: string,
+ *     turn_id: string,
+ *     item_id: string,
+ *     approval_request_id: int
+ * } $ids
+ */
+function handleApprovalResponse(
+    array $message,
+    array $ids,
+    string $expectedDecision,
+): void {
+    assertMessage(
+        $message,
+        [
+            'id' => $ids['approval_request_id'],
+            'result' => [
+                'decision' => $expectedDecision,
+            ],
+        ],
+        'approval response',
+    );
+
+    writeMessage([
+        'method' => 'serverRequest/resolved',
+        'params' => [
+            'requestId' => $ids['approval_request_id'],
+            'threadId' => $ids['thread_id'],
+            'turnId' => $ids['turn_id'],
+        ],
+    ]);
+
+    writeMessage([
+        'method' => 'turn/completed',
+        'params' => [
+            'threadId' => $ids['thread_id'],
+            'turn' => [
+                'id' => $ids['turn_id'],
+                'status' => $expectedDecision === 'accept'
+                    ? 'completed'
+                    : 'failed',
+            ],
+        ],
+    ]);
+}
+
+$arguments = array_slice($argv, 1);
+
+if (getenv('AIOS_CODEX_FAKE_SERVER') !== '1') {
+    failFixture(
+        'test harness marker is required',
+        77,
+    );
+}
+
+if ($arguments === ['--version']) {
+    fwrite(STDOUT, FAKE_CODEX_VERSION."\n");
+
+    exit(0);
+}
+
+if (
+    ($arguments[0] ?? null) !== 'app-server'
+    || optionValue($arguments, '--listen') !== 'stdio://'
+) {
+    failFixture('unsupported fake executable invocation');
+}
+
+$catalogPath = optionValue(
+    $arguments,
+    '--catalog',
+);
+
+$scenarioName = optionValue(
+    $arguments,
+    '--scenario',
+);
+
+$recordPath = optionValue(
+    $arguments,
+    '--record',
+);
+
+if ($catalogPath === null || $scenarioName === null) {
+    failFixture('catalog and scenario are required');
+}
+
+$catalog = loadScenarioCatalog($catalogPath);
+$scenarios = $catalog['scenarios'];
+
+$scenario = $scenarios[$scenarioName] ?? null;
+
+if (! is_array($scenario)) {
+    failFixture('unknown scenario');
+}
+
+$seed = (int) (
+    $scenario['seed']
+    ?? $catalog['seed']
+    ?? 248
+);
+
+$fixedClock = (string) (
+    $scenario['fixed_clock']
+    ?? $catalog['fixed_clock']
+    ?? '2026-08-08T00:00:00+00:00'
+);
+
+$mode = (string) ($scenario['mode'] ?? '');
+$ids = fixtureIds($seed);
+
+$workspace = getcwd();
+
+if (! is_string($workspace) || $workspace === '') {
+    failFixture('workspace is unavailable');
+}
+
+$codexHome = getenv('CODEX_HOME');
+
+if (! is_string($codexHome) || $codexHome === '') {
+    failFixture('CODEX_HOME is unavailable');
+}
+
+$initialized = false;
+$threadStarted = false;
+$turnStarted = false;
+$approvalPending = false;
+
+while (($message = readMessage($recordPath)) !== null) {
+    if ($message === []) {
+        continue;
+    }
+
+    $method = $message['method'] ?? null;
+
+    if ($method === 'initialize') {
+        assertInitializeRequest($message);
+
+        if ($mode === 'malformed_payload') {
+            fwrite(
+                STDOUT,
+                "{\"id\":1,\"result\":\n",
+            );
+            fflush(STDOUT);
+
+            continue;
+        }
+
+        if ($mode === 'request_timeout') {
+            usleep(
+                ((int) ($scenario['delay_ms'] ?? 1500))
+                * 1000,
+            );
+
+            exit(0);
+        }
+
+        if ($mode === 'server_overloaded') {
+            writeMessage([
+                'id' => 1,
+                'error' => [
+                    'code' => -32001,
+                    'message' => 'fixture overloaded',
+                ],
+            ]);
+
+            continue;
+        }
+
+        if ($mode === 'rpc_error') {
+            writeMessage([
+                'id' => 1,
+                'error' => [
+                    'code' => -32600,
+                    'message' => 'fixture protocol error',
+                ],
+            ]);
+
+            continue;
+        }
+
+        $initialization = [
+            'id' => 1,
+            'result' => [
+                'userAgent' => 'aios-fake-codex/1',
+                'codexHome' => $codexHome,
+                'platformFamily' => 'linux',
+                'platformOs' => 'linux',
+            ],
+        ];
+
+        writeMessage(
+            $initialization,
+            (int) ($scenario['partial_write_bytes'] ?? 0),
+        );
+
+        if ($mode === 'duplicate_response') {
+            writeMessage($initialization);
+        }
+
+        continue;
+    }
+
+    if ($method === 'initialized') {
+        assertMessage(
+            $message,
+            ['method' => 'initialized'],
+            'initialized',
+        );
+
+        $initialized = true;
+
+        continue;
+    }
+
+    if (! $initialized) {
+        failFixture('thread operation arrived before initialization');
+    }
+
+    if ($method === 'thread/start') {
+        assertThreadStartRequest(
+            $message,
+            $workspace,
+        );
+
+        $threadStarted = true;
+
+        writeMessage([
+            'id' => 2,
+            'result' => [
+                'thread' => [
+                    'id' => $ids['thread_id'],
+                ],
+            ],
+        ], (int) ($scenario['partial_write_bytes'] ?? 0));
+
+        continue;
+    }
+
+    if ($method === 'turn/start') {
+        if (! $threadStarted) {
+            failFixture('turn arrived before thread');
+        }
+
+        assertTurnStartRequest(
+            $message,
+            $ids['thread_id'],
+        );
+
+        $turnStarted = true;
+
+        writeMessage([
+            'id' => 3,
+            'result' => [
+                'turn' => [
+                    'id' => $ids['turn_id'],
+                    'status' => 'inProgress',
+                ],
+            ],
+        ], (int) ($scenario['partial_write_bytes'] ?? 0));
+
+        if (in_array($mode, ['success', 'streaming'], true)) {
+            emitSuccessfulTurn(
+                $scenario,
+                $ids,
+                $fixedClock,
+            );
+
+            continue;
+        }
+
+        if (in_array(
+            $mode,
+            [
+                'approval_accept',
+                'approval_denial',
+                'approval_blocked',
+            ],
+            true,
+        )) {
+            writeMessage([
+                'method' => 'turn/started',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turn' => [
+                        'id' => $ids['turn_id'],
+                        'status' => 'inProgress',
+                    ],
+                ],
+            ]);
+
+            emitApprovalRequest(
+                $ids,
+                $workspace,
+            );
+
+            $approvalPending = true;
+
+            continue;
+        }
+
+        if ($mode === 'cancellation') {
+            writeMessage([
+                'method' => 'turn/started',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turn' => [
+                        'id' => $ids['turn_id'],
+                        'status' => 'inProgress',
+                    ],
+                ],
+            ]);
+
+            continue;
+        }
+
+        if ($mode === 'duplicate_event') {
+            $event = [
+                'method' => 'item/started',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turnId' => $ids['turn_id'],
+                    'item' => [
+                        'id' => $ids['item_id'],
+                        'type' => 'agentMessage',
+                    ],
+                ],
+            ];
+
+            writeMessage($event);
+            writeMessage($event);
+
+            continue;
+        }
+
+        if ($mode === 'out_of_order_event') {
+            writeMessage([
+                'method' => 'turn/completed',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turn' => [
+                        'id' => $ids['turn_id'],
+                        'status' => 'completed',
+                    ],
+                ],
+            ]);
+
+            writeMessage([
+                'method' => 'turn/started',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turn' => [
+                        'id' => $ids['turn_id'],
+                        'status' => 'inProgress',
+                    ],
+                ],
+            ]);
+
+            continue;
+        }
+
+        if ($mode === 'oversized_output') {
+            writeMessage([
+                'method' => 'warning',
+                'params' => [
+                    'message' => str_repeat(
+                        'x',
+                        (int) ($scenario['output_bytes'] ?? 2048),
+                    ),
+                ],
+            ]);
+
+            continue;
+        }
+
+        if ($mode === 'stderr_pressure') {
+            fwrite(
+                STDERR,
+                str_repeat(
+                    'e',
+                    (int) ($scenario['stderr_bytes'] ?? 2048),
+                ),
+            );
+            fflush(STDERR);
+
+            continue;
+        }
+
+        if ($mode === 'unknown_message') {
+            writeMessage([
+                'method' => 'account/updated',
+                'params' => [
+                    'fixtureTime' => $fixedClock,
+                ],
+            ]);
+
+            continue;
+        }
+
+        if ($mode === 'redaction') {
+            writeMessage([
+                'method' => 'warning',
+                'params' => [
+                    'api_key' => 'fixture-secret',
+                    'authorization' => 'Bearer fixture-token',
+                    'safe' => 'visible',
+                ],
+            ]);
+
+            continue;
+        }
+
+        if ($mode === 'stale_heartbeat') {
+            continue;
+        }
+
+        if ($mode === 'crash') {
+            usleep(
+                ((int) ($scenario['delay_ms'] ?? 50))
+                * 1000,
+            );
+
+            exit(
+                (int) ($scenario['exit_code'] ?? 23),
+            );
+        }
+
+        if ($mode === 'recovery') {
+            writeMessage([
+                'method' => 'turn/started',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turn' => [
+                        'id' => $ids['turn_id'],
+                        'status' => 'inProgress',
+                    ],
+                ],
+            ]);
+
+            usleep(
+                ((int) ($scenario['delay_ms'] ?? 50))
+                * 1000,
+            );
+
+            exit(
+                (int) ($scenario['exit_code'] ?? 42),
+            );
+        }
+
+        if ($mode === 'forced_termination') {
+            usleep(
+                ((int) ($scenario['hang_ms'] ?? 60000))
+                * 1000,
+            );
+
+            continue;
+        }
+
+        failFixture('scenario has no turn behavior');
+    }
+
+    if ($method === 'turn/interrupt') {
+        if (! $turnStarted) {
+            failFixture('interrupt arrived before turn');
+        }
+
+        assertMessage(
+            $message,
+            [
+                'id' => 4,
+                'method' => 'turn/interrupt',
+                'params' => [
+                    'threadId' => $ids['thread_id'],
+                    'turnId' => $ids['turn_id'],
+                ],
+            ],
+            'turn/interrupt',
+        );
+
+        writeMessage([
+            'id' => 4,
+            'result' => [],
+        ]);
+
+        writeMessage([
+            'method' => 'turn/completed',
+            'params' => [
+                'threadId' => $ids['thread_id'],
+                'turn' => [
+                    'id' => $ids['turn_id'],
+                    'status' => 'interrupted',
+                ],
+            ],
+        ]);
+
+        continue;
+    }
+
+    if (
+        $approvalPending
+        && array_key_exists('id', $message)
+        && $message['id'] === $ids['approval_request_id']
+        && ! array_key_exists('method', $message)
+    ) {
+        if ($mode === 'approval_blocked') {
+            failFixture('blocked approval unexpectedly received a decision');
+        }
+
+        handleApprovalResponse(
+            $message,
+            $ids,
+            $mode === 'approval_accept'
+                ? 'accept'
+                : 'decline',
+        );
+
+        $approvalPending = false;
+
+        continue;
+    }
+
+    failFixture('unsupported client protocol message');
+}
+
+exit(0);
