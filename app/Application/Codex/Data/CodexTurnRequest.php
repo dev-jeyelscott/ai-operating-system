@@ -12,35 +12,64 @@ use InvalidArgumentException;
 final readonly class CodexTurnRequest
 {
     /**
-     * @param  list<array<string, mixed>>  $input
+     * Validated, non-empty provider input items.
+     *
+     * @var non-empty-list<array<string, mixed>>
+     */
+    public array $input;
+
+    /**
+     * Validated JSON Schema supplied to the provider.
+     *
+     * @var array<string, mixed>
+     */
+    public array $outputSchema;
+
+    /**
+     * Create and validate one schema-constrained Codex turn request.
+     *
+     * @param  array<array-key, mixed>  $input
      * @param  array<string, mixed>  $outputSchema
      */
     public function __construct(
         public string $threadId,
-        public array $input,
+        array $input,
         public string $reasoningEffort,
-        public array $outputSchema,
+        array $outputSchema,
     ) {
-        if ($this->threadId === '' || $this->input === [] || ! array_is_list($this->input)) {
-            throw new InvalidArgumentException('Codex turn input is invalid.');
+        if ($this->threadId === '') {
+            throw new InvalidArgumentException(
+                'Codex turn thread identifier is invalid.',
+            );
         }
 
-        if (! in_array($this->reasoningEffort, ['low', 'medium', 'high'], true)) {
-            throw new InvalidArgumentException('Codex reasoning effort is invalid.');
+        self::assertValidInput($input);
+
+        if (! in_array(
+            $this->reasoningEffort,
+            ['low', 'medium', 'high'],
+            true,
+        )) {
+            throw new InvalidArgumentException(
+                'Codex reasoning effort is invalid.',
+            );
         }
 
-        if (($this->outputSchema['type'] ?? null) !== 'object') {
-            throw new InvalidArgumentException('Codex output schema must describe an object.');
+        if (($outputSchema['type'] ?? null) !== 'object') {
+            throw new InvalidArgumentException(
+                'Codex output schema must describe an object.',
+            );
         }
 
-        foreach ($this->input as $item) {
-            if (! is_array($item) || ! is_string($item['type'] ?? null)) {
-                throw new InvalidArgumentException('Codex turn input contains an invalid item.');
-            }
-        }
+        $this->input = $input;
+        $this->outputSchema = $outputSchema;
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Convert the request into Codex App Server turn/start parameters.
+     *
+     * @return array<string, mixed>
+     */
     public function toProtocolParams(): array
     {
         return [
@@ -49,5 +78,40 @@ final readonly class CodexTurnRequest
             'effort' => $this->reasoningEffort,
             'outputSchema' => $this->outputSchema,
         ];
+    }
+
+    /**
+     * Validate and narrow raw input into a non-empty list of input objects.
+     *
+     * @param  array<array-key, mixed>  $input
+     *
+     * @phpstan-assert non-empty-list<array<string, mixed>> $input
+     */
+    private static function assertValidInput(array $input): void
+    {
+        if ($input === [] || ! array_is_list($input)) {
+            throw new InvalidArgumentException(
+                'Codex turn input is invalid.',
+            );
+        }
+
+        foreach ($input as $item) {
+            if (
+                ! is_array($item)
+                || ! is_string($item['type'] ?? null)
+            ) {
+                throw new InvalidArgumentException(
+                    'Codex turn input contains an invalid item.',
+                );
+            }
+
+            foreach (array_keys($item) as $key) {
+                if (! is_string($key)) {
+                    throw new InvalidArgumentException(
+                        'Codex turn input item keys must be strings.',
+                    );
+                }
+            }
+        }
     }
 }

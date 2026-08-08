@@ -11,6 +11,7 @@ use App\Application\Codex\Data\CodexProcessContext;
 use App\Application\Codex\Data\CodexProcessStatus;
 use App\Application\Codex\Data\CodexThreadReference;
 use App\Application\Codex\Data\CodexTurnReference;
+use App\Application\Codex\Data\CodexTurnRequest;
 use App\Application\Codex\Exceptions\CodexGatewayException;
 use App\Application\Security\RedactSensitiveData;
 use Carbon\CarbonImmutable;
@@ -220,52 +221,16 @@ final class SymfonyCodexProcessSession implements CodexProcessSession
     }
 
     /**
-     * Start one turn using only caller-supplied structured input.
-     *
-     * The concrete process boundary accepts a broader array shape than the
-     * application contract so malformed runtime input can still be rejected
-     * before it reaches the provider process.
-     *
-     * @param  array<int, mixed>  $input
+     * Start one schema-constrained provider turn.
      */
     public function startTurn(
-        string $threadId,
-        array $input,
+        CodexTurnRequest $request,
     ): CodexTurnReference {
         $this->assertInitialized();
 
-        if (
-            trim($threadId) === ''
-            || ! array_is_list($input)
-            || $input === []
-        ) {
-            throw new CodexGatewayException(
-                CodexGatewayException::PROTOCOL_MALFORMED,
-                false,
-                'Codex turn request is invalid.',
-            );
-        }
-
-        foreach ($input as $item) {
-            if (
-                ! is_array($item)
-                || ! isset($item['type'])
-                || ! is_string($item['type'])
-            ) {
-                throw new CodexGatewayException(
-                    CodexGatewayException::PROTOCOL_MALFORMED,
-                    false,
-                    'Codex turn input item is invalid.',
-                );
-            }
-        }
-
         $result = $this->request(
             method: 'turn/start',
-            params: [
-                'threadId' => $threadId,
-                'input' => $input,
-            ],
+            params: $request->toProtocolParams(),
         );
 
         $turn = $result['turn'] ?? null;

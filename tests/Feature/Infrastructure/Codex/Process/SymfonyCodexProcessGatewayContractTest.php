@@ -92,6 +92,27 @@ function aios248CollectUntil(
 }
 
 /**
+ * Build one minimal schema-constrained request for gateway contract tests.
+ */
+function aios248TurnRequest(
+    string $threadId,
+): CodexTurnRequest {
+    return new CodexTurnRequest(
+        threadId: $threadId,
+        input: [
+            [
+                'type' => 'text',
+                'text' => 'Plan AIOS-248.',
+            ],
+        ],
+        reasoningEffort: 'medium',
+        outputSchema: [
+            'type' => 'object',
+        ],
+    );
+}
+
+/**
  * Execute one complete deterministic planning-shaped Codex turn.
  *
  * @return array{
@@ -122,14 +143,8 @@ function aios248PlanningTurn(
         expect($thread->id)
             ->toBe('thread-248');
 
-        $turn = $session->startTurn(
-            $thread->id,
-            [
-                [
-                    'type' => 'text',
-                    'text' => 'Plan AIOS-248.',
-                ],
-            ],
+        $session->startTurn(
+            aios248TurnRequest($thread->id),
         );
 
         expect($turn->id)
@@ -282,14 +297,8 @@ test(
                 'on-request',
             );
 
-            $turn = $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+            $session->startTurn(
+                aios248TurnRequest($thread->id),
             );
 
             $events = aios248CollectUntil(
@@ -381,13 +390,7 @@ test(
             );
 
             $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+                aios248TurnRequest($thread->id),
             );
 
             aios248CollectUntil(
@@ -421,14 +424,8 @@ test(
                 'on-request',
             );
 
-            $turn = $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+            $session->startTurn(
+                aios248TurnRequest($thread->id),
             );
 
             aios248CollectUntil(
@@ -629,13 +626,7 @@ test(
 
             try {
                 $session->startTurn(
-                    $thread->id,
-                    [
-                        [
-                            'type' => 'text',
-                            'text' => 'Plan AIOS-248.',
-                        ],
-                    ],
+                    aios248TurnRequest($thread->id),
                 );
 
                 $session->nextEvent(100);
@@ -676,13 +667,7 @@ test(
 
             try {
                 $session->startTurn(
-                    $thread->id,
-                    [
-                        [
-                            'type' => 'text',
-                            'text' => 'Plan AIOS-248.',
-                        ],
-                    ],
+                    aios248TurnRequest($thread->id),
                 );
 
                 $session->nextEvent(100);
@@ -723,13 +708,7 @@ test(
 
             try {
                 $session->startTurn(
-                    $thread->id,
-                    [
-                        [
-                            'type' => 'text',
-                            'text' => 'Plan AIOS-248.',
-                        ],
-                    ],
+                    aios248TurnRequest($thread->id),
                 );
 
                 $session->nextEvent(100);
@@ -766,13 +745,7 @@ test(
             );
 
             $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+                aios248TurnRequest($thread->id),
             );
 
             try {
@@ -812,13 +785,7 @@ test(
             );
 
             $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+                aios248TurnRequest($thread->id),
             );
 
             $first = $session->nextEvent(100);
@@ -859,13 +826,7 @@ test(
             );
 
             $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+                aios248TurnRequest($thread->id),
             );
 
             $first = $session->nextEvent(100);
@@ -898,13 +859,7 @@ test(
             );
 
             $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+                aios248TurnRequest($thread->id),
             );
 
             $warning = $session->nextEvent(100);
@@ -938,13 +893,7 @@ test(
             );
 
             $session->startTurn(
-                $thread->id,
-                [
-                    [
-                        'type' => 'text',
-                        'text' => 'Plan AIOS-248.',
-                    ],
-                ],
+                aios248TurnRequest($thread->id),
             );
 
             expect($session->nextEvent(50))

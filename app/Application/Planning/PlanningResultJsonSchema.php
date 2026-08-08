@@ -269,9 +269,22 @@ final readonly class PlanningResultJsonSchema
         );
     }
 
-    /** @return array<string, mixed> */
-    private function object(array $required, array $properties): array
-    {
+    /**
+     * Build a strict JSON Schema object definition.
+     *
+     * @param  list<string>  $required
+     * @param  array<string, array<string, mixed>>  $properties
+     * @return array{
+     *     type: 'object',
+     *     additionalProperties: false,
+     *     required: list<string>,
+     *     properties: array<string, array<string, mixed>>
+     * }
+     */
+    private function object(
+        array $required,
+        array $properties,
+    ): array {
         return [
             'type' => 'object',
             'additionalProperties' => false,
@@ -280,7 +293,17 @@ final readonly class PlanningResultJsonSchema
         ];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Build a bounded JSON Schema list definition.
+     *
+     * @param  array<string, mixed>  $items
+     * @return array{
+     *     type: 'array',
+     *     minItems: int,
+     *     maxItems: int,
+     *     items: array<string, mixed>
+     * }
+     */
     private function list(
         array $items,
         int $minimum = 0,
@@ -290,7 +313,10 @@ final readonly class PlanningResultJsonSchema
             'minItems' => $minimum,
             'maxItems' => max(
                 1,
-                (int) config('codex-planning.maximum_output_list_items', 2_000),
+                (int) config(
+                    'codex-planning.maximum_output_list_items',
+                    2_000,
+                ),
             ),
             'items' => $items,
         ];
