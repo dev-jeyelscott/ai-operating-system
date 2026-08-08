@@ -39,6 +39,9 @@ return [
     | The short window absorbs accidental double-clicks and burst abuse, while
     | the hourly window limits sustained automated command execution.
     |
+    | Every command resolved by RateLimitServiceProvider must have its limits
+    | defined inside this project_commands namespace.
+    |
     */
 
     'project_commands' => [
@@ -96,28 +99,36 @@ return [
                 50,
             ),
         ],
-    ],
 
-    'credentials' => [
-        'per_minute' => (int) env(
-            'RATE_LIMIT_PROJECT_CREDENTIALS_PER_MINUTE',
-            5,
-        ),
-        'per_hour' => (int) env(
-            'RATE_LIMIT_PROJECT_CREDENTIALS_PER_HOUR',
-            20,
-        ),
-    ],
+        /*
+         * Credential writes are privileged project commands and must use the
+         * same namespace consumed by the project-commands named limiter.
+         */
+        'credentials' => [
+            'per_minute' => (int) env(
+                'RATE_LIMIT_PROJECT_CREDENTIALS_PER_MINUTE',
+                5,
+            ),
+            'per_hour' => (int) env(
+                'RATE_LIMIT_PROJECT_CREDENTIALS_PER_HOUR',
+                20,
+            ),
+        ],
 
-    'integration_test' => [
-        'per_minute' => (int) env(
-            'RATE_LIMIT_NOTION_TEST_PER_MINUTE',
-            5,
-        ),
-
-        'per_hour' => (int) env(
-            'RATE_LIMIT_NOTION_TEST_PER_HOUR',
-            20,
-        ),
+        /*
+         * Notion and Codex connection tests currently share the integration
+         * test command bucket. Retain the existing environment variable names
+         * to avoid changing deployed configuration as part of this bug fix.
+         */
+        'integration_test' => [
+            'per_minute' => (int) env(
+                'RATE_LIMIT_NOTION_TEST_PER_MINUTE',
+                5,
+            ),
+            'per_hour' => (int) env(
+                'RATE_LIMIT_NOTION_TEST_PER_HOUR',
+                20,
+            ),
+        ],
     ],
 ];

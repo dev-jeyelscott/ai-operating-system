@@ -101,6 +101,55 @@ function createRateLimitOrganizationOwner(): array
     ];
 }
 
+test('all routed project command limits have positive configuration', function (
+    string $command,
+): void {
+    /*
+     * The rate-limit provider resolves every privileged project command through
+     * rate-limits.project_commands.{command}.
+     *
+     * Some HTTP tests intentionally override these values in beforeEach(), so
+     * this contract checks existence and validity rather than production
+     * defaults. A missing configuration value would be null and fail these
+     * assertions before the provider can silently fall back to one request.
+     */
+    $perMinute = config(
+        "rate-limits.project_commands.{$command}.per_minute",
+    );
+
+    $perHour = config(
+        "rate-limits.project_commands.{$command}.per_hour",
+    );
+
+    expect($perMinute)
+        ->toBeInt()
+        ->toBeGreaterThan(0);
+
+    expect($perHour)
+        ->toBeInt()
+        ->toBeGreaterThan(0);
+})->with([
+    'store',
+    'update',
+    'upload',
+    'archive',
+    'restore',
+    'credentials',
+    'integration_test',
+]);
+
+test('legacy top level privileged command limit paths are not used', function (): void {
+    /*
+     * Credential and integration-test limits must stay inside project_commands
+     * because RateLimitServiceProvider resolves them through that namespace.
+     */
+    expect(config('rate-limits.credentials'))
+        ->toBeNull();
+
+    expect(config('rate-limits.integration_test'))
+        ->toBeNull();
+});
+
 test('project creation is rate limited per actor and organization', function () {
     ['user' => $user, 'organization' => $organization]
         = createRateLimitOrganizationOwner();
@@ -425,11 +474,13 @@ test('privileged project mutation commands are rate limited', function (
         'PUT',
         'update',
     ],
+
     'archive' => [
         'organizations.projects.archive',
         'PUT',
         'archive',
     ],
+
     'restore' => [
         'organizations.projects.restore',
         'PUT',
