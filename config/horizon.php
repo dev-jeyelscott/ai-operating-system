@@ -130,6 +130,27 @@ return [
             'timeout' => 75,
             'nice' => 0,
         ],
+
+        /*
+         * Keep Codex work isolated from both the default workflow queue and
+         * external integration work. Environment-specific configuration only
+         * controls capacity; the complete worker contract belongs here.
+         */
+        'supervisor-codex' => [
+            'connection' => 'redis',
+            'queue' => [
+                'codex',
+            ],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
