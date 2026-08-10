@@ -7,7 +7,7 @@ export type OfficeStatePresentation = {
 };
 
 /**
- * Resolve visual presentation from the authoritative backend office state.
+ * Resolve visual presentation from authoritative backend office state.
  *
  * Unknown values intentionally degrade to Idle instead of inventing progress.
  */
@@ -20,6 +20,11 @@ export function officeStatePresentation(
         case 'planning':
             return presentation('Planning', '#8b5cf6', '#4c1d95');
         case 'waiting_for_approval':
+            return presentation(
+                'Waiting for approval',
+                '#eab308',
+                '#713f12',
+            );
         case 'waiting_for_human':
             return presentation('Waiting for human', '#eab308', '#713f12');
         case 'selecting_ticket':
@@ -30,7 +35,11 @@ export function officeStatePresentation(
         case 'validating':
             return presentation('Validating', '#14b8a6', '#134e4a');
         case 'creating_pull_request':
-            return presentation('Creating pull request', '#2dd4bf', '#115e59');
+            return presentation(
+                'Creating pull request',
+                '#2dd4bf',
+                '#115e59',
+            );
         case 'reviewing':
             return presentation('Reviewing', '#ec4899', '#831843');
         case 'blocked':
@@ -39,6 +48,8 @@ export function officeStatePresentation(
             return presentation('Retrying', '#f97316', '#7c2d12', 0.65);
         case 'completed':
             return presentation('Completed', '#22c55e', '#14532d');
+        case 'cancelled':
+            return presentation('Cancelled', '#78716c', '#292524', 0.25);
         case 'failed':
             return presentation('Failed', '#dc2626', '#7f1d1d', 0.8);
         case 'queued':

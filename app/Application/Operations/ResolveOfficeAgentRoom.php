@@ -8,8 +8,8 @@ namespace App\Application\Operations;
  * Resolves the canonical office room for one authoritative agent state.
  *
  * The workflow engine and office projection remain authoritative. This class
- * only translates already-projected state into the stable room vocabulary used
- * by both the 3D office and its accessible equivalent.
+ * only translates projected state into the stable room vocabulary shared by
+ * the 3D office and its accessible equivalent.
  */
 final readonly class ResolveOfficeAgentRoom
 {
@@ -26,7 +26,8 @@ final readonly class ResolveOfficeAgentRoom
 
             'blocked',
             'retrying',
-            'failed' => 'operations_area',
+            'failed',
+            'cancelled' => 'operations_area',
 
             'completed' => 'archive',
 

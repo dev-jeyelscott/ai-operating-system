@@ -11,8 +11,7 @@ export type OfficeRoomKey =
     | 'archive';
 
 /**
- * Authoritative office-state vocabulary used by the projection and later
- * visual-state tickets.
+ * Authoritative office-state vocabulary.
  */
 export type OfficeState =
     | 'idle'
@@ -30,6 +29,7 @@ export type OfficeState =
     | 'retrying'
     | 'waiting_for_human'
     | 'completed'
+    | 'cancelled'
     | 'failed';
 
 /**
@@ -46,7 +46,20 @@ export type OfficeRoom = {
 };
 
 /**
- * One logical agent projected from a workflow execution.
+ * One privacy-safe durable provider activity entry.
+ */
+export type OfficeActivity = {
+    sequence: number;
+    eventId: string;
+    executionId: string | null;
+    provider: string | null;
+    state: OfficeState;
+    summary: string;
+    occurredAt: string;
+};
+
+/**
+ * One logical agent projected from workflow and provider state.
  */
 export type OfficeAgent = {
     id: string;
@@ -59,6 +72,11 @@ export type OfficeAgent = {
     currentAction: string;
     active: boolean;
     provider: string | null;
+    model?: string | null;
+    providerState?: string | null;
+    providerPhase?: string | null;
+    providerSequence?: number;
+    lastProviderMessageAt?: string | null;
     requestedReasoning: string;
     effectiveReasoning: string | null;
     ticketId: string | null;
@@ -67,6 +85,18 @@ export type OfficeAgent = {
     nextAttemptAt: string | null;
     startedAt: string | null;
     finishedAt: string | null;
+    elapsedSeconds?: number | null;
+    estimatedCost?: string | null;
+    actualCost?: string | null;
+    costCurrency?: string | null;
+    confidence?: string | null;
+    actualState?: string | null;
+    approvalRequired?: boolean;
+    approvalSummary?: string | null;
+    approvalUrl?: string | null;
+    recoveryRequired?: boolean;
+    diagnosticCode?: string | null;
+    diagnosticMessage?: string | null;
     contextUrl: string;
 };
 
@@ -125,6 +155,7 @@ export type OfficeProjection = {
     };
     rooms: OfficeRoom[];
     agents: OfficeAgent[];
+    activity?: OfficeActivity[];
     indicators: OfficeIndicator[];
     simulation: {
         labelRequired: boolean;

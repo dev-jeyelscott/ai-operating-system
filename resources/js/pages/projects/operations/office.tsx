@@ -1,9 +1,11 @@
 import { Head, Link, router, usePoll } from '@inertiajs/react';
 import { ArrowLeft, LayoutDashboard, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { OfficeActivityFeed } from '@/features/office/components/office-activity-feed';
 import { OfficeShell } from '@/features/office/components/office-shell';
+import { useOfficeProjectionStream } from '@/features/office/hooks/use-office-projection-stream';
 import type { OfficeProjection } from '@/features/office/types';
 
 type Props = {
@@ -26,8 +28,10 @@ type Props = {
 };
 
 /**
- * Render the tenant-scoped office page without coupling workflow operations to
- * WebGL availability.
+ * Render the tenant-scoped office from the persisted backend projection.
+ *
+ * Reverb provides low-latency invalidation only. Inertia polling remains the
+ * recovery path for dropped delivery and reconnect.
  */
 export default function ProjectOffice({
     organization,
@@ -40,22 +44,42 @@ export default function ProjectOffice({
 }: Props) {
     const [refreshing, setRefreshing] = useState(false);
 
+    /**
+     * Reload only the durable projection and preserve current UI context.
+     */
+    const refreshProjection = useCallback(() => {
+        router.reload({
+            only: ['officeProjection'],
+            preserveScroll: true,
+            preserveState: true,
+            onStart: () => setRefreshing(true),
+            onFinish: () => setRefreshing(false),
+        });
+    }, []);
+
+    /*
+     * Keep the existing bounded poll. It guarantees state convergence if a
+     * WebSocket event is missed while the browser is disconnected.
+     */
     usePoll(10_000, {
         only: ['officeProjection'],
+        preserveScroll: true,
+        preserveState: true,
         onStart: () => setRefreshing(true),
         onFinish: () => setRefreshing(false),
     });
 
-    /**
-     * Refresh only the persisted projection prop.
+    /*
+     * A newer sequence from Reverb triggers the same durable projection reload.
+     * Provider messages never directly change workflow state in React.
      */
-    function refreshProjection() {
-        router.reload({
-            only: ['officeProjection'],
-            onStart: () => setRefreshing(true),
-            onFinish: () => setRefreshing(false),
-        });
-    }
+    useOfficeProjectionStream({
+        organizationId: organization.id,
+        projectId: project.id,
+        lastEventSequence:
+            officeProjection.metadata.lastEventSequence,
+        onNewerProjection: refreshProjection,
+    });
 
     return (
         <>
@@ -75,15 +99,25 @@ export default function ProjectOffice({
                             <h1 className="text-2xl font-semibold tracking-tight">
                                 Interactive office
                             </h1>
+
                             <Badge variant="outline">
                                 {humanize(project.status)}
+                            </Badge>
+
+                            <Badge variant="outline">
+                                Sequence{' '}
+                                {
+                                    officeProjection.metadata
+                                        .lastEventSequence
+                                }
                             </Badge>
                         </div>
 
                         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
                             Projection-driven visualization for {project.name}{' '}
-                            in {organization.name}. The accessible dashboard
-                            remains the authoritative control surface.
+                            in {organization.name}. Provider activity is derived
+                            from durable backend events rather than browser
+                            timers.
                         </p>
                     </div>
 
@@ -103,8 +137,11 @@ export default function ProjectOffice({
                         >
                             <RefreshCw
                                 aria-hidden="true"
-                                className={refreshing ? 'animate-spin' : ''}
+                                className={
+                                    refreshing ? 'animate-spin' : ''
+                                }
                             />
+
                             {refreshing ? 'Refreshing…' : 'Refresh'}
                         </Button>
                     </div>
@@ -117,13 +154,19 @@ export default function ProjectOffice({
                 >
                     {refreshing
                         ? 'Refreshing office projection.'
-                        : `Projection endpoint: ${officeProjectionEndpointUrl}`}
+                        : `Durable projection sequence ${officeProjection.metadata.lastEventSequence}. Endpoint: ${officeProjectionEndpointUrl}`}
                 </div>
 
                 <OfficeShell
                     projection={officeProjection}
                     operationsUrl={operationsUrl}
-                    telemetryEndpointUrl={officeTelemetryEndpointUrl}
+                    telemetryEndpointUrl={
+                        officeTelemetryEndpointUrl
+                    }
+                />
+
+                <OfficeActivityFeed
+                    activities={officeProjection.activity ?? []}
                 />
             </div>
         </>
@@ -131,7 +174,7 @@ export default function ProjectOffice({
 }
 
 /**
- * Convert stable enum-style values into readable labels.
+ * Convert stable enum-like values into readable labels.
  */
 function humanize(value: string) {
     return value

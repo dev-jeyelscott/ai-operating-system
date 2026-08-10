@@ -25,7 +25,7 @@ type Props = {
 /**
  * Render the keyboard and screen-reader equivalent of the 3D agent inspector.
  *
- * The component receives only projected read-model data. It cannot mutate
+ * The component receives only projected read-model data and cannot mutate
  * workflow state.
  */
 export function OfficeAgentInspector({
@@ -56,13 +56,31 @@ export function OfficeAgentInspector({
                     <div className="flex flex-wrap items-center gap-2 pr-8">
                         <DialogTitle>{agent.role}</DialogTitle>
 
-                        <Badge variant="outline">{presentation.label}</Badge>
+                        <Badge variant="outline">
+                            {presentation.label}
+                        </Badge>
 
                         {agent.provider === 'simulation' && (
                             <>
-                                <Badge variant="secondary">Simulated</Badge>
-                                <Badge variant="outline">Unverified</Badge>
+                                <Badge variant="secondary">
+                                    Simulated
+                                </Badge>
+                                <Badge variant="outline">
+                                    Unverified
+                                </Badge>
                             </>
+                        )}
+
+                        {agent.approvalRequired && (
+                            <Badge variant="secondary">
+                                Approval required
+                            </Badge>
+                        )}
+
+                        {agent.recoveryRequired && (
+                            <Badge variant="destructive">
+                                Recovery required
+                            </Badge>
                         )}
                     </div>
 
@@ -77,58 +95,155 @@ export function OfficeAgentInspector({
                         label="Room"
                         value={officeZone(agent.room).label}
                     />
+
                     <InspectorFact
                         label="Current action"
                         value={agent.currentAction}
                     />
+
                     <InspectorFact
                         label="Layer"
                         value={humanize(agent.layer)}
                     />
+
                     <InspectorFact
                         label="Capability"
                         value={humanize(agent.capability)}
                     />
+
                     <InspectorFact
                         label="Workflow state"
                         value={humanize(agent.workflowState)}
                     />
+
+                    <InspectorFact
+                        label="Provider state"
+                        value={humanizeNullable(agent.providerState)}
+                    />
+
+                    <InspectorFact
+                        label="Provider phase"
+                        value={humanizeNullable(agent.providerPhase)}
+                    />
+
                     <InspectorFact
                         label="Ticket"
                         value={agent.ticketId ?? 'None'}
                     />
+
                     <InspectorFact
                         label="Provider"
                         value={agent.provider ?? 'Unassigned'}
                     />
+
+                    <InspectorFact
+                        label="Model"
+                        value={agent.model ?? 'Not reported'}
+                    />
+
                     <InspectorFact
                         label="Reasoning"
-                        value={[
-                            agent.requestedReasoning,
-                            agent.effectiveReasoning,
-                        ]
-                            .filter(Boolean)
-                            .join(' / ')}
+                        value={
+                            [
+                                agent.requestedReasoning,
+                                agent.effectiveReasoning,
+                            ]
+                                .filter(Boolean)
+                                .join(' / ') || 'Not reported'
+                        }
                     />
+
                     <InspectorFact
                         label="Attempts"
-                        value={`${agent.attemptCount} of ${agent.retryLimit}`}
+                        value={`${agent.attemptCount} of ${agent.retryLimit + 1}`}
                     />
+
+                    <InspectorFact
+                        label="Elapsed at last projection"
+                        value={formatDuration(agent.elapsedSeconds)}
+                    />
+
+                    <InspectorFact
+                        label="Estimated cost"
+                        value={formatCost(
+                            agent.estimatedCost,
+                            agent.costCurrency,
+                        )}
+                    />
+
+                    <InspectorFact
+                        label="Actual cost"
+                        value={formatCost(
+                            agent.actualCost,
+                            agent.costCurrency,
+                        )}
+                    />
+
+                    <InspectorFact
+                        label="Confidence"
+                        value={agent.confidence ?? 'Not reported'}
+                    />
+
+                    <InspectorFact
+                        label="Evidence state"
+                        value={humanizeNullable(agent.actualState)}
+                    />
+
+                    <InspectorFact
+                        label="Provider sequence"
+                        value={String(agent.providerSequence ?? 0)}
+                    />
+
+                    <InspectorFact
+                        label="Last provider activity"
+                        value={formatDate(agent.lastProviderMessageAt ?? null)}
+                    />
+
                     <InspectorFact
                         label="Started"
                         value={formatDate(agent.startedAt)}
                     />
+
                     <InspectorFact
                         label="Finished"
                         value={formatDate(agent.finishedAt)}
                     />
+
                     <InspectorFact
                         label="Next retry"
                         value={formatDate(agent.nextAttemptAt)}
                     />
+
+                    <InspectorFact
+                        label="Diagnostic code"
+                        value={agent.diagnosticCode ?? 'None'}
+                    />
+
+                    <InspectorFact
+                        label="Diagnostic"
+                        value={agent.diagnosticMessage ?? 'None'}
+                    />
+
+                    <InspectorFact
+                        label="Approval"
+                        value={
+                            agent.approvalRequired
+                                ? agent.approvalSummary ??
+                                  'Authorized decision required'
+                                : 'None'
+                        }
+                    />
                 </dl>
 
-                <DialogFooter>
+                <DialogFooter className="gap-2 sm:gap-0">
+                    {agent.approvalUrl && (
+                        <Button asChild variant="secondary">
+                            <Link href={agent.approvalUrl}>
+                                Review approval
+                            </Link>
+                        </Button>
+                    )}
+
                     {agent.contextUrl && (
                         <Button asChild>
                             <Link href={agent.contextUrl}>
@@ -144,10 +259,15 @@ export function OfficeAgentInspector({
 }
 
 /**
- * Render one labelled inspector value with sufficient contrast for critical
- * operational information.
+ * Render one labelled inspector value.
  */
-function InspectorFact({ label, value }: { label: string; value: string }) {
+function InspectorFact({
+    label,
+    value,
+}: {
+    label: string;
+    value: string;
+}) {
     return (
         <div className="rounded-md border p-3">
             <dt className="font-medium">{label}</dt>
@@ -157,12 +277,49 @@ function InspectorFact({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Convert an enum-like value into a readable label.
+ * Convert one enum-like string into readable text.
  */
 function humanize(value: string) {
     return value
         .replaceAll('_', ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+/**
+ * Convert an optional enum-like string into readable text.
+ */
+function humanizeNullable(value: string | null | undefined) {
+    return value ? humanize(value) : 'Not reported';
+}
+
+/**
+ * Format an optional duration without creating a client-side timer.
+ */
+function formatDuration(value: number | null | undefined) {
+    if (value === null || value === undefined) {
+        return 'Not available';
+    }
+
+    const minutes = Math.floor(value / 60);
+    const seconds = value % 60;
+
+    return minutes > 0
+        ? `${minutes}m ${seconds}s`
+        : `${seconds}s`;
+}
+
+/**
+ * Format an optional monetary provider cost.
+ */
+function formatCost(
+    value: string | null | undefined,
+    currency: string | null | undefined,
+) {
+    if (!value) {
+        return 'Not reported';
+    }
+
+    return `${currency ?? 'USD'} ${value}`;
 }
 
 /**

@@ -17,10 +17,11 @@ final readonly class BuildOfficeProjection
     private const int SCHEMA_VERSION = 1;
 
     /**
-     * Inject the project operations read model and state-aware room resolver.
+     * Inject the operations model, provider activity reader, and room resolver.
      */
     public function __construct(
         private GetProjectOperationsReadModel $operations,
+        private GetProjectProviderOfficeActivity $providerActivity,
         private ResolveOfficeAgentRoom $agentRooms,
     ) {}
 
@@ -64,7 +65,11 @@ final readonly class BuildOfficeProjection
                     projectId: $project->id,
                 );
 
-                $state = $this->buildState($operations);
+                $state = $this->buildState(
+                    operations: $operations,
+                    organizationId: $organizationId,
+                    projectId: $project->id,
+                );
                 $fingerprint = hash(
                     'sha256',
                     json_encode($state, JSON_THROW_ON_ERROR),
@@ -115,36 +120,79 @@ final readonly class BuildOfficeProjection
     }
 
     /**
-     * Transform the operations contract into the stable office projection contract.
+     * Transform operations state into the durable office projection contract.
      *
      * @param  array<string, mixed>  $operations
      * @return array<string, mixed>
      */
-    private function buildState(array $operations): array
-    {
+    private function buildState(
+        array $operations,
+        int $organizationId,
+        int $projectId,
+    ): array {
+        $operationAgents = $this->list(
+            $operations['agents'] ?? [],
+        );
+
+        $executionIds = array_values(array_filter(array_map(
+            fn(array $agent): string => $this->string(
+                $agent['id'] ?? '',
+            ),
+            $operationAgents,
+        )));
+
+        $providerActivity = $this->providerActivity->handle(
+            organizationId: $organizationId,
+            projectId: $projectId,
+            executionIds: $executionIds,
+        );
+
+        $providerAgents = $this->map(
+            $providerActivity['agents'] ?? [],
+        );
+
         $agents = $this->projectAgents(
-            $this->list($operations['agents'] ?? []),
+            agents: $operationAgents,
+            providerAgents: $providerAgents,
         );
 
         $layers = $this->indexByKey(
             $this->list($operations['layers'] ?? []),
         );
 
-        $blockers = $this->list($operations['blockers'] ?? []);
-        $approvals = $this->list($operations['approvals'] ?? []);
-        $retries = $this->list($operations['retries'] ?? []);
-        $decisions = $this->list($operations['decisions'] ?? []);
-        $tickets = $this->list($operations['tickets'] ?? []);
+        $blockers = $this->list(
+            $operations['blockers'] ?? [],
+        );
+
+        $approvals = $this->list(
+            $operations['approvals'] ?? [],
+        );
+
+        $retries = $this->list(
+            $operations['retries'] ?? [],
+        );
+
+        $decisions = $this->list(
+            $operations['decisions'] ?? [],
+        );
+
+        $tickets = $this->list(
+            $operations['tickets'] ?? [],
+        );
 
         return [
-            'project' => $this->map($operations['project'] ?? []),
+            'project' => $this->map(
+                $operations['project'] ?? [],
+            ),
             'workflow' => $this->nullableMap(
                 $operations['workflow'] ?? null,
             ),
             'roadmap' => $this->nullableMap(
                 $operations['roadmap'] ?? null,
             ),
-            'summary' => $this->map($operations['summary'] ?? []),
+            'summary' => $this->map(
+                $operations['summary'] ?? [],
+            ),
             'rooms' => $this->buildRooms(
                 agents: $agents,
                 layers: $layers,
@@ -154,6 +202,9 @@ final readonly class BuildOfficeProjection
                 retries: $retries,
             ),
             'agents' => $agents,
+            'activity' => $this->list(
+                $providerActivity['activity'] ?? [],
+            ),
             'indicators' => $this->buildIndicators(
                 blockers: $blockers,
                 approvals: $approvals,
@@ -171,12 +222,23 @@ final readonly class BuildOfficeProjection
      * Project operational executions into state-aware logical office agents.
      *
      * @param  list<array<string, mixed>>  $agents
+     * @param  array<string, array<string, mixed>>  $providerAgents
      * @return list<array<string, mixed>>
      */
-    private function projectAgents(array $agents): array
-    {
+    private function projectAgents(
+        array $agents,
+        array $providerAgents,
+    ): array {
         return array_map(
-            function (array $agent): array {
+            function (array $agent) use ($providerAgents): array {
+                $id = $this->string(
+                    $agent['id'] ?? '',
+                );
+
+                $provider = $this->map(
+                    $providerAgents[$id] ?? [],
+                );
+
                 $layer = $this->string(
                     $agent['layer'] ?? 'operations',
                     'operations',
@@ -190,10 +252,21 @@ final readonly class BuildOfficeProjection
                 $officeState = $this->officeState(
                     layer: $layer,
                     workflowState: $workflowState,
+                    provider: $provider,
                 );
 
+                $providerName = is_string(
+                    $provider['provider'] ?? null,
+                )
+                    ? $provider['provider']
+                    : (
+                        is_string($agent['provider'] ?? null)
+                        ? $agent['provider']
+                        : null
+                    );
+
                 return [
-                    'id' => $this->string($agent['id'] ?? ''),
+                    'id' => $id,
                     'role' => $this->string(
                         $agent['role'] ?? 'unknown',
                         'unknown',
@@ -208,10 +281,36 @@ final readonly class BuildOfficeProjection
                     ),
                     'workflowState' => $workflowState,
                     'officeState' => $officeState,
-                    'currentAction' => $this->currentAction($officeState),
-                    'active' => (bool) ($agent['active'] ?? false),
-                    'provider' => is_string($agent['provider'] ?? null)
-                        ? $agent['provider']
+                    'currentAction' => $this->currentAction(
+                        officeState: $officeState,
+                        provider: $provider,
+                    ),
+                    'active' => (bool) (
+                        $agent['active'] ?? false
+                    ),
+                    'provider' => $providerName,
+                    'model' => is_string(
+                        $provider['model'] ?? null,
+                    )
+                        ? $provider['model']
+                        : null,
+                    'providerState' => is_string(
+                        $provider['providerState'] ?? null,
+                    )
+                        ? $provider['providerState']
+                        : null,
+                    'providerPhase' => is_string(
+                        $provider['providerPhase'] ?? null,
+                    )
+                        ? $provider['providerPhase']
+                        : null,
+                    'providerSequence' => (int) (
+                        $provider['providerSequence'] ?? 0
+                    ),
+                    'lastProviderMessageAt' => is_string(
+                        $provider['lastProviderMessageAt'] ?? null,
+                    )
+                        ? $provider['lastProviderMessageAt']
                         : null,
                     'requestedReasoning' => $this->string(
                         $agent['requestedReasoning'] ?? '',
@@ -221,14 +320,76 @@ final readonly class BuildOfficeProjection
                     )
                         ? $agent['effectiveReasoning']
                         : null,
-                    'ticketId' => is_string($agent['ticketId'] ?? null)
+                    'ticketId' => is_string(
+                        $agent['ticketId'] ?? null,
+                    )
                         ? $agent['ticketId']
                         : null,
-                    'attemptCount' => (int) ($agent['attemptCount'] ?? 0),
-                    'retryLimit' => (int) ($agent['retryLimit'] ?? 0),
+                    'attemptCount' => (int) (
+                        $agent['attemptCount'] ?? 0
+                    ),
+                    'retryLimit' => (int) (
+                        $agent['retryLimit'] ?? 0
+                    ),
                     'nextAttemptAt' => $agent['nextAttemptAt'] ?? null,
                     'startedAt' => $agent['startedAt'] ?? null,
                     'finishedAt' => $agent['finishedAt'] ?? null,
+                    'elapsedSeconds' => is_int(
+                        $provider['elapsedSeconds'] ?? null,
+                    )
+                        ? $provider['elapsedSeconds']
+                        : null,
+                    'estimatedCost' => is_string(
+                        $provider['estimatedCost'] ?? null,
+                    )
+                        ? $provider['estimatedCost']
+                        : null,
+                    'actualCost' => is_string(
+                        $provider['actualCost'] ?? null,
+                    )
+                        ? $provider['actualCost']
+                        : null,
+                    'costCurrency' => is_string(
+                        $provider['costCurrency'] ?? null,
+                    )
+                        ? $provider['costCurrency']
+                        : null,
+                    'confidence' => is_string(
+                        $provider['confidence'] ?? null,
+                    )
+                        ? $provider['confidence']
+                        : null,
+                    'actualState' => is_string(
+                        $provider['actualState'] ?? null,
+                    )
+                        ? $provider['actualState']
+                        : null,
+                    'approvalRequired' => (bool) (
+                        $provider['approvalRequired'] ?? false
+                    ),
+                    'approvalSummary' => is_string(
+                        $provider['approvalSummary'] ?? null,
+                    )
+                        ? $provider['approvalSummary']
+                        : null,
+                    'approvalUrl' => is_string(
+                        $provider['approvalUrl'] ?? null,
+                    )
+                        ? $provider['approvalUrl']
+                        : null,
+                    'recoveryRequired' => (bool) (
+                        $provider['recoveryRequired'] ?? false
+                    ),
+                    'diagnosticCode' => is_string(
+                        $provider['diagnosticCode'] ?? null,
+                    )
+                        ? $provider['diagnosticCode']
+                        : null,
+                    'diagnosticMessage' => is_string(
+                        $provider['diagnosticMessage'] ?? null,
+                    )
+                        ? $provider['diagnosticMessage']
+                        : null,
                     'contextUrl' => $this->string(
                         $agent['contextUrl'] ?? '',
                     ),
@@ -259,7 +420,7 @@ final readonly class BuildOfficeProjection
     ): array {
         $doneTickets = count(array_filter(
             $tickets,
-            static fn (array $ticket): bool => in_array(
+            static fn(array $ticket): bool => in_array(
                 $ticket['status'] ?? null,
                 ['done', 'cancelled'],
                 true,
@@ -283,7 +444,7 @@ final readonly class BuildOfficeProjection
 
         $hasBlockedAgent = array_any(
             $operationsAgents,
-            static fn (array $agent): bool => in_array(
+            static fn(array $agent): bool => in_array(
                 $agent['officeState'] ?? null,
                 ['blocked', 'failed'],
                 true,
@@ -292,7 +453,7 @@ final readonly class BuildOfficeProjection
 
         $hasRetryingAgent = array_any(
             $operationsAgents,
-            static fn (array $agent): bool => ($agent['officeState'] ?? null)
+            static fn(array $agent): bool => ($agent['officeState'] ?? null)
                 === 'retrying',
         );
 
@@ -418,10 +579,10 @@ final readonly class BuildOfficeProjection
             'state' => $state,
             'activeAgents' => count(array_filter(
                 $agents,
-                static fn (array $agent): bool => (bool) $agent['active'],
+                static fn(array $agent): bool => (bool) $agent['active'],
             )),
             'agentIds' => array_map(
-                static fn (array $agent): string => (string) $agent['id'],
+                static fn(array $agent): string => (string) $agent['id'],
                 $agents,
             ),
             'actionableCount' => $actionableCount,
@@ -513,7 +674,7 @@ final readonly class BuildOfficeProjection
     ): array {
         $simulatedAgent = array_any(
             $agents,
-            static fn (array $agent): bool => $agent['provider'] === 'simulation'
+            static fn(array $agent): bool => $agent['provider'] === 'simulation'
                 || str_contains(
                     strtolower((string) $agent['capability']),
                     'simulation',
@@ -522,7 +683,7 @@ final readonly class BuildOfficeProjection
 
         $simulatedDecision = array_any(
             $decisions,
-            static fn (array $decision): bool => (bool) (
+            static fn(array $decision): bool => (bool) (
                 $decision['simulated'] ?? false
             ),
         );
@@ -541,39 +702,147 @@ final readonly class BuildOfficeProjection
     }
 
     /**
-     * Resolve a stable office state from an execution state and layer.
+     * Resolve office state using deterministic workflow/provider precedence.
+     *
+     * Provider activity may refine a running execution but may never override
+     * terminal workflow state, retry policy, blocking, or human approval gates.
+     *
+     * @param  array<string, mixed>  $provider
      */
     private function officeState(
         string $layer,
         string $workflowState,
+        array $provider,
     ): string {
-        return match ($workflowState) {
-            'queued' => 'selecting_ticket',
-            'running' => match ($layer) {
-                'planning' => 'planning',
-                'development' => 'implementing',
-                'quality_assurance' => 'reviewing',
-                default => 'validating',
-            },
-            'waiting_for_approval' => 'waiting_for_human',
-            'waiting_for_evidence' => 'validating',
-            'blocked' => 'blocked',
-            'retry_scheduled' => 'retrying',
-            'completed' => 'completed',
-            'failed' => 'failed',
-            'cancelled' => 'idle',
-            default => 'idle',
+        $providerState = $this->string(
+            $provider['providerState'] ?? '',
+        );
+
+        $providerPhase = $this->string(
+            $provider['providerPhase'] ?? '',
+        );
+
+        $activityState = $this->string(
+            $provider['latestActivityState'] ?? '',
+        );
+
+        if (
+            $workflowState === 'failed'
+            || $providerState === 'failed'
+            || $activityState === 'failed'
+        ) {
+            return 'failed';
+        }
+
+        if (
+            $workflowState === 'cancelled'
+            || $providerState === 'cancelled'
+            || $activityState === 'cancelled'
+        ) {
+            return 'cancelled';
+        }
+
+        /*
+     * Workflow completion remains authoritative. Provider turn completion only
+     * means the provider response is ready for deterministic validation.
+     */
+        if ($workflowState === 'completed') {
+            return 'completed';
+        }
+
+        if ($workflowState === 'retry_scheduled') {
+            return 'retrying';
+        }
+
+        if (
+            $workflowState === 'blocked'
+            || (bool) ($provider['recoveryRequired'] ?? false)
+            || $providerState === 'lost'
+        ) {
+            return 'blocked';
+        }
+
+        if (
+            $workflowState === 'waiting_for_approval'
+            || (bool) ($provider['approvalRequired'] ?? false)
+            || $providerPhase === 'approval_wait'
+            || $activityState === 'waiting_for_approval'
+        ) {
+            return 'waiting_for_approval';
+        }
+
+        if (
+            $workflowState === 'waiting_for_evidence'
+            || $providerPhase === 'validation'
+            || $activityState === 'validating'
+        ) {
+            return 'validating';
+        }
+
+        if ($workflowState === 'queued') {
+            return 'selecting_ticket';
+        }
+
+        if ($workflowState !== 'running') {
+            return 'idle';
+        }
+
+        if ($layer === 'planning') {
+            if (
+                in_array(
+                    $activityState,
+                    ['reading_documents', 'planning'],
+                    true,
+                )
+            ) {
+                return $activityState;
+            }
+
+            return match ($providerPhase) {
+                'startup',
+                'idle' => 'reading_documents',
+                'turn' => 'planning',
+                'validation' => 'validating',
+                default => 'planning',
+            };
+        }
+
+        return match ($layer) {
+            'development' => 'implementing',
+            'quality_assurance' => 'reviewing',
+            default => 'validating',
         };
     }
 
     /**
-     * Resolve a human-readable current action from the office state.
+     * Resolve safe current-action text without copying provider payloads.
+     *
+     * @param  array<string, mixed>  $provider
      */
-    private function currentAction(string $officeState): string
-    {
+    private function currentAction(
+        string $officeState,
+        array $provider,
+    ): string {
+        $providerActivityState = $this->string(
+            $provider['latestActivityState'] ?? '',
+        );
+
+        $providerAction = $this->string(
+            $provider['currentAction'] ?? '',
+        );
+
+        if (
+            $providerAction !== ''
+            && $providerActivityState === $officeState
+        ) {
+            return $providerAction;
+        }
+
         return match ($officeState) {
             'selecting_ticket' => 'Selecting the next workable ticket',
+            'reading_documents' => 'Reading approved planning context',
             'planning' => 'Planning project work',
+            'waiting_for_approval' => 'Waiting for an authorized provider decision',
             'implementing' => 'Implementing the assigned ticket',
             'validating' => 'Validating evidence and workflow state',
             'reviewing' => 'Reviewing implementation evidence',
@@ -581,6 +850,7 @@ final readonly class BuildOfficeProjection
             'retrying' => 'Waiting for the next retry attempt',
             'waiting_for_human' => 'Waiting for an authorized decision',
             'completed' => 'Completed',
+            'cancelled' => 'Cancelled',
             'failed' => 'Failed',
             default => 'Idle',
         };
@@ -618,7 +888,7 @@ final readonly class BuildOfficeProjection
     ): array {
         return array_values(array_filter(
             $agents,
-            static fn (array $agent): bool => ($agent['room'] ?? null)
+            static fn(array $agent): bool => ($agent['room'] ?? null)
                 === $room,
         ));
     }
@@ -702,7 +972,7 @@ final readonly class BuildOfficeProjection
 
         return array_values(array_filter(
             $value,
-            static fn (mixed $row): bool => is_array($row),
+            static fn(mixed $row): bool => is_array($row),
         ));
     }
 
