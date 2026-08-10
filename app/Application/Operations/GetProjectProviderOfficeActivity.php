@@ -100,19 +100,52 @@ final readonly class GetProjectProviderOfficeActivity
             ->unique('execution_id')
             ->keyBy('execution_id');
 
-        $approvals = CodexApprovalRequest::query()
-            ->where('organization_id', $organizationId)
-            ->whereIn('execution_id', $executionIds)
-            ->with('approval')
-            ->latest('created_at')
-            ->get()
-            ->filter(
-                static fn (CodexApprovalRequest $request): bool => $request
-                    ->approval
-                    ->status === ApprovalStatus::Pending,
+        /*
+         * Codex approval requests do not own tenant/project columns directly.
+         * Scope them through their provider session, which owns the durable
+         * organization, project, and execution lineage.
+         */
+        $approvalRequests = CodexApprovalRequest::query()
+            ->whereHas(
+                'providerSession',
+                static function (Builder $query) use (
+                    $organizationId,
+                    $projectId,
+                    $executionIds,
+                ): void {
+                    $query
+                        ->where('organization_id', $organizationId)
+                        ->where('project_id', $projectId)
+                        ->whereIn('execution_id', $executionIds);
+                },
             )
-            ->unique('execution_id')
-            ->keyBy('execution_id');
+            ->with([
+                'approval',
+                'providerSession',
+            ])
+            ->latest('created_at')
+            ->get();
+
+        /** @var array<string, CodexApprovalRequest> $approvals */
+        $approvals = [];
+
+        /*
+         * Keep only the newest pending approval for each execution.
+         *
+         * The query is already newest-first, so the first request encountered
+         * for an execution is the authoritative pending request for projection.
+         */
+        foreach ($approvalRequests as $request) {
+            if ($request->approval->status !== ApprovalStatus::Pending) {
+                continue;
+            }
+
+            $executionId = $request->providerSession->execution_id;
+
+            if (! isset($approvals[$executionId])) {
+                $approvals[$executionId] = $request;
+            }
+        }
 
         $activity = $this->activity(
             organizationId: $organizationId,
@@ -139,9 +172,7 @@ final readonly class GetProjectProviderOfficeActivity
             /** @var ProviderSession|null $session */
             $session = $sessions->get($executionId);
 
-            /** @var CodexApprovalRequest|null $approval */
-            $approval = $approvals->get($executionId);
-
+            $approval = $approvals[$executionId] ?? null;
             $latest = $latestActivity[$executionId] ?? null;
 
             $diagnosticCode = $attempt->error_code
