@@ -101,7 +101,6 @@ final readonly class GetProjectProviderOfficeActivity
             ->keyBy('execution_id');
 
         $approvals = CodexApprovalRequest::query()
-            ->forProject($projectId)
             ->where('organization_id', $organizationId)
             ->whereIn('execution_id', $executionIds)
             ->with('approval')
@@ -145,18 +144,18 @@ final readonly class GetProjectProviderOfficeActivity
 
             $latest = $latestActivity[$executionId] ?? null;
 
-            $diagnosticCode = $attempt?->error_code
-                ?? $session?->recovery_reason
+            $diagnosticCode = $attempt->error_code
+                ?? $session->recovery_reason
                 ?? $session?->terminal_code;
 
             $agents[$executionId] = [
-                'provider' => $attempt?->execution_provider
+                'provider' => $attempt->execution_provider
                     ?? $session?->provider,
-                'model' => $attempt?->model_identifier
+                'model' => $attempt->model_identifier
                     ?? $session?->model_identifier,
                 'providerState' => $session?->status->value,
                 'providerPhase' => $session?->lifecycle_phase->value,
-                'providerSequence' => $session?->last_provider_sequence ?? 0,
+                'providerSequence' => $session->last_provider_sequence ?? 0,
                 'lastProviderMessageAt' => $session
                     ?->last_provider_message_at
                     ?->toIso8601String(),
@@ -216,38 +215,40 @@ final readonly class GetProjectProviderOfficeActivity
         int $projectId,
         array $executionIds,
     ): array {
-        return OutboxMessage::query()
-            ->where('organization_id', $organizationId)
-            ->where('project_id', $projectId)
-            ->whereIn('execution_id', $executionIds)
-            ->whereIn('event_name', self::PROVIDER_EVENT_NAMES)
-            ->latest('sequence')
-            ->limit(self::ACTIVITY_LIMIT)
-            ->get()
-            ->reverse()
-            ->values()
-            ->map(function (OutboxMessage $message): array {
-                $descriptor = $this->activityDescriptor(
-                    $message->event_name,
-                );
+        return array_values(
+            OutboxMessage::query()
+                ->where('organization_id', $organizationId)
+                ->where('project_id', $projectId)
+                ->whereIn('execution_id', $executionIds)
+                ->whereIn('event_name', self::PROVIDER_EVENT_NAMES)
+                ->latest('sequence')
+                ->limit(self::ACTIVITY_LIMIT)
+                ->get()
+                ->reverse()
+                ->values()
+                ->map(function (OutboxMessage $message): array {
+                    $descriptor = $this->activityDescriptor(
+                        $message->event_name,
+                    );
 
-                $provider = $message->envelope['provider'] ?? null;
+                    $provider = $message->envelope['provider'] ?? null;
 
-                return [
-                    'sequence' => $message->sequence,
-                    'eventId' => $message->event_id,
-                    'executionId' => $message->execution_id,
-                    'provider' => is_string($provider) && $provider !== ''
-                        ? $provider
-                        : null,
-                    'state' => $descriptor['state'],
-                    'summary' => $descriptor['summary'],
-                    'occurredAt' => $message
-                        ->occurred_at
-                        ->toIso8601String(),
-                ];
-            })
-            ->all();
+                    return [
+                        'sequence' => $message->sequence,
+                        'eventId' => $message->event_id,
+                        'executionId' => $message->execution_id,
+                        'provider' => is_string($provider) && $provider !== ''
+                            ? $provider
+                            : null,
+                        'state' => $descriptor['state'],
+                        'summary' => $descriptor['summary'],
+                        'occurredAt' => $message
+                            ->occurred_at
+                            ->toIso8601String(),
+                    ];
+                })
+                ->all(),
+        );
     }
 
     /**

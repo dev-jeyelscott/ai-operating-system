@@ -70,6 +70,7 @@ final readonly class BuildOfficeProjection
                     organizationId: $organizationId,
                     projectId: $project->id,
                 );
+
                 $fingerprint = hash(
                     'sha256',
                     json_encode($state, JSON_THROW_ON_ERROR),
@@ -147,9 +148,7 @@ final readonly class BuildOfficeProjection
             executionIds: $executionIds,
         );
 
-        $providerAgents = $this->map(
-            $providerActivity['agents'] ?? [],
-        );
+        $providerAgents = $providerActivity['agents'];
 
         $agents = $this->projectAgents(
             agents: $operationAgents,
@@ -202,9 +201,7 @@ final readonly class BuildOfficeProjection
                 retries: $retries,
             ),
             'agents' => $agents,
-            'activity' => $this->list(
-                $providerActivity['activity'] ?? [],
-            ),
+            'activity' => $providerActivity['activity'],
             'indicators' => $this->buildIndicators(
                 blockers: $blockers,
                 approvals: $approvals,
@@ -743,9 +740,9 @@ final readonly class BuildOfficeProjection
         }
 
         /*
-     * Workflow completion remains authoritative. Provider turn completion only
-     * means the provider response is ready for deterministic validation.
-     */
+         * Workflow completion remains authoritative. Provider turn completion only
+         * means the provider response is ready for deterministic validation.
+         */
         if ($workflowState === 'completed') {
             return 'completed';
         }
