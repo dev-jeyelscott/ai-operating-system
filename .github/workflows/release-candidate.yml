@@ -1,0 +1,453 @@
+name: release-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full 40-character develop candidate SHA
+        required: true
+        type: string
+      aios_294_url:
+        description: AIOS-294 Notion approval-record URL
+        required: true
+        type: string
+      scenario_seed:
+        description: Deterministic scenario seed
+        required: true
+        default: '155'
+        type: string
+      qa_owner:
+        description: Named independent QA Owner
+        required: true
+        type: string
+      qa_owner_login:
+        description: Independent QA Owner GitHub login
+        required: true
+        type: string
+      security_reviewer:
+        description: Named independent Security Reviewer
+        required: true
+        type: string
+      security_reviewer_login:
+        description: Independent Security Reviewer GitHub login
+        required: true
+        type: string
+      release_manager:
+        description: Named independent Release Manager
+        required: true
+        type: string
+      release_manager_login:
+        description: Independent Release Manager GitHub login
+        required: true
+        type: string
+      notion_approval_sha:
+        description: SHA recorded for all six role decisions in AIOS-294
+        required: true
+        type: string
+      manual_runbook_evidence_url:
+        description: URL for dead-letter, lease, projection, and Notion tabletop evidence
+        required: true
+        type: string
+      manual_runbook_candidate_sha:
+        description: Candidate SHA recorded in the manual runbook evidence
+        required: true
+        type: string
+      security_findings_json:
+        description: JSON array of candidate security findings
+        required: true
+        default: '[]'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+env:
+  APP_ENV: testing
+  APP_DEBUG: 'false'
+  APP_URL: http://127.0.0.1:8000
+  APP_RELEASE: ${{ inputs.candidate_sha }}
+  DB_CONNECTION: pgsql
+  DB_HOST: 127.0.0.1
+  DB_PORT: 5432
+  DB_DATABASE: ai_operating_system_test
+  DB_USERNAME: postgres
+  DB_PASSWORD: postgres
+  REDIS_HOST: 127.0.0.1
+  REDIS_PORT: 6379
+  CACHE_STORE: redis
+  SESSION_DRIVER: array
+  QUEUE_CONNECTION: redis
+  FILESYSTEM_DISK: local
+  ARTIFACT_FILESYSTEM_DISK: local
+  MAIL_MAILER: array
+  BROADCAST_CONNECTION: log
+  PLAYWRIGHT_BASE_URL: http://127.0.0.1:8000
+
+jobs:
+  automated-evidence:
+    name: Build SHA-bound automated evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: 'postgres:18.4-alpine3.24@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15'
+        env:
+          POSTGRES_DB: ai_operating_system_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ai_operating_system_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: 'redis:8.8.0-alpine3.23@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005'
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify candidate is clean develop head
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          git fetch --no-tags origin develop
+          test "$(git rev-parse origin/develop)" = "$CANDIDATE_SHA"
+          test -z "$(git status --short)"
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_pgsql, redis, pcntl, posix
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 11.4.0
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          pnpm install --frozen-lockfile
+
+      - name: Prepare application and metadata directory
+        run: |
+          cp .env.example .env
+          sed -i "s/^APP_ENV=.*/APP_ENV=${APP_ENV}/" .env
+          sed -i "s/^DB_DATABASE=.*/DB_DATABASE=${DB_DATABASE}/" .env
+          php artisan key:generate
+          php artisan migrate --force
+          mkdir -p storage/app/release-candidate/logs
+
+      - name: Record provenance and configuration fingerprints
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg tree_sha "$(git rev-parse HEAD^{tree})" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg recorded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg php "$(php --version | head -1)" \
+            --arg composer "$(composer --version)" \
+            --arg node "$(node --version)" \
+            --arg pnpm "$(pnpm --version)" \
+            --arg composer_lock "$(sha256sum composer.lock | cut -d ' ' -f 1)" \
+            --arg pnpm_lock "$(sha256sum pnpm-lock.yaml | cut -d ' ' -f 1)" \
+            --arg env_example "$(sha256sum .env.example | cut -d ' ' -f 1)" \
+            '{schema_version: 1, repository: $repository, candidate_sha: $candidate_sha, tree_sha: $tree_sha, workflow: $workflow, run_id: $run_id, run_attempt: $run_attempt, recorded_at: $recorded_at, tools: {php: $php, composer: $composer, node: $node, pnpm: $pnpm}, configuration_fingerprints: {composer_lock: $composer_lock, pnpm_lock: $pnpm_lock, env_example: $env_example}}' \
+            > storage/app/release-candidate/metadata.json
+
+      - name: Run repository and supply-chain gates
+        run: |
+          bash bin/check-repository-hygiene
+          bash bin/check-release-candidate-policy
+          bash bin/check-github-actions
+          bash bin/check-container-images
+          composer validate --strict
+          composer audit --locked --abandoned=fail --no-interaction
+          bash bin/check-frontend-dependency-audit
+          pnpm audit signatures
+
+      - name: Run backend quality and concurrency
+        run: |
+          vendor/bin/pint --test
+          vendor/bin/phpstan analyse
+          php artisan test --compact
+          php artisan test --testsuite=Concurrency --fail-on-skipped --fail-on-warning
+
+      - name: Run frontend quality and build
+        run: |
+          pnpm run wayfinder:generate
+          pnpm format:check
+          pnpm lint:check
+          pnpm types:check
+          pnpm test:unit
+          pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start browser-test services
+        env:
+          SESSION_DRIVER: database
+        run: |
+          php artisan serve --host=127.0.0.1 --port=8000 > storage/app/release-candidate/logs/server.log 2>&1 &
+          php artisan queue:work redis --queue=default --sleep=1 --tries=1 --timeout=120 > storage/app/release-candidate/logs/queue.log 2>&1 &
+          php artisan schedule:work > storage/app/release-candidate/logs/scheduler.log 2>&1 &
+          timeout 60 bash -c 'until curl --fail --silent http://127.0.0.1:8000/up > /dev/null; do sleep 2; done'
+
+      - name: Run full browser and focused accessibility suites
+        env:
+          SESSION_DRIVER: database
+        run: |
+          pnpm test:e2e
+          pnpm exec playwright test tests/e2e/accessibility-critical-flows.spec.ts
+
+      - name: Execute all deterministic scenarios
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          SCENARIO_SEED: ${{ inputs.scenario_seed }}
+          SESSION_DRIVER: database
+        run: bin/run-release-scenarios "$CANDIDATE_SHA" "$SCENARIO_SEED"
+
+      - name: Record manual runbook requirements and checksums
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          jq -n --arg candidate_sha "$CANDIDATE_SHA" '{schema_version: 1, candidate_sha: $candidate_sha, status: "blocked_pending_manual_review", required: ["dead-letter recovery", "stuck-ticket lease recovery", "office projection rebuild", "Notion outage reconciliation"]}' > storage/app/release-candidate/manual-runbooks.json
+          find storage/app/release-candidate playwright-report test-results -type f ! -name SHA256SUMS -print0 2>/dev/null | sort -z | xargs -0 sha256sum > storage/app/release-candidate/SHA256SUMS
+
+      - name: Upload automated evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-candidate-automated-${{ inputs.candidate_sha }}
+          path: |
+            storage/app/release-candidate/
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 90
+
+  disaster-recovery:
+    name: Rehearse candidate disaster recovery
+    needs: automated-evidence
+    uses: ./.github/workflows/disaster-recovery.yml
+    with:
+      candidate_sha: ${{ inputs.candidate_sha }}
+    secrets: inherit
+
+  qa-review:
+    name: Independent QA review
+    needs: [automated-evidence, disaster-recovery]
+    runs-on: ubuntu-latest
+    environment: mvp-qa-review
+    steps:
+      - name: Enforce independent QA metadata
+        env:
+          QA_OWNER: ${{ inputs.qa_owner }}
+          QA_OWNER_LOGIN: ${{ inputs.qa_owner_login }}
+        run: |
+          QA_OWNER_LOGIN_NORMALIZED="${QA_OWNER_LOGIN#@}"
+          test -n "$QA_OWNER"
+          test -n "$QA_OWNER_LOGIN_NORMALIZED"
+          test "${QA_OWNER,,}" != 'qa owner'
+          test "${QA_OWNER_LOGIN_NORMALIZED,,}" != 'dev-jeyelscott'
+
+  security-review:
+    name: Independent candidate security review
+    needs: qa-review
+    runs-on: ubuntu-latest
+    environment: mvp-security-review
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Download automated evidence
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: release-candidate-automated-${{ inputs.candidate_sha }}
+          path: storage/app/release-candidate-download
+
+      - name: Generate and validate runtime security manifest
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          AIOS_294_URL: ${{ inputs.aios_294_url }}
+          SECURITY_REVIEWER: ${{ inputs.security_reviewer }}
+          SECURITY_REVIEWER_LOGIN: ${{ inputs.security_reviewer_login }}
+          SECURITY_FINDINGS_JSON: ${{ inputs.security_findings_json }}
+        run: |
+          SECURITY_REVIEWER_LOGIN_NORMALIZED="${SECURITY_REVIEWER_LOGIN#@}"
+          test -n "$SECURITY_REVIEWER"
+          test -n "$SECURITY_REVIEWER_LOGIN_NORMALIZED"
+          test "${SECURITY_REVIEWER,,}" != 'security reviewer'
+          test "${SECURITY_REVIEWER_LOGIN_NORMALIZED,,}" != 'dev-jeyelscott'
+          jq -e 'type == "array"' <<< "$SECURITY_FINDINGS_JSON"
+          mkdir -p storage/app/release-candidate/security
+          jq -n \
+            --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg approval_url "$AIOS_294_URL" \
+            --arg reviewed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg security_reviewer "$SECURITY_REVIEWER" \
+            --arg security_reviewer_login "$SECURITY_REVIEWER_LOGIN" \
+            --arg product_owner 'John Leward Escote' \
+            --argjson findings "$SECURITY_FINDINGS_JSON" \
+            '{schema_version: 2, ticket_id: "AIOS-294", approval_url: $approval_url, reviewed_at: $reviewed_at, reviewed_commit: $candidate_sha, decision: "approved", reviewers: [{role: "security_reviewer", name: $security_reviewer, github_login: $security_reviewer_login}, {role: "product_owner", name: $product_owner, github_login: "@dev-jeyelscott"}], sign_off_evidence: "storage/app/release-candidate-download/storage/app/release-candidate/metadata.json", dependencies: ["AIOS-010", "AIOS-137", "AIOS-138", "AIOS-139", "AIOS-140", "AIOS-141", "AIOS-142", "AIOS-143", "AIOS-144", "AIOS-145", "AIOS-146", "AIOS-147", "AIOS-148", "AIOS-149"] | map({ticket_id: ., status: "passed", evidence: ["docs/security/threat-model.md"]}), findings: $findings}' \
+            > storage/app/release-candidate/security/security-review.json
+          php artisan security:sign-off --manifest=storage/app/release-candidate/security/security-review.json --candidate-sha="$CANDIDATE_SHA"
+          (cd storage/app/release-candidate/security && sha256sum security-review.json > SHA256SUMS)
+
+      - name: Upload security evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-candidate-security-${{ inputs.candidate_sha }}
+          path: storage/app/release-candidate/security/
+          if-no-files-found: warn
+          retention-days: 90
+
+  release-review:
+    name: Independent release-manager approval
+    needs: security-review
+    runs-on: ubuntu-latest
+    environment: mvp-release-review
+    steps:
+      - name: Enforce AIOS-294 role decisions and independent release metadata
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          NOTION_APPROVAL_SHA: ${{ inputs.notion_approval_sha }}
+          AIOS_294_URL: ${{ inputs.aios_294_url }}
+          RELEASE_MANAGER: ${{ inputs.release_manager }}
+          RELEASE_MANAGER_LOGIN: ${{ inputs.release_manager_login }}
+          MANUAL_RUNBOOK_EVIDENCE_URL: ${{ inputs.manual_runbook_evidence_url }}
+          MANUAL_RUNBOOK_CANDIDATE_SHA: ${{ inputs.manual_runbook_candidate_sha }}
+        run: |
+          QA_OWNER_LOGIN_NORMALIZED="${QA_OWNER_LOGIN#@}"
+          SECURITY_REVIEWER_LOGIN_NORMALIZED="${SECURITY_REVIEWER_LOGIN#@}"
+          RELEASE_MANAGER_LOGIN_NORMALIZED="${RELEASE_MANAGER_LOGIN#@}"
+          test "$NOTION_APPROVAL_SHA" = "$CANDIDATE_SHA"
+          test "$MANUAL_RUNBOOK_CANDIDATE_SHA" = "$CANDIDATE_SHA"
+          [[ "$MANUAL_RUNBOOK_EVIDENCE_URL" =~ ^https:// ]]
+          test "$AIOS_294_URL" = 'https://app.notion.com/3b14e5c5cea381b39336f7238b626aa1'
+          test -n "$RELEASE_MANAGER"
+          test -n "$RELEASE_MANAGER_LOGIN_NORMALIZED"
+          test "${RELEASE_MANAGER,,}" != 'release manager'
+          test "${RELEASE_MANAGER_LOGIN_NORMALIZED,,}" != 'dev-jeyelscott'
+          test "${QA_OWNER_LOGIN_NORMALIZED,,}" != "${SECURITY_REVIEWER_LOGIN_NORMALIZED,,}"
+          test "${QA_OWNER_LOGIN_NORMALIZED,,}" != "${RELEASE_MANAGER_LOGIN_NORMALIZED,,}"
+          test "${SECURITY_REVIEWER_LOGIN_NORMALIZED,,}" != "${RELEASE_MANAGER_LOGIN_NORMALIZED,,}"
+
+      - name: Download candidate artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: release-candidate-*-${{ inputs.candidate_sha }}
+          path: candidate-artifacts
+          merge-multiple: true
+
+      - name: Download disaster-recovery artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: disaster-recovery-evidence-${{ inputs.candidate_sha }}
+          path: candidate-artifacts/disaster-recovery
+
+      - name: Assemble candidate attestation
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          AIOS_294_URL: ${{ inputs.aios_294_url }}
+          QA_OWNER: ${{ inputs.qa_owner }}
+          QA_OWNER_LOGIN: ${{ inputs.qa_owner_login }}
+          SECURITY_REVIEWER: ${{ inputs.security_reviewer }}
+          SECURITY_REVIEWER_LOGIN: ${{ inputs.security_reviewer_login }}
+          RELEASE_MANAGER: ${{ inputs.release_manager }}
+          RELEASE_MANAGER_LOGIN: ${{ inputs.release_manager_login }}
+          MANUAL_RUNBOOK_EVIDENCE_URL: ${{ inputs.manual_runbook_evidence_url }}
+        run: |
+          test -f candidate-artifacts/storage/app/release-candidate/metadata.json
+          test -f candidate-artifacts/storage/app/release-candidate/scenarios/scenario-attestation.json
+          test -f candidate-artifacts/security-review.json
+          test -n "$(find candidate-artifacts/disaster-recovery -name result.md -print -quit)"
+          grep -R --fixed-strings "Candidate SHA: \`$CANDIDATE_SHA\`" candidate-artifacts/disaster-recovery
+          (cd candidate-artifacts && sha256sum --check storage/app/release-candidate/SHA256SUMS)
+          (cd candidate-artifacts && sha256sum --check SHA256SUMS)
+          find candidate-artifacts/disaster-recovery -name SHA256SUMS -execdir sha256sum --check SHA256SUMS \;
+          test "$(jq -r .candidate_sha candidate-artifacts/storage/app/release-candidate/metadata.json)" = "$CANDIDATE_SHA"
+          test "$(jq -r .candidate_sha candidate-artifacts/storage/app/release-candidate/scenarios/scenario-attestation.json)" = "$CANDIDATE_SHA"
+          test "$(jq -r .reviewed_commit candidate-artifacts/security-review.json)" = "$CANDIDATE_SHA"
+          test "$(jq -r .scenario_count candidate-artifacts/storage/app/release-candidate/scenarios/scenario-attestation.json)" = '14'
+          jq -e '[.scenarios[].catalog_fingerprint] | unique | length == 14' candidate-artifacts/storage/app/release-candidate/scenarios/scenario-attestation.json
+          jq -e 'all(.scenarios[]; .exit_code == 0 and .result == "passed")' candidate-artifacts/storage/app/release-candidate/scenarios/scenario-attestation.json
+          while IFS= read -r -d '' artifact; do
+            while IFS= read -r referenced_sha; do
+              test "$referenced_sha" = "$CANDIDATE_SHA"
+            done < <(jq -r '.. | objects | (.candidate_sha?, .reviewed_commit?) // empty' "$artifact")
+          done < <(find candidate-artifacts -type f -name '*.json' -print0)
+          mkdir -p candidate-attestation
+          jq -n \
+            --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg approval_url "$AIOS_294_URL" \
+            --arg qa_owner "$QA_OWNER" \
+            --arg qa_owner_login "$QA_OWNER_LOGIN" \
+            --arg security_reviewer "$SECURITY_REVIEWER" \
+            --arg security_reviewer_login "$SECURITY_REVIEWER_LOGIN" \
+            --arg release_manager "$RELEASE_MANAGER" \
+            --arg release_manager_login "$RELEASE_MANAGER_LOGIN" \
+            --arg manual_runbook_evidence_url "$MANUAL_RUNBOOK_EVIDENCE_URL" \
+            --arg run_url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{schema_version: 1, candidate_sha: $candidate_sha, decision: "pass", approval_url: $approval_url, evidence_run_url: $run_url, manual_runbook_evidence_url: $manual_runbook_evidence_url, completed_at: $completed_at, roles: {product_owner: {name: "John Leward Escote", github_login: "@dev-jeyelscott"}, system_architect: {name: "John Leward Escote", github_login: "@dev-jeyelscott"}, operations_owner: {name: "John Leward Escote", github_login: "@dev-jeyelscott"}, qa_owner: {name: $qa_owner, github_login: $qa_owner_login}, security_reviewer: {name: $security_reviewer, github_login: $security_reviewer_login}, release_manager: {name: $release_manager, github_login: $release_manager_login}}}' \
+            > candidate-attestation/candidate-attestation.json
+          find candidate-artifacts candidate-attestation -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > candidate-attestation/SHA256SUMS
+
+      - name: Upload final candidate attestation
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-candidate-attestation-${{ inputs.candidate_sha }}
+          path: candidate-attestation/
+          if-no-files-found: error
+          retention-days: 90

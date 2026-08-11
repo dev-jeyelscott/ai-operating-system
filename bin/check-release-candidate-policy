@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+readonly WORKFLOW='.github/workflows/release-candidate.yml'
+
+if [[ ! -f "$WORKFLOW" ]]; then
+    printf '%s\n' 'ERROR: release-candidate workflow is missing.' >&2
+    exit 1
+fi
+
+require_policy_text() {
+    local expected="$1"
+
+    if ! grep --fixed-strings --quiet -- "$expected" "$WORKFLOW"; then
+        printf 'ERROR: release-candidate workflow is missing policy: %s\n' "$expected" >&2
+        exit 1
+    fi
+}
+
+require_policy_text 'ref: ${{ inputs.candidate_sha }}'
+require_policy_text 'git rev-parse origin/develop'
+require_policy_text 'security:sign-off'
+require_policy_text '--candidate-sha="$CANDIDATE_SHA"'
+require_policy_text 'environment: mvp-qa-review'
+require_policy_text 'environment: mvp-security-review'
+require_policy_text 'environment: mvp-release-review'
+require_policy_text 'if: always()'
+require_policy_text 'retention-days: 90'
+require_policy_text 'uses: ./.github/workflows/disaster-recovery.yml'
+
+if jq -e '.scripts["ci:check"] | index("@security:sign-off") != null' composer.json >/dev/null; then
+    printf '%s\n' 'ERROR: ordinary CI must not invoke candidate-only security sign-off.' >&2
+    exit 1
+fi
+
+printf '%s\n' 'Release-candidate repository policy passed.'

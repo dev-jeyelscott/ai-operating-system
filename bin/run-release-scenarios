@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+CANDIDATE_SHA="${1:-}"
+SCENARIO_SEED="${2:-155}"
+ARTIFACT_DIRECTORY="${3:-storage/app/release-candidate/scenarios}"
+
+if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+    printf '%s\n' 'Usage: bin/run-release-scenarios FULL_CANDIDATE_SHA [SEED] [ARTIFACT_DIRECTORY]' >&2
+    exit 2
+fi
+
+if [[ ! "$SCENARIO_SEED" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' 'Scenario seed must be a non-negative integer.' >&2
+    exit 2
+fi
+
+if [[ "$(git rev-parse HEAD)" != "$CANDIDATE_SHA" ]]; then
+    printf '%s\n' 'The checked-out commit does not match the candidate SHA.' >&2
+    exit 1
+fi
+
+mkdir -p "$ARTIFACT_DIRECTORY"
+
+readonly -a SCENARIOS=(
+    happy_path
+    missing_required_document
+    conflicting_documents
+    notion_transient_failure
+    no_workable_ticket
+    dependency_blocked
+    development_validation_failure
+    provider_timeout
+    wrong_pr_target
+    qa_changes_requested
+    merge_ready_low_risk
+    merge_ready_high_risk
+    duplicate_start_project
+    duplicate_notion_publication_retry
+)
+
+scenario_command() {
+    case "$1" in
+        happy_path)
+            printf '%s' 'pnpm exec playwright test tests/e2e/happy-path.spec.ts'
+            ;;
+        missing_required_document)
+            printf '%s' 'php artisan test --compact tests/Feature/Projects/StartProjectPreflightQueryTest.php'
+            ;;
+        conflicting_documents)
+            printf '%s' 'php artisan test --compact tests/Feature/Projects/StartProjectCommandTest.php'
+            ;;
+        notion_transient_failure)
+            printf '%s' 'php artisan test --compact tests/Feature/Integrations/CircuitBreakingNotionPublicationClientTest.php'
+            ;;
+        no_workable_ticket|dependency_blocked)
+            printf '%s' 'php artisan test --compact tests/Feature/Application/Tickets/SelectNextTicketAndAcquireLeaseTest.php'
+            ;;
+        development_validation_failure|provider_timeout|wrong_pr_target)
+            printf '%s' 'php artisan test --compact tests/Feature/Application/Development/ProcessDevelopmentExecutionTest.php'
+            ;;
+        qa_changes_requested)
+            printf '%s' 'php artisan test --compact tests/Feature/Application/QualityAssurance/ChangesRequestedLoopTest.php'
+            ;;
+        merge_ready_low_risk|merge_ready_high_risk)
+            printf '%s' 'php artisan test --compact tests/Feature/Application/QualityAssurance/PhaseEightDecisionWorkflowTest.php'
+            ;;
+        duplicate_start_project)
+            printf '%s' 'php artisan test --compact tests/Feature/Workflows/WorkflowInvariantAndChaosTest.php'
+            ;;
+        duplicate_notion_publication_retry)
+            printf '%s' 'php artisan test --compact tests/Unit/PublishRoadmapToNotionJobTest.php'
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+failed=0
+
+for scenario in "${SCENARIOS[@]}"; do
+    catalog_path="$ARTIFACT_DIRECTORY/${scenario}.catalog.json"
+    log_path="$ARTIFACT_DIRECTORY/${scenario}.log"
+    manifest_path="$ARTIFACT_DIRECTORY/${scenario}.manifest.json"
+    command="$(scenario_command "$scenario")"
+
+    php artisan simulation:scenarios "$scenario" \
+        --seed="$SCENARIO_SEED" \
+        --json > "$catalog_path"
+
+    started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    set +e
+    bash -o pipefail -c "$command" 2>&1 | tee "$log_path"
+    exit_code="${PIPESTATUS[0]}"
+    set -e
+
+    completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    log_checksum="$(sha256sum "$log_path" | cut -d ' ' -f 1)"
+    catalog_checksum="$(sha256sum "$catalog_path" | cut -d ' ' -f 1)"
+
+    jq \
+        --arg candidate_sha "$CANDIDATE_SHA" \
+        --arg command "$command" \
+        --arg started_at "$started_at" \
+        --arg completed_at "$completed_at" \
+        --arg log_path "$log_path" \
+        --arg log_sha256 "$log_checksum" \
+        --arg catalog_sha256 "$catalog_checksum" \
+        --argjson exit_code "$exit_code" \
+        '{
+            schema_version: 1,
+            candidate_sha: $candidate_sha,
+            scenario: .scenario,
+            seed: .seed,
+            catalog_fingerprint: .fingerprint,
+            command: $command,
+            exit_code: $exit_code,
+            result: (if $exit_code == 0 then "passed" else "failed" end),
+            started_at: $started_at,
+            completed_at: $completed_at,
+            artifacts: {
+                log: $log_path,
+                log_sha256: $log_sha256,
+                catalog_sha256: $catalog_sha256
+            }
+        }' "$catalog_path" > "$manifest_path"
+
+    if [[ "$exit_code" -ne 0 ]]; then
+        failed=1
+    fi
+done
+
+jq -s \
+    --arg candidate_sha "$CANDIDATE_SHA" \
+    --argjson seed "$SCENARIO_SEED" \
+    '{
+        schema_version: 1,
+        candidate_sha: $candidate_sha,
+        seed: $seed,
+        scenario_count: length,
+        scenarios: .
+    }' "$ARTIFACT_DIRECTORY"/*.manifest.json \
+    > "$ARTIFACT_DIRECTORY/scenario-attestation.json"
+
+(
+    cd "$ARTIFACT_DIRECTORY"
+    find . -type f ! -name SHA256SUMS -print0 \
+        | sort -z \
+        | xargs -0 sha256sum \
+        > SHA256SUMS
+)
+
+if [[ "$failed" -ne 0 ]]; then
+    printf '%s\n' 'One or more release scenarios failed.' >&2
+    exit 1
+fi
+
+printf '%s\n' 'All 14 release scenarios passed with execution evidence.'

@@ -10,12 +10,12 @@ use JsonException;
 use Throwable;
 
 /**
- * Validates the machine-readable AIOS-150 security review manifest.
+ * Validates the machine-readable AIOS-294 security review manifest.
  */
 final readonly class SecuritySignOffValidator
 {
     /**
-     * Every hard dependency that must be evidenced before AIOS-150 can pass.
+     * Every hard dependency that must be evidenced before AIOS-294 can pass.
      *
      * @var list<string>
      */
@@ -81,8 +81,10 @@ final readonly class SecuritySignOffValidator
     /**
      * Validate the complete security review manifest.
      */
-    public function validate(string $manifestPath): SecuritySignOffResult
-    {
+    public function validate(
+        string $manifestPath,
+        string $candidateSha,
+    ): SecuritySignOffResult {
         if (! $this->files->isFile($manifestPath)) {
             return new SecuritySignOffResult(
                 decision: 'missing',
@@ -140,12 +142,12 @@ final readonly class SecuritySignOffValidator
             $this->string($manifest['reviewed_commit'] ?? null),
         );
 
-        if (($manifest['schema_version'] ?? null) !== 1) {
-            $violations[] = 'schema_version must be the integer 1.';
+        if (($manifest['schema_version'] ?? null) !== 2) {
+            $violations[] = 'schema_version must be the integer 2.';
         }
 
-        if ($this->string($manifest['ticket_id'] ?? null) !== 'AIOS-150') {
-            $violations[] = 'ticket_id must be AIOS-150.';
+        if ($this->string($manifest['ticket_id'] ?? null) !== 'AIOS-294') {
+            $violations[] = 'ticket_id must be AIOS-294.';
         }
 
         if ($decision !== 'approved') {
@@ -160,7 +162,17 @@ final readonly class SecuritySignOffValidator
 
         if (preg_match('/\A[0-9a-f]{40}\z/', $reviewedCommit) !== 1) {
             $violations[] = 'reviewed_commit must be a full 40-character Git SHA.';
+        } elseif ($reviewedCommit !== $candidateSha) {
+            $violations[] = sprintf(
+                'reviewed_commit must exactly match candidate SHA %s.',
+                $candidateSha,
+            );
         }
+
+        $this->validateApprovalUrl(
+            $this->string($manifest['approval_url'] ?? null),
+            $violations,
+        );
 
         $this->validateReviewers(
             $manifest['reviewers'] ?? null,
@@ -193,6 +205,20 @@ final readonly class SecuritySignOffValidator
     }
 
     /**
+     * Require the stable AIOS-294 approval record over HTTPS.
+     *
+     * @param  list<string>  $violations
+     */
+    private function validateApprovalUrl(
+        string $approvalUrl,
+        array &$violations,
+    ): void {
+        if ($approvalUrl !== 'https://app.notion.com/3b14e5c5cea381b39336f7238b626aa1') {
+            $violations[] = 'approval_url must be the HTTPS AIOS-294 Notion record.';
+        }
+    }
+
+    /**
      * Require the human roles needed for final approval.
      *
      * @param  list<string>  $violations
@@ -222,6 +248,10 @@ final readonly class SecuritySignOffValidator
 
             $role = strtolower($this->string($reviewer['role'] ?? null));
             $name = $this->string($reviewer['name'] ?? null);
+            $githubLogin = strtolower(ltrim(
+                $this->string($reviewer['github_login'] ?? null),
+                '@',
+            ));
 
             if ($role === '') {
                 $violations[] = sprintf(
@@ -240,6 +270,30 @@ final readonly class SecuritySignOffValidator
                     'reviewers.%d.name must identify an actual reviewer.',
                     $index,
                 );
+            }
+
+            if ($githubLogin === '') {
+                $violations[] = sprintf(
+                    'reviewers.%d.github_login is required.',
+                    $index,
+                );
+            }
+
+            if (
+                $role === 'security_reviewer'
+                && $githubLogin === 'dev-jeyelscott'
+            ) {
+                $violations[] = 'The security_reviewer must be independent of @dev-jeyelscott.';
+            }
+
+            if (
+                $role === 'product_owner'
+                && (
+                    $name !== 'John Leward Escote'
+                    || $githubLogin !== 'dev-jeyelscott'
+                )
+            ) {
+                $violations[] = 'The product_owner must be John Leward Escote (@dev-jeyelscott).';
             }
 
             if ($role !== '' && $name !== '') {
@@ -263,7 +317,8 @@ final readonly class SecuritySignOffValidator
     private function isPlaceholderReviewerName(string $name): bool
     {
         return preg_match(
-            '/\b(actual|insert|replace|your)\b.*\b(name|reviewer|owner)\b/i',
+            '/\A(?:security reviewer|product owner|qa owner|release manager)\z'
+                .'|\b(actual|insert|replace|your)\b.*\b(name|reviewer|owner)\b/i',
             $name,
         ) === 1;
     }

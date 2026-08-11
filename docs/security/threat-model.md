@@ -237,7 +237,7 @@ Expected result:
 
 ## 10. Sign-off evidence requirements
 
-AIOS-150 requires:
+AIOS-294 carries the candidate approval. Its security review requires:
 
 - All dependencies AIOS-010 and AIOS-137 through AIOS-149 marked passed.
 - Relevant automated test results.
@@ -254,11 +254,13 @@ AIOS-150 requires:
 - Named Product Owner approval.
 - No unresolved Critical or High finding.
 
-The machine-readable result is stored in:
+The committed machine-readable result is historical and invalidated:
 
 `docs/security/security-review.json`
 
-The consolidated review evidence is stored in:
+Candidate-specific manifests are generated at workflow runtime, SHA-bound by
+`security:sign-off --candidate-sha=<full SHA>`, checksummed, and retained as
+GitHub artifacts. The historical consolidated review is stored in:
 
 `docs/evidence/aios-150-security-sign-off.md`
 

@@ -66,7 +66,8 @@
             "pint --parallel --test"
         ],
         "repository:check": [
-            "bash bin/check-repository-hygiene"
+            "bash bin/check-repository-hygiene",
+            "bash bin/check-release-candidate-policy"
         ],
         "actions:check": [
             "bash bin/check-github-actions"
@@ -85,7 +86,7 @@
             "pnpm audit signatures"
         ],
         "security:sign-off": [
-            "@php artisan security:sign-off --manifest=docs/security/security-review.json"
+            "@php artisan security:sign-off"
         ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
@@ -98,8 +99,7 @@
             "@lint:check",
             "@types:check",
             "@php artisan test",
-            "pnpm run quality",
-            "@security:sign-off"
+            "pnpm run quality"
         ],
         "types:check": [
             "phpstan analyse"

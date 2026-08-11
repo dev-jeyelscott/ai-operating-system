@@ -22,6 +22,7 @@ test('a complete approved security review passes', function (): void {
 
     $this->artisan('security:sign-off', [
         '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
     ])
         ->expectsOutputToContain('Security sign-off passed.')
         ->assertSuccessful();
@@ -46,6 +47,7 @@ test('an unresolved critical finding blocks sign-off', function (): void {
 
     $this->artisan('security:sign-off', [
         '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
     ])
         ->expectsOutputToContain('Security sign-off failed.')
         ->expectsOutputToContain(
@@ -66,6 +68,7 @@ test('a missing hard dependency blocks sign-off', function (): void {
 
     $this->artisan('security:sign-off', [
         '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
     ])
         ->expectsOutputToContain('Required dependency AIOS-147 is missing.')
         ->assertFailed();
@@ -80,6 +83,7 @@ test('missing evidence blocks sign-off', function (): void {
 
     $this->artisan('security:sign-off', [
         '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
     ])
         ->expectsOutputToContain(
             'sign_off_evidence does not reference an existing safe repository file',
@@ -101,6 +105,7 @@ test('a named security reviewer and product owner are required', function (): vo
 
     $this->artisan('security:sign-off', [
         '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
     ])
         ->expectsOutputToContain(
             'A named product_owner approval is required.',
@@ -116,9 +121,98 @@ test('instructional reviewer placeholders block sign-off', function (): void {
 
     $this->artisan('security:sign-off', [
         '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
     ])
         ->expectsOutputToContain(
             'reviewers.0.name must identify an actual reviewer.',
+        )
+        ->assertFailed();
+});
+
+test('the approval URL must be the canonical AIOS-294 record', function (): void {
+    $manifest = aios150ValidManifest();
+    $manifest['approval_url'] = 'https://example.com/3b14e5c5cea381b39336f7238b626aa1';
+
+    aios150WriteManifest($manifest);
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
+    ])
+        ->expectsOutputToContain(
+            'approval_url must be the HTTPS AIOS-294 Notion record.',
+        )
+        ->assertFailed();
+});
+
+test('the security reviewer must be independent of the product owner', function (): void {
+    $manifest = aios150ValidManifest();
+    $manifest['reviewers'][0]['github_login'] = '@Dev-JeyelScott';
+
+    aios150WriteManifest($manifest);
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
+    ])
+        ->expectsOutputToContain(
+            'The security_reviewer must be independent of @dev-jeyelscott.',
+        )
+        ->assertFailed();
+});
+
+test('candidate sha is required', function (): void {
+    aios150WriteManifest(aios150ValidManifest());
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+    ])
+        ->expectsOutputToContain(
+            'The candidate-sha option must be a full 40-character Git SHA.',
+        )
+        ->assertExitCode(2);
+});
+
+test('abbreviated and malformed candidate shas are rejected', function (string $candidateSha): void {
+    aios150WriteManifest(aios150ValidManifest());
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => $candidateSha,
+    ])->assertExitCode(2);
+})->with([
+    'abbreviated' => ['deadbeef'],
+    'non hexadecimal' => [str_repeat('z', 40)],
+]);
+
+test('a stale or mismatched reviewed commit is rejected', function (): void {
+    $manifest = aios150ValidManifest();
+    $manifest['reviewed_commit'] = str_repeat('a', 40);
+
+    aios150WriteManifest($manifest);
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => str_repeat('b', 40),
+    ])
+        ->expectsOutputToContain(
+            'reviewed_commit must exactly match candidate SHA '.str_repeat('b', 40).'.',
+        )
+        ->assertFailed();
+});
+
+test('unsafe evidence paths are rejected', function (): void {
+    $manifest = aios150ValidManifest();
+    $manifest['sign_off_evidence'] = '../outside-repository.md';
+
+    aios150WriteManifest($manifest);
+
+    $this->artisan('security:sign-off', [
+        '--manifest' => aios150ManifestAbsolutePath(),
+        '--candidate-sha' => aios150CurrentCommit(),
+    ])
+        ->expectsOutputToContain(
+            'sign_off_evidence does not reference an existing safe repository file',
         )
         ->assertFailed();
 });
@@ -155,19 +249,22 @@ function aios150ValidManifest(): array
     );
 
     return [
-        'schema_version' => 1,
-        'ticket_id' => 'AIOS-150',
+        'schema_version' => 2,
+        'ticket_id' => 'AIOS-294',
+        'approval_url' => 'https://app.notion.com/3b14e5c5cea381b39336f7238b626aa1',
         'reviewed_at' => '2026-08-03T14:17:00+08:00',
         'reviewed_commit' => aios150CurrentCommit(),
         'decision' => 'approved',
         'reviewers' => [
             [
                 'role' => 'security_reviewer',
-                'name' => 'Security reviewer',
+                'name' => 'Alex Rivera',
+                'github_login' => '@alex-rivera',
             ],
             [
                 'role' => 'product_owner',
-                'name' => 'Product owner',
+                'name' => 'John Leward Escote',
+                'github_login' => '@dev-jeyelscott',
             ],
         ],
         'sign_off_evidence' => aios150EvidenceRelativePath(),

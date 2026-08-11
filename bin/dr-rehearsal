@@ -259,6 +259,7 @@ cat > "${evidence_directory}/result.md" <<EVIDENCE
 # Disaster-Recovery Rehearsal
 
 - Rehearsal ID: \`${suffix}\`
+- Candidate SHA: \`${CANDIDATE_SHA:-$(git rev-parse HEAD)}\`
 - Executed at: \`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\`
 - PostgreSQL backup: passed
 - PostgreSQL restore into isolated database: passed
@@ -268,6 +269,14 @@ cat > "${evidence_directory}/result.md" <<EVIDENCE
 - Temporary-resource cleanup: scheduled by exit handler
 - Overall result: passed
 EVIDENCE
+
+(
+    cd "${evidence_directory}"
+    find . -type f ! -name SHA256SUMS -print0 \
+        | sort -z \
+        | xargs -0 sha256sum \
+        > SHA256SUMS
+)
 
 chmod 0600 "${evidence_directory}/result.md"
 

@@ -3,10 +3,11 @@
 AIOS-151 defines one stable catalog for the 14 release-blocking MVP
 scenarios.
 
-The catalog does not execute workflows by itself. It resolves a scenario
-slug, records the deterministic seed, exposes provider-specific mappings,
-and produces a canonical fingerprint that later acceptance runners can
-persist as evidence.
+The catalog command resolves a scenario slug, records the deterministic seed,
+exposes provider-specific mappings, and produces a canonical fingerprint. The
+release entry point `bin/run-release-scenarios` executes an explicit test or
+browser seam for every catalog entry and records its command, exit result,
+candidate SHA, fingerprint, and artifact checksums.
 
 ## Inspect the catalog
 
@@ -14,6 +15,13 @@ persist as evidence.
 php artisan simulation:scenarios
 php artisan simulation:scenarios --seed=42 --json
 php artisan simulation:scenarios wrong_pr_target --seed=151 --json
+```
+
+Candidate execution is performed by the release workflow, or locally against
+an exact checked-out SHA:
+
+```bash
+bin/run-release-scenarios "$(git rev-parse HEAD)" 155
 ```
 
 ## Release-blocking scenarios

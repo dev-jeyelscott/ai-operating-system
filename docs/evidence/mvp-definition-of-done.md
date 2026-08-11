@@ -2,7 +2,9 @@
 
 ## Review metadata
 
-- Candidate commit: Not established; the release documentation worktree is not committed.
+- Candidate commit: Not established; select the post-remediation `develop` SHA.
+- Approval authority: AIOS-294 in the canonical Notion delivery tracker
+- Candidate evidence: manual `release-candidate` GitHub Actions run for the exact SHA
 - Reviewed at: Not performed
 - Product owner: No current approval
 - System architect: No current approval
@@ -80,12 +82,11 @@ with the required owner and independent reviewer.
 | 2026-08-03 | Isolated full Laravel suite | Passed | 1,275 passed, 1 skipped, 6,276 assertions, 135.44 seconds, exit 0. |
 | 2026-08-03 | Isolated PostgreSQL concurrency suite | Passed | 10 passed, 87 assertions, 8.97 seconds, no skipped tests or warnings. |
 | 2026-08-03 | Security sign-off validator | Failed as intended | Manifest decision is `invalidated`; it references commit `94c0694d776db1a3660154bccd1b7f6404746eed` and has no human approval records. |
-| 2026-08-03 | Supply-chain gate | Blocked | `sharp@0.34.5`, inherited from `@gltf-transform/cli@4.4.2`, is rejected for high-severity libvips advisories. |
 
 ## Residual risks
 
 - Candidate validation is incomplete: focused PostgreSQL-backed feature tests pass, but the full browser acceptance flow still requires a clean CI run after its server environment propagation fix.
-- The dependency audit currently rejects `sharp@0.34.5`, inherited through `@gltf-transform/cli@4.4.2`, for newly reported high-severity libvips advisories. It must be upgraded or otherwise remediated through an approved dependency change before the full CI gate can pass.
+- Candidate supply-chain evidence has not yet been produced by the release-candidate workflow.
 - A clean isolated full Laravel suite passed on 2026-08-03: 1,275 passed, 1 skipped, and 6,276 assertions in 135.44 seconds (exit 0). This is preliminary local candidate evidence only; retain a clean CI run for the selected commit.
 - Security review evidence is invalidated and requires named human approvals.
 - No non-author user-guide validation or runbook tabletop exercise is recorded.
@@ -93,6 +94,6 @@ with the required owner and independent reviewer.
 
 ## Final sign-offs and decision
 
-Blocked. Do not create a promotion PR, tag, or GitHub prerelease until every
+Blocked awaiting independent reviewers. Do not create a promotion PR, tag, or GitHub prerelease until every
 matrix item has current passing evidence and the required independent human
 approvals.

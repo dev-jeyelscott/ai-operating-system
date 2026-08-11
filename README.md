@@ -19,7 +19,12 @@ The active project documents are:
 1. **`ai-operating-system-full-specification-v1.2.md`** — complete product, domain, workflow, security, reliability, and delivery specification.
 2. **`ai-operating-system-baseline-v1.2.md`** — concise, non-negotiable product and architecture baseline.
 3. **`ai-operating-system-mvp-specification-v1.0.md`** — buildable MVP scope, modules, integrations, scenarios, acceptance criteria, and Definition of Done.
-4. **`ai-operating-system-detailed-build-roadmap-v1.0.md`** — implementation phases and delivery sequence.
+4. **Notion: AI Operating System — Delivery Tracker** — the canonical detailed
+   roadmap and task authority. Database ID:
+   `ab04e5c5-cea3-8310-b536-81092834fdba`; data-source ID:
+   `15f4e5c5-cea3-8362-9ce6-07add7b903ab`. Retrieve the database by its stable
+   ID, then query the data source by `Ticket ID`. AIOS-294 governs release
+   candidate evidence and approval.
 5. **`CHANGELOG-v1.2.md`** — documentation changes introduced in version 1.2.
 
 When documents overlap, apply this decision order:
@@ -738,4 +743,4 @@ Recreate the containers:
 
 # Current implementation status
 
-The repository currently has the Laravel 13 application and local infrastructure running through Docker Compose. The next implementation work should follow the approved detailed build roadmap and preserve the simulation-first architecture defined by the baseline and full specification.
+The repository currently has the Laravel 13 application and local infrastructure running through Docker Compose. The next implementation work should follow the canonical Notion delivery tracker and preserve the simulation-first architecture defined by the baseline and full specification.

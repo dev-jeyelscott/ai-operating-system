@@ -10,7 +10,9 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature(
-    'security:sign-off {--manifest=docs/security/security-review.json : Repository-relative or absolute security review manifest path}',
+    'security:sign-off
+        {--manifest=docs/security/security-review.json : Repository-relative or absolute security review manifest path}
+        {--candidate-sha= : Required full 40-character release-candidate Git SHA}',
 )]
 #[Description(
     'Verify threat-model evidence and reject unresolved Critical or High findings.',
@@ -31,6 +33,20 @@ final class VerifySecuritySignOffCommand extends Command
      */
     public function handle(): int
     {
+        $candidateShaOption = $this->option('candidate-sha');
+
+        if (
+            ! is_string($candidateShaOption)
+            || preg_match('/\A[0-9a-fA-F]{40}\z/', trim($candidateShaOption)) !== 1
+        ) {
+            $this->components->error(
+                'The candidate-sha option must be a full 40-character Git SHA.',
+            );
+
+            return self::INVALID;
+        }
+
+        $candidateSha = strtolower(trim($candidateShaOption));
         $manifestOption = $this->option('manifest');
 
         if (! is_string($manifestOption) || trim($manifestOption) === '') {
@@ -45,7 +61,7 @@ final class VerifySecuritySignOffCommand extends Command
             trim($manifestOption),
         );
 
-        $result = $this->validator->validate($manifestPath);
+        $result = $this->validator->validate($manifestPath, $candidateSha);
 
         $this->table(
             ['Field', 'Value'],

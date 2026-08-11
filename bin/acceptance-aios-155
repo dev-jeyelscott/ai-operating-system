@@ -37,6 +37,13 @@ run_step \
         --json
 
 run_step \
+    "scenario-execution" \
+    ./vendor/bin/sail bash bin/run-release-scenarios \
+        "${COMMIT_SHA}" \
+        155 \
+        "${ARTIFACT_DIRECTORY}/scenarios"
+
+run_step \
     "acceptance-contract" \
     ./vendor/bin/sail artisan test \
         tests/Feature/Acceptance/FailureRetryDuplicateSideEffectAcceptanceTest.php \

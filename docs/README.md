@@ -23,6 +23,14 @@ release decisions.
    exclusions, acceptance criteria, dependencies, required evidence, risk,
    assigned role, and final disposition.
 
+   The canonical detailed roadmap is the Notion **AI Operating System —
+   Delivery Tracker** (database ID
+   `ab04e5c5-cea3-8310-b536-81092834fdba`, data-source ID
+   `15f4e5c5-cea3-8362-9ce6-07add7b903ab`). Retrieve the database by its stable
+   ID and query that data source by `Ticket ID`; AIOS-294 is the authority for
+   release-candidate evidence and approval. The repository does not duplicate
+   the detailed roadmap.
+
 4. **Repository implementation**
 
    The repository is authoritative for currently implemented code, migrations,

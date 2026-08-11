@@ -1172,7 +1172,7 @@ Review or supersede this ADR when:
 ## 31. References
 
 - AI Operating System Final Product and Technical Specification v1.2
-- AI Operating System Detailed Build Roadmap v1.0
+- Canonical Notion AI Operating System — Delivery Tracker
 - AIOS-241
 - ADR-0005
 - Codex App Server protocol documentation
