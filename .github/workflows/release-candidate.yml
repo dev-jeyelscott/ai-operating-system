@@ -134,7 +134,7 @@ jobs:
           test -z "$(git status --short)"
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.5'
           extensions: pdo_pgsql, redis, pcntl, posix
@@ -147,7 +147,7 @@ jobs:
           version: 11.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
           cache: pnpm
@@ -250,7 +250,7 @@ jobs:
 
       - name: Upload automated evidence on success or failure
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-candidate-automated-${{ inputs.candidate_sha }}
           path: |
@@ -299,7 +299,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.5'
           tools: composer:v2
@@ -309,7 +309,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Download automated evidence
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-candidate-automated-${{ inputs.candidate_sha }}
           path: storage/app/release-candidate-download
@@ -344,7 +344,7 @@ jobs:
 
       - name: Upload security evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-candidate-security-${{ inputs.candidate_sha }}
           path: storage/app/release-candidate/security/
@@ -383,14 +383,14 @@ jobs:
           test "${SECURITY_REVIEWER_LOGIN_NORMALIZED,,}" != "${RELEASE_MANAGER_LOGIN_NORMALIZED,,}"
 
       - name: Download candidate artifacts
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: release-candidate-*-${{ inputs.candidate_sha }}
           path: candidate-artifacts
           merge-multiple: true
 
       - name: Download disaster-recovery artifacts
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: disaster-recovery-evidence-${{ inputs.candidate_sha }}
           path: candidate-artifacts/disaster-recovery
@@ -445,7 +445,7 @@ jobs:
 
       - name: Upload final candidate attestation
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-candidate-attestation-${{ inputs.candidate_sha }}
           path: candidate-attestation/
